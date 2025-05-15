@@ -31,7 +31,11 @@ router.get("/", async (req, res) => {
 router.get("/:id", async (req, res) => {
   try {
     const courseId = req.params.id;
+<<<<<<< HEAD
     const course = await Courses.findByPk(courseId, {
+=======
+    const course = await Course.findByPk(courseId, {
+>>>>>>> 899418cd511bd0d2a4d0b66c9f013b4e49f6b202
       include: [
         {
           model: Lessons,

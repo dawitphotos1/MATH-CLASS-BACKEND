@@ -27,6 +27,29 @@ module.exports = {
         onDelete: "CASCADE",
         onUpdate: "CASCADE",
       },
+<<<<<<< HEAD
+=======
+      videoUrl: {
+        type: Sequelize.STRING,
+        allowNull: true,
+      },
+      orderIndex: {
+        type: Sequelize.INTEGER,
+        allowNull: false,
+      },
+      isUnitHeader: {
+        type: Sequelize.BOOLEAN,
+        defaultValue: false,
+      },
+      unitId: {
+        type: Sequelize.INTEGER,
+        allowNull: true,
+        references: {
+          model: "Lessons",
+          key: "id",
+        },
+      },
+>>>>>>> 899418cd511bd0d2a4d0b66c9f013b4e49f6b202
       createdAt: {
         allowNull: false,
         type: Sequelize.DATE,
