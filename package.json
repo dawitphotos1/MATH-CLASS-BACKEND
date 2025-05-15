@@ -28,6 +28,7 @@
     "mysql2": "^3.14.1",
     "node-cache": "^5.1.2",
     "nodemailer": "^6.10.1",
+    "pg": "^8.16.0",
     "sequelize": "^6.37.7",
     "sequelize-cli": "^6.6.2",
     "stripe": "^18.0.0"
