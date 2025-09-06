@@ -75,6 +75,7 @@
 //   return UserCourseAccess;
 // };
 
+
 const { DataTypes } = require("sequelize");
 
 module.exports = (sequelize) => {
@@ -83,36 +84,48 @@ module.exports = (sequelize) => {
     {
       userId: {
         type: DataTypes.INTEGER,
+        field: "user_id",
         primaryKey: true,
-        references: { model: "Users", key: "id" },
       },
       courseId: {
         type: DataTypes.INTEGER,
+        field: "course_id",
         primaryKey: true,
-        references: { model: "Courses", key: "id" },
       },
       accessGrantedAt: {
         type: DataTypes.DATE,
-        allowNull: false,
+        field: "access_granted_at",
       },
       approved: {
         type: DataTypes.BOOLEAN,
         defaultValue: false,
       },
+      approvalStatus: {
+        type: DataTypes.ENUM("pending", "approved", "rejected"),
+        field: "approval_status",
+        defaultValue: "pending",
+      },
+      paymentStatus: {
+        type: DataTypes.ENUM("pending", "paid", "failed"),
+        field: "payment_status",
+        defaultValue: "pending",
+      },
     },
     {
-      timestamps: false,
+      tableName: "usercourseaccess",
+      timestamps: true,
+      underscored: true,
     }
   );
 
   UserCourseAccess.associate = (models) => {
     UserCourseAccess.belongsTo(models.User, {
-      foreignKey: "userId",
+      foreignKey: { name: "userId", field: "user_id" },
       as: "user",
     });
 
     UserCourseAccess.belongsTo(models.Course, {
-      foreignKey: "courseId",
+      foreignKey: { name: "courseId", field: "course_id" },
       as: "course",
     });
   };

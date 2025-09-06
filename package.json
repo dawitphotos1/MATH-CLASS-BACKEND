@@ -12,13 +12,28 @@
   "author": "",
   "license": "ISC",
   "dependencies": {
-    "dotenv": "^16.4.5",
-    "express": "^4.21.0",
-    "mongoose": "^8.7.0",
+    "bcrypt": "^5.1.1",
+    "bcryptjs": "^3.0.2",
+    "cors": "^2.8.5",
+    "dotenv": "^16.6.1",
+    "express": "^4.21.2",
+    "express-rate-limit": "^8.1.0",
     "jsonwebtoken": "^9.0.2",
-    "bcrypt": "^5.1.1"
+    "mongoose": "^8.7.0",
+    "mysql2": "^3.14.4",
+    "pg": "^8.16.3",
+    "pg-hstore": "^2.3.4",
+    "sequelize": "^6.37.7"
   },
   "devDependencies": {
     "nodemon": "^3.1.7"
-  }
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/dawitphotos1/MATH-CLASS-BACKEND.git"
+  },
+  "bugs": {
+    "url": "https://github.com/dawitphotos1/MATH-CLASS-BACKEND/issues"
+  },
+  "homepage": "https://github.com/dawitphotos1/MATH-CLASS-BACKEND#readme"
 }
