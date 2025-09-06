@@ -76,59 +76,59 @@
 // };
 
 
-const { DataTypes } = require("sequelize");
 
-module.exports = (sequelize) => {
+
+module.exports = (sequelize, DataTypes) => {
   const UserCourseAccess = sequelize.define(
     "UserCourseAccess",
     {
+      id: {
+        type: DataTypes.INTEGER,
+        primaryKey: true,
+        autoIncrement: true,
+      },
       userId: {
         type: DataTypes.INTEGER,
-        field: "user_id",
-        primaryKey: true,
+        references: {
+          model: "Users",
+          key: "id",
+        },
+        onDelete: "CASCADE",
       },
       courseId: {
         type: DataTypes.INTEGER,
-        field: "course_id",
-        primaryKey: true,
+        references: {
+          model: "Courses",
+          key: "id",
+        },
+        onDelete: "CASCADE",
       },
       accessGrantedAt: {
         type: DataTypes.DATE,
-        field: "access_granted_at",
+        allowNull: false,
+        defaultValue: DataTypes.NOW,
       },
-      approved: {
-        type: DataTypes.BOOLEAN,
-        defaultValue: false,
+      createdAt: {
+        type: DataTypes.DATE,
+        allowNull: false,
+        defaultValue: DataTypes.NOW,
       },
-      approvalStatus: {
-        type: DataTypes.ENUM("pending", "approved", "rejected"),
-        field: "approval_status",
-        defaultValue: "pending",
-      },
-      paymentStatus: {
-        type: DataTypes.ENUM("pending", "paid", "failed"),
-        field: "payment_status",
-        defaultValue: "pending",
+      updatedAt: {
+        type: DataTypes.DATE,
+        allowNull: false,
+        defaultValue: DataTypes.NOW,
       },
     },
     {
-      tableName: "usercourseaccess",
-      timestamps: true,
-      underscored: true,
+      tableName: "UserCourseAccess",
+      indexes: [
+        {
+          unique: true,
+          fields: ["userId", "courseId"],
+        },
+      ],
     }
   );
-
-  UserCourseAccess.associate = (models) => {
-    UserCourseAccess.belongsTo(models.User, {
-      foreignKey: { name: "userId", field: "user_id" },
-      as: "user",
-    });
-
-    UserCourseAccess.belongsTo(models.Course, {
-      foreignKey: { name: "courseId", field: "course_id" },
-      as: "course",
-    });
-  };
 
   return UserCourseAccess;
 };

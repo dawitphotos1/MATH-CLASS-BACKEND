@@ -54,9 +54,6 @@
 
 
 
-
-const bcrypt = require("bcryptjs");
-
 module.exports = (sequelize, DataTypes) => {
   const User = sequelize.define(
     "User",
@@ -67,17 +64,16 @@ module.exports = (sequelize, DataTypes) => {
         autoIncrement: true,
       },
       name: {
-        type: DataTypes.STRING,
+        type: DataTypes.STRING(255),
         allowNull: false,
       },
       email: {
         type: DataTypes.STRING(100),
         allowNull: false,
         unique: true,
-        validate: { isEmail: true },
       },
       password: {
-        type: DataTypes.STRING,
+        type: DataTypes.STRING(255),
         allowNull: false,
       },
       role: {
@@ -85,45 +81,36 @@ module.exports = (sequelize, DataTypes) => {
         allowNull: false,
       },
       subject: {
-        type: DataTypes.STRING,
+        type: DataTypes.STRING(255),
       },
-      approvalStatus: {
+      approval_status: {
         type: DataTypes.ENUM("pending", "approved", "rejected"),
-        field: "approval_status",
         defaultValue: "approved",
       },
       lastLogin: {
         type: DataTypes.DATE,
-        field: "last_login",
+      },
+      createdAt: {
+        type: DataTypes.DATE,
+        allowNull: false,
+        defaultValue: DataTypes.NOW,
+      },
+      updatedAt: {
+        type: DataTypes.DATE,
+        allowNull: false,
+        defaultValue: DataTypes.NOW,
       },
     },
     {
-      tableName: "users",
-      timestamps: true,
-      underscored: true,
+      tableName: "Users",
     }
   );
 
-  // Hash password before save
-  User.beforeCreate(async (user) => {
-    if (user.password) {
-      const salt = await bcrypt.genSalt(10);
-      user.password = await bcrypt.hash(user.password, salt);
-    }
-  });
-
   User.associate = (models) => {
-    User.hasMany(models.Course, {
-      foreignKey: { name: "teacherId", field: "teacher_id" },
-      as: "courses",
-    });
-
-    User.hasMany(models.UserCourseAccess, {
-      foreignKey: { name: "userId", field: "user_id" },
-    });
-
-    User.hasMany(models.Lesson, {
-      foreignKey: { name: "userId", field: "user_id" },
+    User.belongsToMany(models.Course, {
+      through: models.UserCourseAccess,
+      foreignKey: "userId",
+      as: "enrolledCourses",
     });
   };
 

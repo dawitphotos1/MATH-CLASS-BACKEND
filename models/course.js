@@ -52,21 +52,17 @@
 
 
 
-
-
-const { DataTypes } = require("sequelize");
-
-module.exports = (sequelize) => {
+module.exports = (sequelize, DataTypes) => {
   const Course = sequelize.define(
     "Course",
     {
       id: {
         type: DataTypes.INTEGER,
-        autoIncrement: true,
         primaryKey: true,
+        autoIncrement: true,
       },
       title: {
-        type: DataTypes.STRING,
+        type: DataTypes.STRING(255),
         allowNull: false,
       },
       description: {
@@ -78,32 +74,44 @@ module.exports = (sequelize) => {
       },
       teacherId: {
         type: DataTypes.INTEGER,
-        field: "teacher_id",
+        allowNull: true,
+        references: {
+          model: "Teachers",
+          key: "id",
+        },
+        onDelete: "SET NULL",
+      },
+      createdAt: {
+        type: DataTypes.DATE,
+        allowNull: false,
+        defaultValue: DataTypes.NOW,
+      },
+      updatedAt: {
+        type: DataTypes.DATE,
+        allowNull: false,
+        defaultValue: DataTypes.NOW,
       },
     },
     {
-      tableName: "courses",
-      timestamps: true,
-      underscored: true,
+      tableName: "Courses",
     }
   );
 
   Course.associate = (models) => {
-    Course.belongsToMany(models.User, {
-      through: models.UserCourseAccess,
-      foreignKey: { name: "courseId", field: "course_id" },
-      otherKey: { name: "userId", field: "user_id" },
-    });
-
-    Course.belongsTo(models.User, {
-      foreignKey: { name: "teacherId", field: "teacher_id" },
+    Course.belongsTo(models.Teacher, {
+      foreignKey: "teacherId",
       as: "teacher",
     });
 
     Course.hasMany(models.Lesson, {
-      foreignKey: { name: "courseId", field: "course_id" },
+      foreignKey: "courseId",
       as: "lessons",
-      onDelete: "CASCADE",
+    });
+
+    Course.belongsToMany(models.User, {
+      through: models.UserCourseAccess,
+      foreignKey: "courseId",
+      as: "enrolledUsers",
     });
   };
 

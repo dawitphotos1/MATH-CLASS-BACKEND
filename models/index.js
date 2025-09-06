@@ -51,7 +51,6 @@
 
 
 
-
 "use strict";
 
 const fs = require("fs");
@@ -74,8 +73,9 @@ if (config.use_env_variable) {
   );
 }
 
-// ✅ Import models
+// Load models
 db.User = require("./User")(sequelize, Sequelize.DataTypes);
+db.Teacher = require("./Teacher")(sequelize, Sequelize.DataTypes);
 db.Course = require("./Course")(sequelize, Sequelize.DataTypes);
 db.Lesson = require("./Lesson")(sequelize, Sequelize.DataTypes);
 db.UserCourseAccess = require("./UserCourseAccess")(
@@ -83,24 +83,7 @@ db.UserCourseAccess = require("./UserCourseAccess")(
   Sequelize.DataTypes
 );
 
-// If you also have these, load them too
-if (fs.existsSync(path.join(__dirname, "lessoncompletion.js"))) {
-  db.LessonCompletion = require("./lessoncompletion")(
-    sequelize,
-    Sequelize.DataTypes
-  );
-}
-if (fs.existsSync(path.join(__dirname, "lessonProgress.js"))) {
-  db.LessonProgress = require("./lessonProgress")(
-    sequelize,
-    Sequelize.DataTypes
-  );
-}
-if (fs.existsSync(path.join(__dirname, "Teachers.js"))) {
-  db.Teacher = require("./Teachers")(sequelize, Sequelize.DataTypes);
-}
-
-// ✅ Set up associations
+// Run associations
 Object.keys(db).forEach((modelName) => {
   if (db[modelName].associate) {
     db[modelName].associate(db);
