@@ -74,21 +74,25 @@
 
 
 
-
 "use strict";
-
 module.exports = {
-  async up(queryInterface, Sequelize) {
-    await queryInterface.createTable("usercourseaccess", {
+  up: async (queryInterface, Sequelize) => {
+    await queryInterface.createTable("user_course_access", {
+      id: {
+        allowNull: false,
+        autoIncrement: true,
+        primaryKey: true,
+        type: Sequelize.INTEGER,
+      },
       user_id: {
         type: Sequelize.INTEGER,
-        primaryKey: true,
+        allowNull: false,
         references: { model: "users", key: "id" },
         onDelete: "CASCADE",
       },
       course_id: {
         type: Sequelize.INTEGER,
-        primaryKey: true,
+        allowNull: false,
         references: { model: "courses", key: "id" },
         onDelete: "CASCADE",
       },
@@ -109,19 +113,19 @@ module.exports = {
         defaultValue: "pending",
       },
       created_at: {
-        type: Sequelize.DATE,
         allowNull: false,
+        type: Sequelize.DATE,
         defaultValue: Sequelize.fn("NOW"),
       },
       updated_at: {
-        type: Sequelize.DATE,
         allowNull: false,
+        type: Sequelize.DATE,
         defaultValue: Sequelize.fn("NOW"),
       },
     });
   },
 
-  async down(queryInterface) {
-    await queryInterface.dropTable("usercourseaccess");
+  down: async (queryInterface, Sequelize) => {
+    await queryInterface.dropTable("user_course_access");
   },
 };
