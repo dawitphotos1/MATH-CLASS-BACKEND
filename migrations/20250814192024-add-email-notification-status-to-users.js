@@ -27,36 +27,28 @@
 //   },
 // };
 
+
+
+
 "use strict";
 
 module.exports = {
   async up(queryInterface, Sequelize) {
-    // Check current columns in "users"
-    const table = await queryInterface.describeTable("users");
+    const table = await queryInterface.describeTable("Users");
 
     if (!table.email_notification_status) {
-      await queryInterface.addColumn("users", "email_notification_status", {
+      await queryInterface.addColumn("Users", "email_notification_status", {
         type: Sequelize.BOOLEAN,
         defaultValue: true,
       });
-      console.log("✅ Added column email_notification_status to users");
-    } else {
-      console.log(
-        "⚠️ Column email_notification_status already exists, skipping"
-      );
     }
   },
 
   async down(queryInterface, Sequelize) {
-    const table = await queryInterface.describeTable("users");
+    const table = await queryInterface.describeTable("Users");
 
     if (table.email_notification_status) {
-      await queryInterface.removeColumn("users", "email_notification_status");
-      console.log("🗑️ Removed column email_notification_status from users");
-    } else {
-      console.log(
-        "⚠️ Column email_notification_status does not exist, skipping"
-      );
+      await queryInterface.removeColumn("Users", "email_notification_status");
     }
   },
 };
