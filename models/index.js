@@ -50,7 +50,6 @@
 // };
 
 
-
 "use strict";
 
 const fs = require("fs");
@@ -59,21 +58,15 @@ const Sequelize = require("sequelize");
 const basename = path.basename(__filename);
 const env = process.env.NODE_ENV || "development";
 const config = require(__dirname + "/../config/config.js")[env];
+
 const db = {};
 
-let sequelize;
-if (config.use_env_variable) {
-  sequelize = new Sequelize(process.env[config.use_env_variable], config);
-} else {
-  sequelize = new Sequelize(
-    config.database,
-    config.username,
-    config.password,
-    config
-  );
-}
+// ✅ Initialize Sequelize using DATABASE_URL
+const sequelize = config.url
+  ? new Sequelize(config.url, config)
+  : new Sequelize(config.database, config.username, config.password, config);
 
-// Load models
+// ✅ Load models
 db.User = require("./User")(sequelize, Sequelize.DataTypes);
 db.Teacher = require("./Teacher")(sequelize, Sequelize.DataTypes);
 db.Course = require("./Course")(sequelize, Sequelize.DataTypes);
@@ -83,7 +76,7 @@ db.UserCourseAccess = require("./UserCourseAccess")(
   Sequelize.DataTypes
 );
 
-// Run associations
+// ✅ Run associations if defined
 Object.keys(db).forEach((modelName) => {
   if (db[modelName].associate) {
     db[modelName].associate(db);

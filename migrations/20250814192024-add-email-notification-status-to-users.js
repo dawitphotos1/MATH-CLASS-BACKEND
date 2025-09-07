@@ -27,50 +27,35 @@
 //   },
 // };
 
-
 "use strict";
 
 module.exports = {
-  up: async (queryInterface, Sequelize) => {
-    const [results] = await queryInterface.sequelize.query(
-      `SELECT column_name
-       FROM information_schema.columns 
-       WHERE table_name = 'users' 
-         AND column_name = 'email_notification_status';`
-    );
+  async up(queryInterface, Sequelize) {
+    // Check current columns in "users"
+    const table = await queryInterface.describeTable("users");
 
-    if (results.length === 0) {
+    if (!table.email_notification_status) {
       await queryInterface.addColumn("users", "email_notification_status", {
-        type: Sequelize.STRING,
-        allowNull: true,
-        defaultValue: null, // Optional: you can remove or modify as needed
+        type: Sequelize.BOOLEAN,
+        defaultValue: true,
       });
-      console.log(
-        "✅ Added 'email_notification_status' column to 'users' table."
-      );
+      console.log("✅ Added column email_notification_status to users");
     } else {
       console.log(
-        "ℹ️ 'email_notification_status' column already exists in 'users' table. Skipping..."
+        "⚠️ Column email_notification_status already exists, skipping"
       );
     }
   },
 
-  down: async (queryInterface, Sequelize) => {
-    const [results] = await queryInterface.sequelize.query(
-      `SELECT column_name 
-       FROM information_schema.columns 
-       WHERE table_name = 'users' 
-         AND column_name = 'email_notification_status';`
-    );
+  async down(queryInterface, Sequelize) {
+    const table = await queryInterface.describeTable("users");
 
-    if (results.length > 0) {
+    if (table.email_notification_status) {
       await queryInterface.removeColumn("users", "email_notification_status");
-      console.log(
-        "✅ Removed 'email_notification_status' column from 'users' table."
-      );
+      console.log("🗑️ Removed column email_notification_status from users");
     } else {
       console.log(
-        "ℹ️ 'email_notification_status' column does not exist. Skipping..."
+        "⚠️ Column email_notification_status does not exist, skipping"
       );
     }
   },

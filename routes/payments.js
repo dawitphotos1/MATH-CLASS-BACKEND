@@ -1,643 +1,194 @@
-
-// const express = require("express");
-// const Stripe = require("stripe");
-// const { User, sequelize, UserCourseAccess } = require("../models"); // ✅ include UserCourseAccess
-// const bcrypt = require("bcryptjs");
-
-// const router = express.Router();
-// const stripe = Stripe(process.env.STRIPE_SECRET_KEY);
-
-// router.post("/create-checkout-session", async (req, res) => {
-//   try {
-//     const { courseId, userData } = req.body;
-//     console.log("💳 Starting checkout session:", { courseId, userData });
-
-//     const isRegistration = courseId === "registration_fee";
-
-//     // 🚫 Restrict payment to students only
-//     if (!isRegistration && (!userData || userData.role !== "student")) {
-//       return res
-//         .status(403)
-//         .json({ error: "Only students can enroll in courses." });
-//     }
-
-//     // Registration logic
-//     if (isRegistration) {
-//       if (!userData?.email || !userData?.name || !userData?.password) {
-//         return res
-//           .status(400)
-//           .json({ error: "Missing user registration data." });
-//       }
-
-//       const existingUser = await User.findOne({
-//         where: { email: userData.email },
-//       });
-//       if (existingUser) {
-//         return res.status(400).json({ error: "Email already registered." });
-//       }
-
-//       const hashedPassword = await bcrypt.hash(userData.password, 10);
-//       await User.create({
-//         name: userData.name,
-//         email: userData.email,
-//         password: hashedPassword,
-//         role: userData.role || "student",
-//         subject: userData.subject,
-//         approvalStatus: "pending",
-//       });
-
-//       console.log("✅ User created:", userData.email);
-//     }
-
-//     // Set price based on course ID
-//     let price;
-//     if (isRegistration) {
-//       price = parseInt(process.env.REGISTRATION_FEE || "1000");
-//     } else {
-//       switch (String(courseId)) {
-//         case "7":
-//         case "8":
-//         case "9":
-//           price = 20000;
-//           break;
-//         case "10":
-//         case "11":
-//         case "12":
-//           price = 25000;
-//           break;
-//         default:
-//           price = 4999;
-//       }
-//     }
-
-//     const courseNames = {
-//       7: "Algebra 1",
-//       8: "Algebra 2",
-//       9: "Pre-Calculus",
-//       10: "Calculus",
-//       11: "Geometry & Trigonometry",
-//       12: "Statistics & Probability",
-//     };
-
-//     const description = isRegistration
-//       ? "Math Class Platform Registration Fee"
-//       : `Course Payment for ${courseNames[courseId] || "Course"}`;
-
-//     const session = await stripe.checkout.sessions.create({
-//       payment_method_types: ["card"],
-//       mode: "payment",
-//       line_items: [
-//         {
-//           price_data: {
-//             currency: "usd",
-//             unit_amount: price,
-//             product_data: { name: description },
-//           },
-//           quantity: 1,
-//         },
-//       ],
-//       customer_email: userData?.email || undefined,
-//       metadata: {
-//         courseId,
-//         userEmail: userData?.email || "unknown",
-//       },
-//       success_url: `${process.env.FRONTEND_URL}/success?session_id={CHECKOUT_SESSION_ID}`,
-//       cancel_url: `${process.env.FRONTEND_URL}/cancel`,
-//     });
-
-//     // Store pending enrollment
-//     if (!isRegistration && userData?.id && courseId) {
-//       const [access, created] = await UserCourseAccess.findOrCreate({
-//         where: {
-//           userId: userData.id,
-//           courseId: parseInt(courseId),
-//         },
-//         defaults: {
-//           accessGrantedAt: new Date(),
-//           approved: false,
-//         },
-//       });
-
-//       if (!created) {
-//         console.log("⚠️ Enrollment already exists");
-//       } else {
-//         console.log("✅ Pending enrollment created");
-//       }
-//     }
-
-//     res.json({ id: session.id });
-//   } catch (err) {
-//     console.error("❌ Payment error:", err.message);
-//     res.status(500).json({
-//       error: "Failed to create Stripe session",
-//       details: process.env.NODE_ENV === "development" ? err.message : undefined,
-//     });
-//   }
-// });
-
-// // Webhook (not used in test mode)
-// router.post(
-//   "/webhook",
-//   express.raw({ type: "application/json" }),
-//   async (req, res) => {
-//     console.log(
-//       "Webhook received but ignored (STRIPE_WEBHOOK_SECRET=disabled)"
-//     );
-//     res.json({ received: true });
-//   }
-// );
-
-// module.exports = router;
-
-
-
-<<<<<<< HEAD
 const express = require("express");
-const Stripe = require("stripe");
-const { User, sequelize, UserCourseAccess } = require("../models");
-const bcrypt = require("bcryptjs");
-
 const router = express.Router();
+const stripe = require("stripe")(process.env.STRIPE_SECRET_KEY);
+const { Course, UserCourseAccess, User } = require("../models");
+const authMiddleware = require("../middleware/authMiddleware");
+const sendEmail = require("../utils/sendEmail");
+const courseEnrollmentPending = require("../utils/emails/courseEnrollmentPending");
+const enrollmentPendingAdmin = require("../utils/emails/enrollmentPendingAdmin");
 
-// Initialize Stripe (will validate in middleware)
-const stripe = process.env.STRIPE_SECRET_KEY
-  ? new Stripe(process.env.STRIPE_SECRET_KEY)
-  : null;
-
-// Middleware to validate STRIPE_SECRET_KEY and FRONTEND_URL
-const validatePaymentConfig = (req, res, next) => {
-  // Validate STRIPE_SECRET_KEY
-  if (!process.env.STRIPE_SECRET_KEY) {
-    console.error("❌ STRIPE_SECRET_KEY is missing in environment variables");
-    return res
-      .status(500)
-      .json({
-        error: "Server configuration error: Stripe secret key is missing",
-      });
-  }
-  if (!process.env.STRIPE_SECRET_KEY.match(/^(sk|sk_test)_[0-9a-zA-Z]+$/)) {
-    console.error("❌ Invalid STRIPE_SECRET_KEY format");
-    return res
-      .status(500)
-      .json({
-        error: "Server configuration error: Invalid Stripe secret key format",
-      });
-  }
-
-  // Validate FRONTEND_URL
-  if (!process.env.FRONTEND_URL) {
-    console.error("❌ FRONTEND_URL is missing in environment variables");
-    return res
-      .status(500)
-      .json({ error: "Server configuration error: Frontend URL is missing" });
-  }
+// ✅ Create Stripe Checkout Session
+router.post("/create-checkout-session", authMiddleware, async (req, res) => {
   try {
-    new URL(process.env.FRONTEND_URL); // Throws if invalid URL
-    if (!process.env.FRONTEND_URL.match(/^https?:\/\//)) {
-      console.error(
-        "❌ Invalid FRONTEND_URL: Must start with http:// or https://"
+    const { courseId } = req.body;
+    const user = req.user;
+
+    if (!courseId) {
+      console.log("Missing courseId in request body");
+      return res.status(400).json({ error: "Course ID is required" });
+    }
+
+    const course = await Course.findByPk(courseId);
+    if (!course) {
+      console.log(`Course with id ${courseId} not found`);
+      return res.status(404).json({ error: "Course not found" });
+    }
+
+    const existingAccess = await UserCourseAccess.findOne({
+      where: { user_id: user.id, course_id: courseId }, // Use snake_case
+    });
+    if (existingAccess) {
+      console.log(`User ${user.id} already enrolled in course ${courseId}`);
+      return res.status(400).json({ error: "Already enrolled in this course" });
+    }
+
+    const price = parseFloat(course.price);
+    if (isNaN(price) || price <= 0) {
+      console.log(
+        `Invalid course price for course ${courseId}: ${course.price}`
+      );
+      return res.status(400).json({ error: "Invalid course price" });
+    }
+
+    // ✅ Include courseId in success URL
+    const session = await stripe.checkout.sessions.create({
+      payment_method_types: ["card"],
+      line_items: [
+        {
+          price_data: {
+            currency: "usd",
+            product_data: {
+              name: course.title,
+              description:
+                course.description || "Learn mathematics with expert guidance",
+            },
+            unit_amount: Math.round(price * 100),
+          },
+          quantity: 1,
+        },
+      ],
+      mode: "payment",
+      success_url: `${process.env.FRONTEND_URL}/payment-success?session_id={CHECKOUT_SESSION_ID}&courseId=${course.id}`,
+      cancel_url: `${process.env.FRONTEND_URL}/payment-cancel`,
+      metadata: {
+        user_id: String(user.id), // Use snake_case in metadata
+        course_id: String(course.id),
+      },
+    });
+
+    // Create pending enrollment
+    await UserCourseAccess.create({
+      user_id: user.id, // Use snake_case
+      course_id: courseId,
+      payment_status: "pending",
+      approval_status: "pending",
+      created_at: new Date(),
+      updated_at: new Date(),
+    });
+
+    res.status(200).json({ sessionId: session.id });
+  } catch (err) {
+    console.error(
+      "🔥 Error creating checkout session:",
+      err.message,
+      err.stack
+    );
+    res
+      .status(500)
+      .json({ error: `Failed to create checkout session: ${err.message}` });
+  }
+});
+
+// ✅ Confirm payment and record enrollment
+router.post("/confirm", authMiddleware, async (req, res) => {
+  try {
+    const { session_id } = req.body;
+    const user = req.user;
+
+    if (!session_id) {
+      console.log("Missing session_id in request body");
+      return res.status(400).json({ error: "Missing session ID" });
+    }
+
+    const session = await stripe.checkout.sessions.retrieve(session_id);
+    if (!session || session.payment_status !== "paid") {
+      console.log(`Invalid session or payment not completed: ${session_id}`);
+      return res.status(400).json({ error: "Payment not completed" });
+    }
+
+    const metadata = session.metadata;
+    const courseId = parseInt(metadata?.course_id); // Use snake_case
+    const metadataUserId = parseInt(metadata?.user_id);
+    const authenticatedUserId = parseInt(user.id);
+
+    if (!courseId || !metadataUserId || isNaN(authenticatedUserId)) {
+      console.log("Missing or invalid metadata", {
+        courseId,
+        metadataUserId,
+        authenticatedUserId,
+      });
+      return res
+        .status(400)
+        .json({ error: "Missing or invalid user or course ID" });
+    }
+
+    if (metadataUserId !== authenticatedUserId) {
+      console.log(
+        `Mismatched user IDs: Stripe=${metadataUserId}, Token=${authenticatedUserId}`
+      );
+      return res.status(400).json({
+        error: "Invalid or mismatched metadata",
+        details: { fromStripe: metadataUserId, fromToken: authenticatedUserId },
+      });
+    }
+
+    const existingAccess = await UserCourseAccess.findOne({
+      where: { user_id: authenticatedUserId, course_id: courseId }, // Use snake_case
+    });
+
+    if (existingAccess) {
+      console.log(
+        `User ${authenticatedUserId} already enrolled in course ${courseId}`
       );
       return res
-        .status(500)
-        .json({
-          error:
-            "Server configuration error: Frontend URL must start with http:// or https://",
-        });
+        .status(200)
+        .json({ success: true, message: "Already enrolled" });
     }
-  } catch (error) {
-    console.error("❌ Invalid FRONTEND_URL format:", error.message);
-    return res
-      .status(500)
-      .json({
-        error: "Server configuration error: Invalid Frontend URL format",
-      });
-  }
 
-  // Ensure Stripe is initialized
-  if (!stripe) {
-    console.error("❌ Stripe initialization failed");
-    return res
-      .status(500)
-      .json({ error: "Server configuration error: Stripe not initialized" });
-  }
+    await UserCourseAccess.create({
+      user_id: authenticatedUserId, // Use snake_case
+      course_id: courseId,
+      payment_status: "paid",
+      approval_status: "pending", // Requires admin approval
+      access_granted_at: new Date(),
+      created_at: new Date(),
+      updated_at: new Date(),
+    });
 
-  next();
-};
+    // ✅ Send emails
+    const student = await User.findByPk(authenticatedUserId);
+    const course = await Course.findByPk(courseId);
 
-router.post(
-  "/create-checkout-session",
-  validatePaymentConfig,
-  async (req, res) => {
-    try {
-      const { courseId, userData } = req.body;
-      console.log("💳 Starting checkout session:", { courseId, userData });
+    if (student && course) {
+      const { subject, html } = courseEnrollmentPending(student, course);
+      await sendEmail(student.email, subject, html);
 
-      const isRegistration = courseId === "registration_fee";
-
-      // Validate userData and role for course enrollment
-      if (!isRegistration && (!userData || userData.role !== "student")) {
-        return res
-          .status(403)
-          .json({ error: "Only students can enroll in courses." });
+      const adminUsers = await User.findAll({ where: { role: "admin" } });
+      for (const admin of adminUsers) {
+        const adminEmailContent = enrollmentPendingAdmin(student, course);
+        await sendEmail(
+          admin.email,
+          adminEmailContent.subject,
+          adminEmailContent.html
+        );
       }
-
-      // Registration logic
-      if (isRegistration) {
-        if (!userData?.email || !userData?.name || !userData?.password) {
-          return res
-            .status(400)
-            .json({ error: "Missing user registration data." });
-        }
-
-        const existingUser = await User.findOne({
-          where: { email: userData.email },
-        });
-        if (existingUser) {
-          return res.status(400).json({ error: "Email already registered." });
-        }
-
-        const hashedPassword = await bcrypt.hash(userData.password, 10);
-        await User.create({
-          name: userData.name,
-          email: userData.email,
-          password: hashedPassword,
-          role: userData.role || "student",
-          subject: userData.subject,
-          approvalStatus: "pending",
-        });
-
-        console.log("✅ User created:", userData.email);
-      }
-
-      // Set price based on course ID
-      let price;
-      if (isRegistration) {
-        price = parseInt(process.env.REGISTRATION_FEE || "1000");
-      } else {
-        switch (String(courseId)) {
-          case "7":
-          case "8":
-          case "9":
-            price = 120000;
-            break;
-          case "10":
-          case "11":
-          case "12":
-            price = 125000;
-            break;
-          default:
-            price = 14999;
-        }
-      }
-
-      const courseNames = {
-        7: "Algebra 1",
-        8: "Algebra 2",
-        9: "Pre-Calculus",
-        10: "Calculus",
-        11: "Geometry & Trigonometry",
-        12: "Statistics & Probability",
-      };
-
-      const description = isRegistration
-        ? "Math Class Platform Registration Fee"
-        : `Course Payment for ${courseNames[courseId] || "Course"}`;
-
-      const session = await stripe.checkout.sessions.create({
-        payment_method_types: ["card"],
-        mode: "payment",
-        line_items: [
-          {
-            price_data: {
-              currency: "usd",
-              unit_amount: price,
-              product_data: { name: description },
-            },
-            quantity: 1,
-          },
-        ],
-        customer_email: userData?.email || undefined,
-        metadata: {
-          courseId,
-          userEmail: userData?.email || "unknown",
-        },
-        success_url: `${process.env.FRONTEND_URL}/success?session_id={CHECKOUT_SESSION_ID}`,
-        cancel_url: `${process.env.FRONTEND_URL}/cancel`,
-      });
-
-      // Store pending enrollment
-      if (!isRegistration && userData?.id && courseId) {
-        const [access, created] = await UserCourseAccess.findOrCreate({
-          where: {
-            userId: userData.id,
-            courseId: parseInt(courseId),
-          },
-          defaults: {
-            accessGrantedAt: new Date(),
-            approved: false,
-          },
-        });
-
-        if (!created) {
-          console.log("⚠️ Enrollment already exists");
-        } else {
-          console.log("✅ Pending enrollment created");
-        }
-      }
-
-      res.json({ id: session.id });
-    } catch (err) {
-      console.error("❌ Payment error:", {
-        message: err.message,
-        stack: err.stack,
-      });
-      res.status(500).json({
-        error: "Failed to create Stripe session",
-        details:
-          process.env.NODE_ENV === "development" ? err.message : undefined,
+    } else {
+      console.log("Student or course not found for email notification", {
+        studentId: authenticatedUserId,
+        courseId,
       });
     }
+
+    res.status(200).json({
+      success: true,
+      message: "Enrollment confirmed and pending approval",
+    });
+  } catch (err) {
+    console.error("🔥 Error confirming payment:", err.message, err.stack);
+    res
+      .status(500)
+      .json({ error: "Failed to confirm enrollment", details: err.message });
   }
-);
-
-// Webhook (not used in test mode)
-=======
-// const express = require("express");
-// const Stripe = require("stripe");
-// const { User, sequelize, UserCourseAccess } = require("../models");
-// const bcrypt = require("bcryptjs");
-
-// const router = express.Router();
-
-// // Initialize Stripe (will validate in middleware)
-// const stripe = process.env.STRIPE_SECRET_KEY
-//   ? new Stripe(process.env.STRIPE_SECRET_KEY)
-//   : null;
-
-// // Middleware to validate STRIPE_SECRET_KEY and FRONTEND_URL
-// const validatePaymentConfig = (req, res, next) => {
-//   // Validate STRIPE_SECRET_KEY
-//   if (!process.env.STRIPE_SECRET_KEY) {
-//     console.error("❌ STRIPE_SECRET_KEY is missing in environment variables");
-//     return res
-//       .status(500)
-//       .json({
-//         error: "Server configuration error: Stripe secret key is missing",
-//       });
-//   }
-//   if (!process.env.STRIPE_SECRET_KEY.match(/^(sk|sk_test)_[0-9a-zA-Z]+$/)) {
-//     console.error("❌ Invalid STRIPE_SECRET_KEY format");
-//     return res
-//       .status(500)
-//       .json({
-//         error: "Server configuration error: Invalid Stripe secret key format",
-//       });
-//   }
-
-//   // Validate FRONTEND_URL
-//   if (!process.env.FRONTEND_URL) {
-//     console.error("❌ FRONTEND_URL is missing in environment variables");
-//     return res
-//       .status(500)
-//       .json({ error: "Server configuration error: Frontend URL is missing" });
-//   }
-//   try {
-//     new URL(process.env.FRONTEND_URL); // Throws if invalid URL
-//     if (!process.env.FRONTEND_URL.match(/^https?:\/\//)) {
-//       console.error(
-//         "❌ Invalid FRONTEND_URL: Must start with http:// or https://"
-//       );
-//       return res
-//         .status(500)
-//         .json({
-//           error:
-//             "Server configuration error: Frontend URL must start with http:// or https://",
-//         });
-//     }
-//   } catch (error) {
-//     console.error("❌ Invalid FRONTEND_URL format:", error.message);
-//     return res
-//       .status(500)
-//       .json({
-//         error: "Server configuration error: Invalid Frontend URL format",
-//       });
-//   }
-
-//   // Ensure Stripe is initialized
-//   if (!stripe) {
-//     console.error("❌ Stripe initialization failed");
-//     return res
-//       .status(500)
-//       .json({ error: "Server configuration error: Stripe not initialized" });
-//   }
-
-//   next();
-// };
-
-// router.post(
-//   "/create-checkout-session",
-//   validatePaymentConfig,
-//   async (req, res) => {
-//     try {
-//       const { courseId, userData } = req.body;
-//       console.log("💳 Starting checkout session:", { courseId, userData });
-
-//       const isRegistration = courseId === "registration_fee";
-
-//       // Validate userData and role for course enrollment
-//       if (!isRegistration && (!userData || userData.role !== "student")) {
-//         return res
-//           .status(403)
-//           .json({ error: "Only students can enroll in courses." });
-//       }
-
-//       // Registration logic
-//       if (isRegistration) {
-//         if (!userData?.email || !userData?.name || !userData?.password) {
-//           return res
-//             .status(400)
-//             .json({ error: "Missing user registration data." });
-//         }
-
-//         const existingUser = await User.findOne({
-//           where: { email: userData.email },
-//         });
-//         if (existingUser) {
-//           return res.status(400).json({ error: "Email already registered." });
-//         }
-
-//         const hashedPassword = await bcrypt.hash(userData.password, 10);
-//         await User.create({
-//           name: userData.name,
-//           email: userData.email,
-//           password: hashedPassword,
-//           role: userData.role || "student",
-//           subject: userData.subject,
-//           approvalStatus: "pending",
-//         });
-
-//         console.log("✅ User created:", userData.email);
-//       }
-
-//       // Set price based on course ID
-//       let price;
-//       if (isRegistration) {
-//         price = parseInt(process.env.REGISTRATION_FEE || "1000");
-//       } else {
-//         switch (String(courseId)) {
-//           case "7":
-//           case "8":
-//           case "9":
-//             price = 20000;
-//             break;
-//           case "10":
-//           case "11":
-//           case "12":
-//             price = 25000;
-//             break;
-//           default:
-//             price = 4999;
-//         }
-//       }
-
-//       const courseNames = {
-//         7: "Algebra 1",
-//         8: "Algebra 2",
-//         9: "Pre-Calculus",
-//         10: "Calculus",
-//         11: "Geometry & Trigonometry",
-//         12: "Statistics & Probability",
-//       };
-
-//       const description = isRegistration
-//         ? "Math Class Platform Registration Fee"
-//         : `Course Payment for ${courseNames[courseId] || "Course"}`;
-
-//       const session = await stripe.checkout.sessions.create({
-//         payment_method_types: ["card"],
-//         mode: "payment",
-//         line_items: [
-//           {
-//             price_data: {
-//               currency: "usd",
-//               unit_amount: price,
-//               product_data: { name: description },
-//             },
-//             quantity: 1,
-//           },
-//         ],
-//         customer_email: userData?.email || undefined,
-//         metadata: {
-//           courseId,
-//           userEmail: userData?.email || "unknown",
-//         },
-//         success_url: `${process.env.FRONTEND_URL}/success?session_id={CHECKOUT_SESSION_ID}`,
-//         cancel_url: `${process.env.FRONTEND_URL}/cancel`,
-//       });
-
-//       // Store pending enrollment
-//       if (!isRegistration && userData?.id && courseId) {
-//         const [access, created] = await UserCourseAccess.findOrCreate({
-//           where: {
-//             userId: userData.id,
-//             courseId: parseInt(courseId),
-//           },
-//           defaults: {
-//             accessGrantedAt: new Date(),
-//             approved: false,
-//           },
-//         });
-
-//         if (!created) {
-//           console.log("⚠️ Enrollment already exists");
-//         } else {
-//           console.log("✅ Pending enrollment created");
-//         }
-//       }
-
-//       res.json({ id: session.id });
-//     } catch (err) {
-//       console.error("❌ Payment error:", {
-//         message: err.message,
-//         stack: err.stack,
-//       });
-//       res.status(500).json({
-//         error: "Failed to create Stripe session",
-//         details:
-//           process.env.NODE_ENV === "development" ? err.message : undefined,
-//       });
-//     }
-//   }
-// );
-
-// // Webhook (not used in test mode)
-// router.post(
-//   "/webhook",
-//   express.raw({ type: "application/json" }),
-//   async (req, res) => {
-//     console.log(
-//       "Webhook received but ignored (STRIPE_WEBHOOK_SECRET=disabled)"
-//     );
-//     res.json({ received: true });
-//   }
-// );
-
-// module.exports = router;
-
-
-
-const stripe = Stripe(process.env.STRIPE_SECRET_KEY);
-const endpointSecret = process.env.STRIPE_WEBHOOK_SECRET;
-
->>>>>>> 899418cd511bd0d2a4d0b66c9f013b4e49f6b202
-router.post(
-  "/webhook",
-  express.raw({ type: "application/json" }),
-  async (req, res) => {
-<<<<<<< HEAD
-    console.log(
-      "Webhook received but ignored (STRIPE_WEBHOOK_SECRET=disabled)"
-    );
-    res.json({ received: true });
-  }
-);
+});
 
 module.exports = router;
-=======
-    const sig = req.headers["stripe-signature"];
-    let event;
-
-    try {
-      event = stripe.webhooks.constructEvent(req.body, sig, endpointSecret);
-    } catch (err) {
-      console.error("Webhook signature verification failed:", err.message);
-      return res.status(400).send(`Webhook Error: ${err.message}`);
-    }
-
-    if (event.type === "checkout.session.completed") {
-      const session = event.data.object;
-      const { courseId, userEmail } = session.metadata;
-
-      if (courseId !== "registration_fee") {
-        const user = await User.findOne({ where: { email: userEmail } });
-        if (user) {
-          await UserCourseAccess.update(
-            { approved: true },
-            {
-              where: {
-                userId: user.id,
-                courseId: parseInt(courseId),
-              },
-            }
-          );
-          console.log(
-            `✅ Approved enrollment for user ${userEmail}, course ${courseId}`
-          );
-        }
-      }
-    }
-
-    res.json({ received: true });
-  }
-);
->>>>>>> 899418cd511bd0d2a4d0b66c9f013b4e49f6b202
