@@ -1,33 +1,3 @@
-// require("dotenv").config();
-
-// const commonOptions = {
-//   dialect: "postgres",
-//   dialectOptions: {
-//     ssl: {
-//       require: true,
-//       rejectUnauthorized: false,
-//     },
-//   },
-//   logging: process.env.NODE_ENV === "development" ? console.log : false,
-// };
-
-// module.exports = {
-//   development: {
-//     url: process.env.DATABASE_URL,
-//     ...commonOptions,
-//   },
-//   test: {
-//     url:
-//       process.env.DATABASE_URL ||
-//       "postgres://postgres:postgres@localhost:5432/test_db",
-//     ...commonOptions,
-//   },
-//   production: {
-//     url: process.env.DATABASE_URL,
-//     ...commonOptions,
-//   },
-// };
-
 require("dotenv").config();
 
 const commonOptions = {
