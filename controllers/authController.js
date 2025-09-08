@@ -118,7 +118,6 @@
 
 
 
-
 // controllers/authController.js
 const bcrypt = require("bcryptjs");
 const jwt = require("jsonwebtoken");
@@ -132,6 +131,7 @@ const generateToken = (user) => {
   );
 };
 
+// ✅ REGISTER
 exports.register = async (req, res) => {
   try {
     const { name, email, password, role, subject } = req.body;
@@ -179,5 +179,41 @@ exports.register = async (req, res) => {
   } catch (err) {
     console.error("❌ Register error:", err);
     return res.status(500).json({ error: "Server error during registration" });
+  }
+};
+
+// ✅ LOGIN
+exports.login = async (req, res) => {
+  try {
+    const { email, password } = req.body;
+
+    // Check user
+    const user = await User.findOne({ where: { email } });
+    if (!user) {
+      return res.status(400).json({ error: "Invalid credentials" });
+    }
+
+    // Compare password
+    const isMatch = await bcrypt.compare(password, user.password);
+    if (!isMatch) {
+      return res.status(400).json({ error: "Invalid credentials" });
+    }
+
+    // Students must be approved
+    if (user.role === "student" && user.approvalStatus !== "approved") {
+      return res.status(403).json({ error: "Account pending admin approval" });
+    }
+
+    // Generate token
+    const token = generateToken(user);
+
+    return res.status(200).json({
+      message: "Login successful",
+      user,
+      token,
+    });
+  } catch (err) {
+    console.error("❌ Login error:", err);
+    return res.status(500).json({ error: "Server error during login" });
   }
 };
