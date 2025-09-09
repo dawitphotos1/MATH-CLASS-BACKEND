@@ -54,7 +54,7 @@ module.exports = (sequelize, DataTypes) => {
   User.associate = (models) => {
     User.belongsToMany(models.Course, {
       through: models.UserCourseAccess,
-      foreignKey: "userId",
+      foreignKey: "user_id",
       as: "enrolledCourses",
     });
   };
