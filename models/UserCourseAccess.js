@@ -41,7 +41,7 @@ module.exports = (sequelize, DataTypes) => {
       },
     },
     {
-      tableName: "UserCourseAccess",
+      tableName: "user_course_access",
       indexes: [
         {
           unique: true,
