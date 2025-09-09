@@ -22,14 +22,30 @@ app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
 // ✅ TEMPORARY: Wide-open CORS (for debugging)
+// ✅ Allowed origins
+const allowedOrigins = [
+  "http://localhost:3000", // React dev server
+  "https://your-frontend-domain.com", // TODO: replace with your deployed frontend domain
+];
+
 app.use(
   cors({
-    origin: true, // reflect the request origin
+    origin: (origin, callback) => {
+      // Allow requests with no origin (like mobile apps, curl, Postman)
+      if (!origin) return callback(null, true);
+
+      if (allowedOrigins.includes(origin)) {
+        callback(null, true);
+      } else {
+        callback(new Error("❌ Not allowed by CORS"));
+      }
+    },
     credentials: true,
     methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
     allowedHeaders: ["Content-Type", "Authorization"],
   })
 );
+
 
 // 🌍 Debug log: show incoming Origin
 app.use((req, res, next) => {
