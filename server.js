@@ -9,35 +9,30 @@ const { sequelize } = require("./models");
 const app = express();
 app.set("trust proxy", 1);
 
-
 console.log("🚀 DATABASE_URL:", process.env.DATABASE_URL);
 
-
 // =========================
-// 🔐 Middleware Setup
+// 🔐 Middleware
 // =========================
 app.use(helmet());
 app.use(cookieParser());
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
-// ✅ TEMPORARY: Wide-open CORS (for debugging)
 // ✅ Allowed origins
 const allowedOrigins = [
-  "http://localhost:3000", // React dev server
-  "https://your-frontend-domain.com", // TODO: replace with your deployed frontend domain
+  "http://localhost:3000", // Local React dev
+  "https://mathe-class-website-frontend.onrender.com", // 🔥 your deployed frontend (replace if needed)
 ];
 
 app.use(
   cors({
     origin: (origin, callback) => {
-      // Allow requests with no origin (like mobile apps, curl, Postman)
-      if (!origin) return callback(null, true);
-
-      if (allowedOrigins.includes(origin)) {
+      if (!origin || allowedOrigins.includes(origin)) {
         callback(null, true);
       } else {
-        callback(new Error("❌ Not allowed by CORS"));
+        console.warn("❌ Blocked by CORS:", origin);
+        callback(new Error("Not allowed by CORS"));
       }
     },
     credentials: true,
@@ -46,30 +41,15 @@ app.use(
   })
 );
 
-
-// 🌍 Debug log: show incoming Origin
-app.use((req, res, next) => {
-  console.log("🌍 Incoming Origin:", req.headers.origin);
-  next();
-});
-
-// 🔑 Debug log: show response headers
-app.use((req, res, next) => {
-  res.on("finish", () => {
-    console.log("🔑 Response headers:", res.getHeaders());
-  });
-  next();
-});
-
 // ✅ Rate Limiting
 const apiLimiter = rateLimit({
-  windowMs: 15 * 60 * 1000, // 15 minutes
+  windowMs: 15 * 60 * 1000,
   max: 500,
   message: { error: "Too many requests. Try again later." },
 });
 app.use("/api", apiLimiter);
 
-// ✅ Logger
+// ✅ Simple logger
 app.use((req, res, next) => {
   console.log(`📥 [${req.method}] ${req.originalUrl}`);
   next();
@@ -104,7 +84,7 @@ app.use((err, req, res, next) => {
 });
 
 // =========================
-// 🚀 Server + DB Start
+// 🚀 Start Server
 // =========================
 const PORT = process.env.PORT || 5000;
 
@@ -116,18 +96,19 @@ const PORT = process.env.PORT || 5000;
       !process.env.STRIPE_SECRET_KEY
     ) {
       throw new Error(
-        "Missing critical environment variables (JWT_SECRET, DATABASE_URL, STRIPE_SECRET_KEY)."
+        "Missing critical env vars: JWT_SECRET, DATABASE_URL, STRIPE_SECRET_KEY"
       );
     }
 
     await sequelize.authenticate();
     console.log("✅ Connected to PostgreSQL");
 
-    await sequelize.sync({ force: false });
+    await sequelize.sync({ alter: false });
     console.log("✅ Models synced with DB");
 
+    // 🔑 IMPORTANT: 0.0.0.0 for Render
     app.listen(PORT, "0.0.0.0", () => {
-      console.log(`🚀 Server running on http://localhost:${PORT}`);
+      console.log(`🚀 Server running on port ${PORT}`);
     });
   } catch (err) {
     console.error("❌ Server startup error:", err.message, err.stack);
