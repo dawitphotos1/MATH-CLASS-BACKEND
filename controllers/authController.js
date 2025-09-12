@@ -82,7 +82,6 @@
 
 
 
-
 const bcrypt = require("bcryptjs");
 const jwt = require("jsonwebtoken");
 const { User } = require("../models");
@@ -90,7 +89,7 @@ const { User } = require("../models");
 // ================================
 // 🔹 Register
 // ================================
-exports.register = async (req, res) => {
+const register = async (req, res) => {
   try {
     const { name, email, password, role, subject } = req.body;
 
@@ -160,7 +159,7 @@ exports.register = async (req, res) => {
 // ================================
 // 🔹 Login
 // ================================
-exports.login = async (req, res) => {
+const login = async (req, res) => {
   try {
     const { email, password } = req.body;
 
@@ -217,7 +216,7 @@ exports.login = async (req, res) => {
 // ================================
 // 🔹 Me (Get Current User)
 // ================================
-exports.me = async (req, res) => {
+const me = async (req, res) => {
   try {
     const user = await User.findByPk(req.user.id, {
       attributes: { exclude: ["password"] },
@@ -237,7 +236,7 @@ exports.me = async (req, res) => {
 // ================================
 // 🔹 Approve or Reject Student (Admin only)
 // ================================
-exports.approveStudent = async (req, res) => {
+const approveStudent = async (req, res) => {
   try {
     const { studentId } = req.params;
     const { action } = req.body; // "approve" or "reject"
@@ -274,4 +273,11 @@ exports.approveStudent = async (req, res) => {
     console.error("❌ Approve student error:", err.message, err.stack);
     return res.status(500).json({ error: "Server error updating student" });
   }
+};
+
+module.exports = {
+  register,
+  login,
+  me,
+  approveStudent,
 };
