@@ -1,3 +1,4 @@
+
 require("dotenv").config();
 const express = require("express");
 const cors = require("cors");
@@ -22,7 +23,7 @@ app.use(express.urlencoded({ extended: true }));
 // ✅ Allowed origins
 const allowedOrigins = [
   "http://localhost:3000", // Local React dev
-  "https://mathe-class-website-frontend.onrender.com", // 🔥 your deployed frontend (replace if needed)
+  "https://mathe-class-website-frontend.onrender.com", // 🔥 deployed frontend (adjust if needed)
 ];
 
 app.use(
@@ -63,7 +64,7 @@ app.use("/api/v1/users", require("./routes/userRoutes"));
 app.use("/api/v1/courses", require("./routes/courseRoutes"));
 app.use("/api/v1/payments", require("./routes/payments"));
 app.use("/api/v1/enrollments", require("./routes/enrollments"));
-app.use("/api/v1/admin", require("./routes/adminRoutes"));
+app.use("/api/v1/admin", require("./routes/adminRoutes")); // ✅ Admin routes
 
 // ✅ Health Check
 app.get("/health", (req, res) => {

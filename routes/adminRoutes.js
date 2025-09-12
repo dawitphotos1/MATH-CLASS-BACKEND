@@ -1,44 +1,69 @@
-// routes/adminRoutes.js
+
 const express = require("express");
 const router = express.Router();
+const { User } = require("../models");
+const { authMiddleware, adminOnly } = require("../middleware/auth");
 
-const {
-  getDashboardStats,
-  getPendingUsers,
-  getApprovedOrRejectedUsers,
-  getEnrollments,
-  approveUser,
-  rejectUser,
-} = require("../controllers/adminController");
+// ================================
+// 📋 Get all pending students
+// ================================
+router.get("/pending-students", authMiddleware, adminOnly, async (req, res) => {
+  try {
+    const students = await User.findAll({
+      where: { role: "student", approval_status: "pending" },
+      attributes: ["id", "name", "email", "subject", "createdAt"],
+    });
+    return res.json(students);
+  } catch (err) {
+    console.error("❌ Fetch pending students error:", err);
+    return res.status(500).json({ error: "Failed to fetch pending students" });
+  }
+});
 
-const {
-  approveEnrollment,
-  rejectEnrollment,
-} = require("../controllers/enrollmentController");
+// ================================
+// ✅ Approve student
+// ================================
+router.patch("/approve/:id", authMiddleware, adminOnly, async (req, res) => {
+  try {
+    const student = await User.findByPk(req.params.id);
+    if (!student || student.role !== "student") {
+      return res.status(404).json({ error: "Student not found" });
+    }
 
-const { authMiddleware, checkTeacherOrAdmin } = require("../middleware/auth");
+    student.approval_status = "approved";
+    await student.save();
 
-// ✅ Protect all admin routes
-router.use(authMiddleware, checkTeacherOrAdmin);
+    return res.json({
+      message: "Student approved successfully",
+      student,
+    });
+  } catch (err) {
+    console.error("❌ Approve student error:", err);
+    return res.status(500).json({ error: "Failed to approve student" });
+  }
+});
 
-// =========================
-// 📊 Dashboard
-// =========================
-router.get("/dashboard", getDashboardStats);
+// ================================
+// ❌ Reject student
+// ================================
+router.patch("/reject/:id", authMiddleware, adminOnly, async (req, res) => {
+  try {
+    const student = await User.findByPk(req.params.id);
+    if (!student || student.role !== "student") {
+      return res.status(404).json({ error: "Student not found" });
+    }
 
-// =========================
-// 👤 User Management
-// =========================
-router.get("/pending-users", getPendingUsers);
-router.get("/users", getApprovedOrRejectedUsers);
-router.patch("/approve/:id", approveUser);
-router.patch("/reject/:id", rejectUser);
+    student.approval_status = "rejected";
+    await student.save();
 
-// =========================
-// 📘 Enrollment Management
-// =========================
-router.get("/enrollments", getEnrollments); // ✅ expects ?status=pending or ?status=approved
-router.put("/enrollments/:id/approve", approveEnrollment);
-router.delete("/enrollments/:id/reject", rejectEnrollment);
+    return res.json({
+      message: "Student rejected successfully",
+      student,
+    });
+  } catch (err) {
+    console.error("❌ Reject student error:", err);
+    return res.status(500).json({ error: "Failed to reject student" });
+  }
+});
 
 module.exports = router;

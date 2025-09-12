@@ -1,39 +1,24 @@
+
 const jwt = require("jsonwebtoken");
 const { User } = require("../models");
 
-// ✅ Auth Middleware
-const authMiddleware = async (req, res, next) => {
+exports.authMiddleware = async (req, res, next) => {
+  const token = req.headers.authorization?.split(" ")[1];
+  if (!token) return res.status(401).json({ error: "No token provided" });
+
   try {
-    const token = req.headers.authorization?.split(" ")[1];
-    if (!token) {
-      return res.status(401).json({ error: "No token provided" });
-    }
-
     const decoded = jwt.verify(token, process.env.JWT_SECRET);
-    const user = await User.findByPk(decoded.id);
-    if (!user) {
-      return res.status(401).json({ error: "Invalid token" });
-    }
-
-    req.user = user;
+    req.user = await User.findByPk(decoded.id);
+    if (!req.user) return res.status(401).json({ error: "Invalid token" });
     next();
-  } catch (err) {
-    console.error("Auth error:", err);
-    res.status(401).json({ error: "Unauthorized" });
+  } catch {
+    return res.status(401).json({ error: "Unauthorized" });
   }
 };
 
-// ✅ Role checker for "teacher" or "admin"
-const checkTeacherOrAdmin = (req, res, next) => {
-  const role = req.user?.role;
-  if (role === "teacher" || role === "admin") {
-    return next();
+exports.adminOnly = (req, res, next) => {
+  if (req.user.role !== "admin") {
+    return res.status(403).json({ error: "Admins only" });
   }
-  return res.status(403).json({ error: "Access denied" });
-};
-
-// ✅ Export both as named exports
-module.exports = {
-  authMiddleware,
-  checkTeacherOrAdmin,
+  next();
 };
