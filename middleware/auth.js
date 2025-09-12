@@ -25,8 +25,6 @@
 
 
 
-
-
 const jwt = require("jsonwebtoken");
 const { User } = require("../models");
 
@@ -59,11 +57,39 @@ exports.authMiddleware = async (req, res, next) => {
 };
 
 // ================================
-// 🔹 Admin Only Access
+// 🔹 Role-based Access Middleware
 // ================================
 exports.adminOnly = (req, res, next) => {
   if (!req.user || req.user.role !== "admin") {
     return res.status(403).json({ error: "Forbidden: Admins only" });
   }
   next();
+};
+
+exports.teacherOnly = (req, res, next) => {
+  if (!req.user || req.user.role !== "teacher") {
+    return res.status(403).json({ error: "Forbidden: Teachers only" });
+  }
+  next();
+};
+
+exports.studentOnly = (req, res, next) => {
+  if (!req.user || req.user.role !== "student") {
+    return res.status(403).json({ error: "Forbidden: Students only" });
+  }
+  next();
+};
+
+// ================================
+// 🔹 Flexible Role Checker
+// ================================
+exports.allowRoles = (...roles) => {
+  return (req, res, next) => {
+    if (!req.user || !roles.includes(req.user.role)) {
+      return res
+        .status(403)
+        .json({ error: `Forbidden: Only [${roles.join(", ")}] allowed` });
+    }
+    next();
+  };
 };
