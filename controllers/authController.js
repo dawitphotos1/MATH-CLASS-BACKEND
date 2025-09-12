@@ -81,14 +81,11 @@
 // };
 
 
-
 const bcrypt = require("bcryptjs");
 const jwt = require("jsonwebtoken");
 const { User } = require("../models");
 
-// ================================
-// 🔹 Register
-// ================================
+// Register user
 const register = async (req, res) => {
   try {
     const { name, email, password, role, subject } = req.body;
@@ -106,9 +103,9 @@ const register = async (req, res) => {
 
     const hashedPassword = await bcrypt.hash(password, 10);
 
-    let approvalStatus = "pending"; // default for student
+    let approvalStatus = "pending";
     if (role === "admin" || role === "teacher") {
-      approvalStatus = "approved"; // auto-approve admins/teachers
+      approvalStatus = "approved";
     }
 
     const user = await User.create({
@@ -156,9 +153,7 @@ const register = async (req, res) => {
   }
 };
 
-// ================================
-// 🔹 Login
-// ================================
+// Login user
 const login = async (req, res) => {
   try {
     const { email, password } = req.body;
@@ -213,9 +208,7 @@ const login = async (req, res) => {
   }
 };
 
-// ================================
-// 🔹 Me (Get Current User)
-// ================================
+// Get current user info
 const me = async (req, res) => {
   try {
     const user = await User.findByPk(req.user.id, {
@@ -233,9 +226,7 @@ const me = async (req, res) => {
   }
 };
 
-// ================================
-// 🔹 Approve or Reject Student (Admin only)
-// ================================
+// Approve or reject student (admin only)
 const approveStudent = async (req, res) => {
   try {
     const { studentId } = req.params;
