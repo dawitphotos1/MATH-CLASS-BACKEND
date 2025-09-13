@@ -1,14 +1,14 @@
 const express = require("express");
 const router = express.Router();
 const courseController = require("../controllers/courseController");
-const { authMiddleware } = require("../middleware/auth");
-const { authorize: roleMiddleware } = require("../middleware/roleMiddleware");
+const authMiddleware = require("../middleware/authMiddleware");
+const { authorize: roleMiddleware } = require("../middleware/roleMiddleware"); // ✅ Fixed import
 const checkTeacherOrAdmin = require("../middleware/checkTeacherOrAdmin");
 const multer = require("multer");
 const path = require("path");
 const fs = require("fs");
 
-// Multer setup for file uploads
+// ✅ Multer setup for file uploads
 const storage = multer.diskStorage({
   destination: (req, file, cb) => {
     const uploadPath = path.join(__dirname, "..", "Uploads");
@@ -34,7 +34,7 @@ const uploadFields = upload.fields([
   { name: "introVideo", maxCount: 1 },
 ]);
 
-// Routes
+// ✅ Create a new course
 router.post(
   "/create",
   authMiddleware,
@@ -43,22 +43,27 @@ router.post(
   courseController.createCourse
 );
 
+// ✅ Fetch courses for logged-in user (teacher/admin)
 router.get("/", authMiddleware, courseController.getTeacherCourses);
 
+// ✅ Get a specific course by slug (public access)
 router.get("/slug/:slug", courseController.getCourseBySlug);
 
+// ✅ Fetch full course by slug (requires enrollment)
 router.get(
   "/enrolled/slug/:slug",
   authMiddleware,
   courseController.getEnrolledCourseBySlug
 );
 
+// ✅ Get lessons by course ID
 router.get(
   "/:courseId/lessons",
   authMiddleware,
   courseController.getLessonsByCourse
 );
 
+// ✅ Delete a course by ID
 router.delete(
   "/:id",
   authMiddleware,
@@ -66,6 +71,7 @@ router.delete(
   courseController.deleteCourse
 );
 
+// ✅ Rename course attachment
 router.patch(
   "/:courseId/attachments/:index/rename",
   authMiddleware,
@@ -73,6 +79,7 @@ router.patch(
   courseController.renameAttachment
 );
 
+// ✅ Delete course attachment
 router.patch(
   "/:courseId/attachments/:index/delete",
   authMiddleware,
@@ -80,6 +87,7 @@ router.patch(
   courseController.deleteAttachment
 );
 
+// ✅ Admin: Get all courses
 router.get(
   "/all",
   authMiddleware,

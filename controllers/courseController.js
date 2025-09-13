@@ -281,7 +281,9 @@ exports.getTeacherCourses = async (req, res) => {
 exports.getAllCourses = async (req, res) => {
   try {
     const courses = await Course.findAll({
-      include: [{ model: User, as: "teacher", attributes: ["id", "name", "email"] }],
+      include: [
+        { model: User, as: "teacher", attributes: ["id", "name", "email"] },
+      ],
       order: [["createdAt", "DESC"]],
     });
 

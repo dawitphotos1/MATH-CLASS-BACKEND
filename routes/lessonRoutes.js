@@ -1,7 +1,7 @@
 const express = require("express");
 const router = express.Router({ mergeParams: true });
 const lessonController = require("../controllers/lessonController");
-const authMiddleware = require("../middleware/auth");
+const authMiddleware = require("../middleware/authMiddleware");
 const upload = require("../middleware/uploadMiddleware"); // if using multer
 
 // Fetch all lessons for a course

@@ -1,57 +1,55 @@
+// ✅ routes/users.js
 const express = require("express");
-const { User } = require("../models");
-const bcrypt = require("bcryptjs");
-const jwt = require("jsonwebtoken");
-
 const router = express.Router();
+const bcrypt = require("bcrypt");
+const jwt = require("jsonwebtoken");
+const { User, UserCourseAccess, Course } = require("../models");
+const authMiddleware = require("../middleware/authMiddleware");
+const sendEmail = require("../utils/sendEmail");
+const Stripe = require("stripe");
+const courseEnrollmentApproved = require("../utils/emails/courseEnrollmentApproved");
+const userController = require("../controllers/userController");
+const stripe = Stripe(process.env.STRIPE_SECRET_KEY);
 
-// Login Route
+function isAdminOrTeacher(req, res, next) {
+  if (req.user && ["admin", "teacher"].includes(req.user.role)) {
+    return next();
+  }
+  return res.status(403).json({ error: "Forbidden" });
+}
+
+router.get("/me", authMiddleware, userController.getMyProfile);
+
 router.post("/login", async (req, res) => {
   try {
     let { email, password } = req.body;
     if (!email || !password) {
       return res.status(400).json({ error: "Email and password are required" });
     }
-
     email = email.toLowerCase().trim();
-    console.log("Login attempt for email:", email);
-
     const user = await User.findOne({ where: { email } });
-    if (!user) {
-      console.log("Login failed: no user found");
-      return res.status(401).json({ error: "Invalid email or password" });
-    }
-
-    // Approval checks
-    if (user.approvalStatus === "pending") {
+    if (!user)
+      return res.status(401).json({ error: "No user found with this email" });
+    const isPasswordValid = await bcrypt.compare(password, user.password);
+    if (!isPasswordValid)
+      return res.status(401).json({ error: "Incorrect password" });
+    if (user.approval_status === "pending")
       return res
         .status(403)
-        .json({ error: "Your account is pending approval." });
-    }
-    if (user.approvalStatus === "rejected") {
-      return res.status(403).json({ error: "Your account has been rejected." });
-    }
-
-    // Compare plaintext password to single-hashed value
-    const isPasswordValid = await bcrypt.compare(password, user.password);
-    if (!isPasswordValid) {
-      console.log("Login failed: wrong password");
-      return res.status(401).json({ error: "Invalid email or password" });
-    }
-
-    if (!process.env.JWT_SECRET) {
+        .json({ error: "Your account is pending approval" });
+    if (user.approval_status === "rejected")
+      return res.status(403).json({ error: "Your account has been rejected" });
+    if (!process.env.JWT_SECRET)
       return res
         .status(500)
         .json({ error: "Server error: missing JWT secret" });
-    }
-
+    user.lastLogin = new Date();
+    await user.save();
     const token = jwt.sign(
-      { id: user.id, role: user.role },
+      { id: user.id, role: user.role, email: user.email },
       process.env.JWT_SECRET,
       { expiresIn: process.env.JWT_EXPIRATION_TIME || "1h" }
     );
-
-    console.log("Login successful for user ID:", user.id);
     res.json({
       token,
       user: {
@@ -60,183 +58,220 @@ router.post("/login", async (req, res) => {
         email: user.email,
         role: user.role,
         subject: user.subject,
-        approvalStatus: user.approvalStatus,
+        approval_status: user.approval_status,
+        createdAt: user.createdAt,
+        lastLogin: user.lastLogin,
       },
     });
   } catch (err) {
-    console.error("Login error:", err);
+    console.error("❌ Login error:", err);
     res.status(500).json({ error: "Failed to log in", details: err.message });
   }
 });
 
-// Register Route
-router.post("/register", async (req, res) => {
+// ✅ Get pending/approved/rejected students
+router.get("/pending", authMiddleware, isAdminOrTeacher, async (req, res) => {
   try {
-    let { name, email, password, role, subject } = req.body;
-    name = name.trim();
-    email = email.toLowerCase().trim();
-
-    if (!name || !email || !password || !role) {
-      return res.status(400).json({ error: "Missing required fields" });
-    }
-
-    const validRoles = ["student", "teacher", "admin"];
-    if (!validRoles.includes(role)) {
-      return res.status(400).json({ error: "Invalid role specified" });
-    }
-
-    if ((role === "student" || role === "teacher") && !subject?.trim()) {
-      return res
-        .status(400)
-        .json({ error: "Subject is required for this role" });
-    }
-
-    // Check existing user
-    const exists = await User.findOne({ where: { email } });
-    if (exists) {
-      return res.status(400).json({ error: "Email already registered" });
-    }
-
-    // Create user with plaintext password; Sequelize's beforeCreate hook will hash once
-    const user = await User.create({
-      name,
-      email,
-      password, // <<-- leave as plaintext for the hook
-      role,
-      subject: role === "admin" ? null : subject.trim(),
-      approvalStatus: role === "student" ? "pending" : "approved",
-    });
-
-    console.log("Registered new user ID:", user.id);
-    res.json({
-      message:
-        role === "student"
-          ? "Registration successful! Your account is pending approval."
-          : "Registration successful!",
-      userId: user.id,
-    });
-  } catch (err) {
-    console.error("Register: Detailed error:", {
-      message: err.message,
-      stack: err.stack,
-      errors: err.errors,
-    });
-
-    const validationErrors =
-      err.errors?.map((e) => `${e.path}: ${e.message}`) || [];
-    res.status(500).json({
-      error: "Failed to register user",
-      details: err.message,
-      validationErrors,
-    });
-  }
-});
-
-// Instructors Route
-router.get("/instructors", async (req, res) => {
-  try {
-    const instructors = await User.findAll({
-      where: { role: "teacher", approvalStatus: "approved" },
-      attributes: ["id", "name", "email", "subject"],
-    });
-    res.json({ instructors });
-  } catch (err) {
-    console.error("Error fetching instructors:", err);
-    res
-      .status(500)
-      .json({ error: "Failed to fetch instructors", details: err.message });
-  }
-});
-
-// Contact Route
-router.post("/contact", async (req, res) => {
-  try {
-    const { instructorId, email, message } = req.body;
-    res.json({ message: "Contact message sent successfully" });
-  } catch (err) {
-    console.error("Contact error:", err);
-    res
-      .status(500)
-      .json({ error: "Failed to send contact message", details: err.message });
-  }
-});
-
-const auth = require("../middleware/auth");
-
-// Pending Users
-router.get("/pending", auth, async (req, res) => {
-  try {
-    if (!req.user || !["teacher", "admin"].includes(req.user.role)) {
-      return res.status(403).json({ error: "Unauthorized" });
-    }
-
     const pendingUsers = await User.findAll({
-      where: { approvalStatus: "pending" },
-      attributes: ["id", "name", "email", "role", "subject", "approvalStatus"],
+      where: { approval_status: "pending", role: "student" },
+      attributes: ["id", "name", "email", "role", "subject", "createdAt"],
     });
-
     res.json(pendingUsers);
   } catch (err) {
-    console.error("Error fetching pending users:", err);
+    console.error("❌ Error fetching pending users:", err);
     res.status(500).json({ error: "Failed to fetch pending users" });
   }
 });
 
-// Approve User
-router.post("/approve/:id", auth, async (req, res) => {
+router.get("/approved", authMiddleware, isAdminOrTeacher, async (req, res) => {
   try {
-    if (!req.user || !["teacher", "admin"].includes(req.user.role)) {
-      return res.status(403).json({ error: "Unauthorized" });
-    }
-
-    const user = await User.findByPk(req.params.id);
-    if (!user || user.approvalStatus !== "pending") {
-      return res.status(404).json({ error: "User not found or not pending" });
-    }
-
-    await user.update({ approvalStatus: "approved" });
-    res.json({ message: "User approved" });
+    const approvedUsers = await User.findAll({
+      where: { approval_status: "approved", role: "student" },
+      attributes: ["id", "name", "email", "subject", "createdAt"],
+    });
+    res.json(approvedUsers);
   } catch (err) {
-    console.error("Error approving user:", err);
-    res.status(500).json({ error: "Failed to approve user" });
+    console.error("❌ Error fetching approved users:", err);
+    res.status(500).json({ error: "Failed to fetch approved users" });
   }
 });
 
-// Reject User
-router.post("/reject/:id", auth, async (req, res) => {
+router.get("/rejected", authMiddleware, isAdminOrTeacher, async (req, res) => {
   try {
-    if (!req.user || !["teacher", "admin"].includes(req.user.role)) {
-      return res.status(403).json({ error: "Unauthorized" });
-    }
-
-    const user = await User.findByPk(req.params.id);
-    if (!user || user.approvalStatus !== "pending") {
-      return res.status(404).json({ error: "User not found or not pending" });
-    }
-
-    await user.update({ approvalStatus: "rejected" });
-    res.json({ message: "User rejected" });
+    const rejectedUsers = await User.findAll({
+      where: { approval_status: "rejected", role: "student" },
+      attributes: ["id", "name", "email", "subject", "createdAt"],
+    });
+    res.json(rejectedUsers);
   } catch (err) {
-    console.error("Error rejecting user:", err);
-    res.status(500).json({ error: "Failed to reject user" });
+    console.error("❌ Error fetching rejected users:", err);
+    res.status(500).json({ error: "Failed to fetch rejected users" });
   }
 });
 
-// Token Verify
-router.get("/me", auth, async (req, res) => {
+// ✅ Approve/reject user
+router.post(
+  "/approve/:id",
+  authMiddleware,
+  isAdminOrTeacher,
+  async (req, res) => {
+    try {
+      const user = await User.findByPk(req.params.id);
+      if (!user) return res.status(404).json({ error: "User not found" });
+
+      user.approval_status = "approved";
+      await user.save();
+
+      await sendEmail(
+        user.email,
+        "Your MathClass account has been approved ✅",
+        `<p>Hello ${user.name},</p><p>Your account has been approved. You may now <a href="${process.env.FRONTEND_URL}/login">log in</a>.</p>`
+      );
+
+      res.json({ message: "User approved successfully" });
+    } catch (err) {
+      console.error("❌ Error approving user:", err);
+      res.status(500).json({ error: "Failed to approve user" });
+    }
+  }
+);
+
+router.post(
+  "/reject/:id",
+  authMiddleware,
+  isAdminOrTeacher,
+  async (req, res) => {
+    try {
+      const user = await User.findByPk(req.params.id);
+      if (!user) return res.status(404).json({ error: "User not found" });
+
+      user.approval_status = "rejected";
+      await user.save();
+
+      await sendEmail(
+        user.email,
+        "Your MathClass account was rejected ❌",
+        `<p>Hello ${user.name},</p><p>Unfortunately, your account has been rejected. If you believe this is a mistake, please contact support.</p>`
+      );
+
+      res.json({ message: "User rejected successfully" });
+    } catch (err) {
+      console.error("❌ Error rejecting user:", err);
+      res.status(500).json({ error: "Failed to reject user" });
+    }
+  }
+);
+
+// ✅ Delete user
+router.delete("/:id", authMiddleware, async (req, res) => {
   try {
-    const user = await User.findByPk(req.user.id, {
-      attributes: ["id", "name", "email", "role", "subject", "approvalStatus"],
+    const user = await User.findByPk(req.params.id);
+    if (!user) return res.json({ message: "User deleted successfully" });
+
+    if (
+      req.user.id !== parseInt(req.params.id) &&
+      !["admin", "teacher"].includes(req.user.role)
+    ) {
+      return res.status(403).json({ error: "Unauthorized" });
+    }
+
+    await user.destroy();
+    res.json({ message: "User deleted successfully" });
+  } catch (err) {
+    console.error("Error deleting user:", err);
+    res.status(500).json({ error: "Failed to delete user" });
+  }
+});
+
+// ✅ Confirm enrollment (Stripe)
+router.post("/confirm-enrollment", authMiddleware, async (req, res) => {
+  try {
+    const { session_id } = req.body;
+    if (!session_id)
+      return res.status(400).json({ error: "Session ID is required" });
+
+    const session = await stripe.checkout.sessions.retrieve(session_id);
+    if (session.payment_status !== "paid")
+      return res.status(400).json({ error: "Payment not completed" });
+
+    const userId = req.user.id;
+    const courseId = parseInt(session.metadata?.courseId, 10);
+    if (!courseId || isNaN(courseId))
+      return res.status(400).json({ error: "Invalid course ID" });
+
+    const course = await Course.findByPk(courseId);
+    if (!course)
+      return res
+        .status(404)
+        .json({ error: `Course not found for ID ${courseId}` });
+
+    let enrollment = await UserCourseAccess.findOne({
+      where: { userId, courseId },
     });
 
-    if (!user) {
-      return res.status(404).json({ error: "User not found" });
+    if (enrollment) {
+      if (enrollment.approved)
+        return res.status(400).json({ error: "Already enrolled" });
+
+      enrollment.approved = true;
+      enrollment.accessGrantedAt = new Date();
+      await enrollment.save();
+    } else {
+      enrollment = await UserCourseAccess.create({
+        userId,
+        courseId,
+        approved: true,
+        accessGrantedAt: new Date(),
+      });
     }
 
-    res.json(user);
+    const user = await User.findByPk(userId);
+    if (user && course) {
+      const { subject, html } = courseEnrollmentApproved(user, course);
+      await sendEmail(user.email, subject, html);
+    }
+
+    res.json({ success: true, message: "Enrollment confirmed successfully" });
   } catch (err) {
-    console.error("Error fetching user:", err);
-    res.status(500).json({ error: "Failed to fetch user" });
+    console.error("Error confirming enrollment:", err);
+    res.status(500).json({
+      success: false,
+      error: "Failed to confirm enrollment",
+      details: err.message,
+    });
+  }
+});
+
+// ✅ Get student's enrolled + approved courses
+router.get("/my-courses", authMiddleware, async (req, res) => {
+  try {
+    const userId = req.user.id;
+
+    const accessRecords = await UserCourseAccess.findAll({
+      where: { userId, approved: true },
+      include: [
+        {
+          model: Course,
+          as: "course",
+          include: [
+            {
+              model: User,
+              as: "teacher",
+              attributes: ["id", "name", "email"],
+            },
+          ],
+        },
+      ],
+    });
+
+    const enrolledCourses = accessRecords
+      .filter((record) => record.course)
+      .map((record) => record.course);
+
+    res.json({ success: true, courses: enrolledCourses });
+  } catch (err) {
+    console.error("❌ Error fetching enrolled courses:", err);
+    res.status(500).json({ error: "Failed to fetch enrolled courses" });
   }
 });
 

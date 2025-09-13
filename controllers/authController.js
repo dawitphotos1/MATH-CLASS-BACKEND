@@ -1,35 +1,39 @@
-// backend/controllers/authController.js
 const bcrypt = require("bcryptjs");
 const jwt = require("jsonwebtoken");
 const { User } = require("../models");
 
-// Helper to sign tokens
-const generateToken = (user) =>
-  jwt.sign({ id: user.id, role: user.role }, process.env.JWT_SECRET, {
-    expiresIn: "7d",
-  });
-
-// @desc    Register a new user
-// @route   POST /api/v1/auth/register
-// @access  Public
-const register = async (req, res) => {
+// ================================
+// 🔹 Register
+// ================================
+exports.register = async (req, res) => {
   try {
-    const { name, email, password, role, subject } = req.body;
+    let { name, email, password, role, subject } = req.body;
 
     if (!name || !email || !password || !role) {
-      return res.status(400).json({ error: "All required fields must be filled" });
+      return res
+        .status(400)
+        .json({ error: "All required fields must be filled" });
     }
 
+    // Normalize role to lowercase
+    role = role.toLowerCase();
+
+    // Check if user already exists
     const existingUser = await User.findOne({ where: { email } });
     if (existingUser) {
       return res.status(409).json({ error: "Email already registered" });
     }
 
+    // Hash password
     const hashedPassword = await bcrypt.hash(password, 10);
 
-    // Students require approval, admins/teachers are auto-approved
-    let approvalStatus = role === "student" ? "pending" : "approved";
+    // Role-based approval
+    let approvalStatus = "pending"; // default for student
+    if (role === "admin" || role === "teacher") {
+      approvalStatus = "approved"; // ✅ auto-approve
+    }
 
+    // Save new user
     const user = await User.create({
       name,
       email,
@@ -39,23 +43,31 @@ const register = async (req, res) => {
       approval_status: approvalStatus,
     });
 
+    // ✅ Generate token only if auto-approved
+    let token = null;
+    if (approvalStatus === "approved") {
+      token = jwt.sign(
+        { id: user.id, role: user.role },
+        process.env.JWT_SECRET,
+        { expiresIn: "7d" }
+      );
+    }
+
+    // Debug log
     console.log("✅ New user registered:", {
       id: user.id,
       email: user.email,
       role: user.role,
       approval_status: user.approval_status,
+      tokenIssued: !!token,
     });
-
-    let token = null;
-    if (approvalStatus === "approved") {
-      token = generateToken(user);
-    }
 
     return res.status(201).json({
       message:
         approvalStatus === "pending"
           ? "Registration successful (pending approval)."
           : "Registration successful.",
+      token, // ✅ only for admin/teacher
       user: {
         id: user.id,
         name: user.name,
@@ -63,7 +75,6 @@ const register = async (req, res) => {
         role: user.role,
         approval_status: user.approval_status,
       },
-      token,
     });
   } catch (err) {
     console.error("❌ Registration error:", err.message, err.stack);
@@ -71,33 +82,42 @@ const register = async (req, res) => {
   }
 };
 
-// @desc    Login user
-// @route   POST /api/v1/auth/login
-// @access  Public
-const login = async (req, res) => {
+// ================================
+// 🔹 Login
+// ================================
+exports.login = async (req, res) => {
   try {
     const { email, password } = req.body;
 
     if (!email || !password) {
-      return res.status(400).json({ error: "Email and password are required" });
+      return res.status(400).json({ error: "Email and password required" });
     }
 
+    // Find user
     const user = await User.findOne({ where: { email } });
     if (!user) {
       return res.status(401).json({ error: "Invalid credentials" });
     }
 
+    // Students must be approved
+    if (user.role === "student" && user.approval_status !== "approved") {
+      return res.status(403).json({ error: "Account pending approval" });
+    }
+
+    // Compare passwords
     const isMatch = await bcrypt.compare(password, user.password);
     if (!isMatch) {
       return res.status(401).json({ error: "Invalid credentials" });
     }
 
-    if (user.role === "student" && user.approval_status !== "approved") {
-      return res.status(403).json({ error: "Account pending approval" });
-    }
+    // Generate JWT
+    const token = jwt.sign(
+      { id: user.id, role: user.role },
+      process.env.JWT_SECRET,
+      { expiresIn: "7d" }
+    );
 
-    const token = generateToken(user);
-
+    // Update last login
     user.lastLogin = new Date();
     await user.save();
 
@@ -109,6 +129,7 @@ const login = async (req, res) => {
 
     return res.json({
       message: "Login successful",
+      token,
       user: {
         id: user.id,
         name: user.name,
@@ -116,7 +137,6 @@ const login = async (req, res) => {
         role: user.role,
         approval_status: user.approval_status,
       },
-      token,
     });
   } catch (err) {
     console.error("❌ Login error:", err.message, err.stack);
@@ -124,10 +144,10 @@ const login = async (req, res) => {
   }
 };
 
-// @desc    Get current user (from token)
-// @route   GET /api/v1/auth/me
-// @access  Private
-const me = async (req, res) => {
+// ================================
+// 🔹 Current User (me)
+// ================================
+exports.me = async (req, res) => {
   try {
     const user = await User.findByPk(req.user.id, {
       attributes: { exclude: ["password"] },
@@ -137,58 +157,9 @@ const me = async (req, res) => {
       return res.status(404).json({ error: "User not found" });
     }
 
-    return res.json({ user });
+    return res.json(user);
   } catch (err) {
-    console.error("❌ Me route error:", err.message, err.stack);
-    return res.status(500).json({ error: "Server error fetching user data" });
+    console.error("❌ Me endpoint error:", err.message, err.stack);
+    return res.status(500).json({ error: "Failed to fetch user profile" });
   }
-};
-
-// @desc    Approve or reject a student
-// @route   PUT /api/v1/auth/students/:studentId/approval
-// @access  Private/Admin
-const approveStudent = async (req, res) => {
-  try {
-    const { studentId } = req.params;
-    const { action } = req.body; // "approve" or "reject"
-
-    if (!studentId || !action) {
-      return res.status(400).json({ error: "Student ID and action required" });
-    }
-
-    const user = await User.findByPk(studentId);
-    if (!user || user.role !== "student") {
-      return res.status(404).json({ error: "Student not found" });
-    }
-
-    if (action === "approve") {
-      user.approval_status = "approved";
-    } else if (action === "reject") {
-      user.approval_status = "rejected";
-    } else {
-      return res.status(400).json({ error: "Invalid action" });
-    }
-
-    await user.save();
-
-    return res.json({
-      message: `Student ${action}d successfully`,
-      user: {
-        id: user.id,
-        name: user.name,
-        email: user.email,
-        approval_status: user.approval_status,
-      },
-    });
-  } catch (err) {
-    console.error("❌ Approve student error:", err.message, err.stack);
-    return res.status(500).json({ error: "Server error updating student" });
-  }
-};
-
-module.exports = {
-  register,
-  login,
-  me,
-  approveStudent,
 };

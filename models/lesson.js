@@ -1,4 +1,3 @@
-
 // models/lesson.js
 module.exports = (sequelize, DataTypes) => {
   const Lesson = sequelize.define(
@@ -47,8 +46,8 @@ module.exports = (sequelize, DataTypes) => {
   );
 
   // Optional associations can be defined here
-  Lesson.associate = function(models) {
-    Lesson.belongsTo(models.Course, { foreignKey: 'course_id' });
+  Lesson.associate = function (models) {
+    Lesson.belongsTo(models.Course, { foreignKey: "course_id" });
   };
 
   return Lesson;
