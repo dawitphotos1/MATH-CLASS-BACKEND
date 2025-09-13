@@ -38,7 +38,14 @@
 const express = require("express");
 const router = express.Router();
 const { login, register } = require("../controllers/authController");
-const authMiddleware = require("../middleware/auth").auth; // Ensure correct export
+const authMiddleware = require("../middleware/auth"); // Default export
+
+if (!authMiddleware || typeof authMiddleware !== "function") {
+  console.error("❌ authMiddleware is not a function:", authMiddleware);
+  throw new Error(
+    "authMiddleware is not properly defined in middleware/auth.js"
+  );
+}
 
 // Public routes
 router.post("/login", login);
