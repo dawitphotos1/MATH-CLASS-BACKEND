@@ -2,7 +2,7 @@
 const express = require("express");
 const router = express.Router();
 const enrollmentController = require("../controllers/enrollmentController");
-const { authMiddleware } = require("../middleware/authMiddleware"); // Correct destructuring import
+const { authMiddleware } = require("../middleware/auth"); // Correct destructuring import
 
 // Protect all routes
 router.use(authMiddleware);
