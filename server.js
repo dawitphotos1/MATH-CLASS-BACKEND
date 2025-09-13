@@ -110,7 +110,6 @@
 // })();
 
 
-
 require("dotenv").config();
 const express = require("express");
 const cors = require("cors");
@@ -170,12 +169,14 @@ app.use((req, res, next) => {
 });
 
 // Routes
+console.log("📋 Registering routes...");
 app.use("/api/v1/auth", require("./routes/authRoutes"));
 app.use("/api/v1/users", require("./routes/userRoutes"));
 app.use("/api/v1/courses", require("./routes/courseRoutes"));
 app.use("/api/v1/payments", require("./routes/payments"));
 app.use("/api/v1/enrollments", require("./routes/enrollments"));
 app.use("/api/v1/admin", require("./routes/adminRoutes"));
+console.log("✅ Routes registered");
 
 // Health check
 app.get("/health", (req, res) => {

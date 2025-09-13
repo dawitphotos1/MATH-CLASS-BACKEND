@@ -35,11 +35,10 @@
 // module.exports = router;
 
 
-
 const express = require("express");
 const router = express.Router();
 const { login, register } = require("../controllers/authController");
-const authMiddleware = require("../middleware/auth");
+const authMiddleware = require("../middleware/auth").auth; // Ensure correct export
 
 // Public routes
 router.post("/login", login);
@@ -53,6 +52,7 @@ router.get("/me", authMiddleware, async (req, res) => {
       attributes: ["id", "name", "email", "role", "approval_status"],
     });
     if (!user) {
+      console.log(`🚫 /auth/me: User not found for ID ${req.user.id}`);
       return res.status(404).json({ error: "User not found" });
     }
     console.log(`✅ /auth/me: User fetched for ID ${req.user.id}`);
