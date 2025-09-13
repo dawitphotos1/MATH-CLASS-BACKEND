@@ -3,7 +3,7 @@ const router = express.Router();
 const authController = require("../controllers/authController");
 
 // Import named exports using destructuring!
-const { authMiddleware, adminOnly } = require("../middleware/authMiddleware");
+const { authMiddleware, adminOnly } = require("../middleware/auth");
 
 // Public routes
 router.post("/register", authController.register);
