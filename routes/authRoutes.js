@@ -38,13 +38,22 @@
 const express = require("express");
 const router = express.Router();
 const { login, register } = require("../controllers/authController");
-const authMiddleware = require("../middleware/auth"); // Default export
 
-if (!authMiddleware || typeof authMiddleware !== "function") {
-  console.error("❌ authMiddleware is not a function:", authMiddleware);
-  throw new Error(
-    "authMiddleware is not properly defined in middleware/auth.js"
+// Try to import authMiddleware
+let authMiddleware;
+try {
+  const middleware = require("../middleware/auth");
+  authMiddleware = middleware.authMiddleware; // Explicitly get authMiddleware
+  if (!authMiddleware || typeof authMiddleware !== "function") {
+    throw new Error("authMiddleware is not a function");
+  }
+  console.log(
+    "✅ authMiddleware imported successfully:",
+    typeof authMiddleware
   );
+} catch (error) {
+  console.error("❌ Failed to import authMiddleware:", error.message);
+  throw new Error(`authMiddleware import failed: ${error.message}`);
 }
 
 // Public routes
