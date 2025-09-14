@@ -167,7 +167,6 @@
 
 
 
-
 // controllers/authController.js
 const bcrypt = require("bcryptjs");
 const jwt = require("jsonwebtoken");
@@ -199,9 +198,9 @@ exports.register = async (req, res) => {
     const hashedPassword = await bcrypt.hash(password, 10);
 
     // Role-based approval
-    let approvalStatus = "pending"; // default for student
+    let approvalStatus = "pending"; // default for students
     if (role === "admin" || role === "teacher") {
-      approvalStatus = "approved"; // ✅ auto-approve admin/teacher
+      approvalStatus = "approved"; // auto-approve admin/teacher
     }
 
     // Save new user
@@ -218,18 +217,17 @@ exports.register = async (req, res) => {
     let token = null;
     if (approvalStatus === "approved") {
       token = jwt.sign(
-        { id: user.id, role: user.role },
+        { id: user.id, role: role }, // ensure lowercase role in token
         process.env.JWT_SECRET,
         { expiresIn: "7d" }
       );
     }
 
-    // Debug log
     console.log("✅ New user registered:", {
       id: user.id,
       email: user.email,
-      role: user.role,
-      approval_status: user.approval_status,
+      role,
+      approval_status: approvalStatus,
       tokenIssued: !!token,
     });
 
@@ -238,13 +236,13 @@ exports.register = async (req, res) => {
         approvalStatus === "pending"
           ? "Registration successful (pending approval)."
           : "Registration successful.",
-      token, // ✅ only present for admin/teacher
+      token, // only present for admin/teacher
       user: {
         id: user.id,
         name: user.name,
         email: user.email,
-        role: user.role,
-        approval_status: user.approval_status,
+        role, // always lowercase
+        approval_status: approvalStatus,
       },
     });
   } catch (err) {
@@ -270,8 +268,10 @@ exports.login = async (req, res) => {
       return res.status(401).json({ error: "Invalid credentials" });
     }
 
+    const role = user.role.toLowerCase();
+
     // Students must be approved
-    if (user.role === "student" && user.approval_status !== "approved") {
+    if (role === "student" && user.approval_status !== "approved") {
       return res.status(403).json({ error: "Account pending approval" });
     }
 
@@ -281,9 +281,9 @@ exports.login = async (req, res) => {
       return res.status(401).json({ error: "Invalid credentials" });
     }
 
-    // Generate JWT
+    // Generate JWT with normalized role
     const token = jwt.sign(
-      { id: user.id, role: user.role },
+      { id: user.id, role },
       process.env.JWT_SECRET,
       { expiresIn: "7d" }
     );
@@ -295,7 +295,7 @@ exports.login = async (req, res) => {
     console.log("✅ User logged in:", {
       id: user.id,
       email: user.email,
-      role: user.role,
+      role,
     });
 
     return res.json({
@@ -305,7 +305,7 @@ exports.login = async (req, res) => {
         id: user.id,
         name: user.name,
         email: user.email,
-        role: user.role,
+        role, // always lowercase
         approval_status: user.approval_status,
       },
     });
@@ -328,7 +328,13 @@ exports.me = async (req, res) => {
       return res.status(404).json({ error: "User not found" });
     }
 
-    return res.json(user);
+    // normalize role before sending back
+    const normalized = {
+      ...user.toJSON(),
+      role: user.role.toLowerCase(),
+    };
+
+    return res.json(normalized);
   } catch (err) {
     console.error("❌ Me endpoint error:", err.message, err.stack);
     return res.status(500).json({ error: "Failed to fetch user profile" });
