@@ -1,3 +1,6 @@
+
+"use strict";
+
 module.exports = (sequelize, DataTypes) => {
   const Course = sequelize.define(
     "Course",
@@ -22,7 +25,7 @@ module.exports = (sequelize, DataTypes) => {
         type: DataTypes.INTEGER,
         allowNull: true,
         references: {
-          model: "Teachers",
+          model: "users", // ✅ Updated from "Teachers" to "users"
           key: "id",
         },
         onDelete: "SET NULL",
@@ -44,7 +47,8 @@ module.exports = (sequelize, DataTypes) => {
   );
 
   Course.associate = (models) => {
-    Course.belongsTo(models.Teacher, {
+    // ✅ Associate with User as the teacher
+    Course.belongsTo(models.User, {
       foreignKey: "teacherId",
       as: "teacher",
     });
@@ -58,6 +62,12 @@ module.exports = (sequelize, DataTypes) => {
       through: models.UserCourseAccess,
       foreignKey: "course_id",
       as: "enrolledUsers",
+    });
+
+    // ✅ Optional: one-to-many with enrollments if you use the Enrollment model
+    Course.hasMany(models.Enrollment, {
+      foreignKey: "courseId",
+      as: "enrollments",
     });
   };
 

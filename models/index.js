@@ -19,6 +19,7 @@ db.User = require("./User")(sequelize, Sequelize.DataTypes);
 db.Teacher = require("./Teacher")(sequelize, Sequelize.DataTypes);
 db.Course = require("./Course")(sequelize, Sequelize.DataTypes);
 db.Lesson = require("./Lesson")(sequelize, Sequelize.DataTypes);
+db.Enrollment = require("./Enrollment")(sequelize, Sequelize.DataTypes);
 db.UserCourseAccess = require("./UserCourseAccess")(
   sequelize,
   Sequelize.DataTypes
