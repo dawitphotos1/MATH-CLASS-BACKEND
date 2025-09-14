@@ -92,7 +92,6 @@
 
 
 
-
 const express = require("express");
 const bcrypt = require("bcryptjs");
 const jwt = require("jsonwebtoken");
@@ -138,19 +137,19 @@ router.post("/login", async (req, res) => {
     }
 
     // Check approval status
-    if (user.approvalStatus === "pending") {
+    if (user.approval_status === "pending") {
       console.log("Auth/login: User pending approval", {
         email: user.email,
-        approvalStatus: user.approvalStatus,
+        approval_status: user.approval_status,
       });
       return res
         .status(403)
         .json({ success: false, error: "Your account is awaiting approval" });
     }
-    if (user.approvalStatus === "rejected") {
+    if (user.approval_status === "rejected") {
       console.log("Auth/login: User rejected", {
         email: user.email,
-        approvalStatus: user.approvalStatus,
+        approval_status: user.approval_status,
       });
       return res
         .status(403)
@@ -167,7 +166,10 @@ router.post("/login", async (req, res) => {
     // Update last login
     await user.update({ lastLogin: new Date() });
 
-    console.log("Auth/login: Login successful", { email: user.email });
+    console.log("Auth/login: Login successful", {
+      email: user.email,
+      role: user.role,
+    });
     res.json({
       success: true,
       message: "Login successful",
@@ -177,11 +179,14 @@ router.post("/login", async (req, res) => {
         name: user.name,
         email: user.email,
         role: user.role,
-        approvalStatus: user.approvalStatus,
+        approval_status: user.approval_status,
       },
     });
   } catch (err) {
-    console.error("Auth/login: Error", { error: err.message });
+    console.error("Auth/login: Error", {
+      error: err.message,
+      stack: err.stack,
+    });
     res.status(500).json({
       success: false,
       error: "Login failed",
@@ -194,7 +199,7 @@ router.post("/login", async (req, res) => {
 router.get("/me", authMiddleware, async (req, res) => {
   try {
     const user = await User.findByPk(req.user.userId, {
-      attributes: ["id", "name", "email", "role", "approvalStatus", "subject"],
+      attributes: ["id", "name", "email", "role", "approval_status", "subject"],
     });
     if (!user) {
       console.log("Auth/me: User not found", { userId: req.user.userId });
@@ -211,12 +216,12 @@ router.get("/me", authMiddleware, async (req, res) => {
         name: user.name,
         email: user.email,
         role: user.role,
-        approvalStatus: user.approvalStatus,
+        approval_status: user.approval_status,
         subject: user.subject,
       },
     });
   } catch (err) {
-    console.error("Auth/me: Error", { error: err.message });
+    console.error("Auth/me: Error", { error: err.message, stack: err.stack });
     res.status(500).json({ success: false, error: "Server error" });
   }
 });
