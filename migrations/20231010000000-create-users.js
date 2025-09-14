@@ -1,5 +1,4 @@
 
-
 "use strict";
 
 module.exports = {
@@ -32,7 +31,7 @@ module.exports = {
       },
       approval_status: {
         type: Sequelize.ENUM("pending", "approved", "rejected"),
-        defaultValue: "approved",
+        defaultValue: "pending",
       },
       last_login: {
         type: Sequelize.DATE,

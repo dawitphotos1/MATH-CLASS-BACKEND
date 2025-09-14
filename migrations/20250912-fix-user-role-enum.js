@@ -1,61 +1,71 @@
 
 "use strict";
 
-/**
- * Migration to fix user role ENUM:
- * - Ensures all roles are lowercase
- * - Replaces old ENUM with lowercase-only values: 'student', 'teacher', 'admin'
- */
-
 module.exports = {
-  async up(queryInterface, Sequelize) {
-    // 1. Update any existing rows to lowercase
+  up: async (queryInterface, Sequelize) => {
+    // 1. Remove default if any
     await queryInterface.sequelize.query(`
-      UPDATE "users"
-      SET role = LOWER(role)
-      WHERE role IS NOT NULL;
+      ALTER TABLE "users" ALTER COLUMN "role" DROP DEFAULT;
     `);
 
-    // 2. Drop the old ENUM type if it exists
+    // 2. Change role column to TEXT so we can update values and drop enum
     await queryInterface.sequelize.query(`
-      DO $$
-      BEGIN
+      ALTER TABLE "users" ALTER COLUMN "role" TYPE TEXT;
+    `);
+
+    // 3. Drop old enum type if it exists
+    await queryInterface.sequelize.query(`
+      DO $$ BEGIN
         IF EXISTS (SELECT 1 FROM pg_type WHERE typname = 'enum_users_role') THEN
-          ALTER TABLE "users" ALTER COLUMN "role" DROP DEFAULT;
-          ALTER TABLE "users" ALTER COLUMN "role" TYPE TEXT;
           DROP TYPE enum_users_role;
         END IF;
-      END$$;
+      END $$;
     `);
 
-    // 3. Create a new ENUM type with only lowercase values
+    // 4. Create new enum type
     await queryInterface.sequelize.query(`
       CREATE TYPE "enum_users_role" AS ENUM ('student', 'teacher', 'admin');
     `);
 
-    // 4. Apply the new ENUM type back to the column
+    // 5. Clean up and normalize role values
     await queryInterface.sequelize.query(`
-      ALTER TABLE "users"
-      ALTER COLUMN "role" TYPE "enum_users_role" USING LOWER(role)::text::"enum_users_role";
+      UPDATE "users"
+      SET role = LOWER(role);
     `);
 
-    // 5. Add a CHECK constraint to enforce lowercase safety
+    // 6. Convert column back to enum
     await queryInterface.sequelize.query(`
       ALTER TABLE "users"
-      ADD CONSTRAINT role_lowercase_check
-      CHECK (role IN ('student','teacher','admin'));
+      ALTER COLUMN "role" TYPE enum_users_role USING role::enum_users_role;
+    `);
+
+    // 7. Optionally add default or not null
+    await queryInterface.sequelize.query(`
+      ALTER TABLE "users"
+      ALTER COLUMN "role" SET DEFAULT 'student';
+    `);
+
+    await queryInterface.sequelize.query(`
+      ALTER TABLE "users"
+      ALTER COLUMN "role" SET NOT NULL;
     `);
   },
 
-  async down(queryInterface, Sequelize) {
-    // Rollback: remove constraint and ENUM
+  down: async (queryInterface, Sequelize) => {
+    // Revert to TEXT
     await queryInterface.sequelize.query(`
-      ALTER TABLE "users" DROP CONSTRAINT IF EXISTS role_lowercase_check;
+      ALTER TABLE "users" ALTER COLUMN "role" DROP DEFAULT;
     `);
 
     await queryInterface.sequelize.query(`
-      ALTER TABLE "users" ALTER COLUMN "role" DROP DEFAULT;
+      ALTER TABLE "users" ALTER COLUMN "role" DROP NOT NULL;
+    `);
+
+    await queryInterface.sequelize.query(`
       ALTER TABLE "users" ALTER COLUMN "role" TYPE TEXT;
+    `);
+
+    await queryInterface.sequelize.query(`
       DROP TYPE IF EXISTS "enum_users_role";
     `);
   },
