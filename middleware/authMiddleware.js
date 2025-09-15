@@ -42,8 +42,6 @@
 //   }
 // };
 
-
-
 const jwt = require("jsonwebtoken");
 const { User } = require("../models");
 
@@ -83,7 +81,10 @@ module.exports = async (req, res, next) => {
 
     next();
   } catch (err) {
-    console.error("AuthMiddleware: Error", { error: err.message });
+    console.error("AuthMiddleware: Error", {
+      error: err.message,
+      stack: err.stack,
+    });
     return res
       .status(403)
       .json({ success: false, error: "Invalid or expired token" });
