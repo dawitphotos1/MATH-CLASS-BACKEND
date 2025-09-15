@@ -14,7 +14,7 @@ module.exports = async (req, res, next) => {
   try {
     const decoded = jwt.verify(token, process.env.JWT_SECRET);
     console.log("AuthMiddleware: Token verified", {
-      userId: decoded.userId,
+      userId: decoded.userId, // ✅ now matches controllers
       role: decoded.role,
     });
 
@@ -33,7 +33,7 @@ module.exports = async (req, res, next) => {
       email: user.email,
       role: user.role.toLowerCase(),
       name: user.name,
-      approvalStatus: user.approvalStatus,
+      approvalStatus: user.approval_status, // 🔄 fixed naming
     };
 
     next();

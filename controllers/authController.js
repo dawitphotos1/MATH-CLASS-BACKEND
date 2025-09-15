@@ -1,4 +1,3 @@
-
 // controllers/authController.js
 const bcrypt = require("bcryptjs");
 const jwt = require("jsonwebtoken");
@@ -49,7 +48,7 @@ exports.register = async (req, res) => {
     let token = null;
     if (approvalStatus === "approved") {
       token = jwt.sign(
-        { id: user.id, role: role }, // ensure lowercase role in token
+        { userId: user.id, role },   // 🔄 use `userId` consistently
         process.env.JWT_SECRET,
         { expiresIn: "7d" }
       );
@@ -115,7 +114,7 @@ exports.login = async (req, res) => {
 
     // Generate JWT with normalized role
     const token = jwt.sign(
-      { id: user.id, role },
+      { userId: user.id, role },   // 🔄 use `userId` consistently
       process.env.JWT_SECRET,
       { expiresIn: "7d" }
     );
@@ -152,7 +151,7 @@ exports.login = async (req, res) => {
 // ================================
 exports.me = async (req, res) => {
   try {
-    const user = await User.findByPk(req.user.id, {
+    const user = await User.findByPk(req.user.userId, {   // 🔄 match new payload
       attributes: { exclude: ["password"] },
     });
 
