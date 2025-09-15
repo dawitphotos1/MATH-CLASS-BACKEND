@@ -173,7 +173,6 @@
 
 
 
-
 // routes/auth.js
 const express = require("express");
 const bcrypt = require("bcryptjs");
@@ -194,18 +193,8 @@ router.post("/login", async (req, res) => {
         .json({ success: false, error: "Email and password are required" });
     }
 
-    // Verify DB connection
-    try {
-      await sequelize.authenticate();
-    } catch (dbErr) {
-      return res.status(500).json({
-        success: false,
-        error: "Database connection error",
-        details: dbErr.message,
-      });
-    }
+    await sequelize.authenticate();
 
-    // Find user (force lowercase for email)
     const user = await User.findOne({ where: { email: email.toLowerCase() } });
     if (!user) {
       return res.status(401).json({
@@ -214,13 +203,6 @@ router.post("/login", async (req, res) => {
       });
     }
 
-    if (!user.password) {
-      return res
-        .status(500)
-        .json({ success: false, error: "User account is misconfigured" });
-    }
-
-    // Compare passwords
     const isMatch = await bcrypt.compare(password, user.password);
     if (!isMatch) {
       return res.status(401).json({
@@ -229,7 +211,7 @@ router.post("/login", async (req, res) => {
       });
     }
 
-    // Check approval status (DB column is approval_status)
+    // Approval status checks (snake_case!)
     if (user.approval_status === "pending") {
       return res
         .status(403)
@@ -241,20 +223,12 @@ router.post("/login", async (req, res) => {
         .json({ success: false, error: "Your account has been rejected" });
     }
 
-    if (!process.env.JWT_SECRET) {
-      return res
-        .status(500)
-        .json({ success: false, error: "Server configuration error" });
-    }
-
-    // Create JWT
     const token = jwt.sign(
       { userId: user.id, role: user.role, name: user.name },
       process.env.JWT_SECRET,
       { expiresIn: "7d" }
     );
 
-    // Update last login timestamp
     await user.update({ lastLogin: new Date() });
 
     res.json({
@@ -266,7 +240,7 @@ router.post("/login", async (req, res) => {
         name: user.name,
         email: user.email,
         role: user.role.toLowerCase(),
-        approval_status: user.approval_status, // ✅ snake_case from DB
+        approval_status: user.approval_status, // ✅ corrected
         subject: user.subject,
       },
     });
@@ -283,11 +257,13 @@ router.post("/login", async (req, res) => {
 router.get("/me", authMiddleware, async (req, res) => {
   try {
     const user = await User.findByPk(req.user.userId, {
-      attributes: ["id", "name", "email", "role", "approval_status", "subject"],
+      attributes: ["id", "name", "email", "role", "approval_status", "subject"], // ✅ fixed
     });
+
     if (!user) {
       return res.status(404).json({ success: false, error: "User not found" });
     }
+
     res.json({
       success: true,
       user: {
