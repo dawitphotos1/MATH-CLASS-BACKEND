@@ -1,7 +1,9 @@
+
 // controllers/authController.js
 const bcrypt = require("bcryptjs");
 const jwt = require("jsonwebtoken");
 const { User } = require("../models");
+const { sendSuccess, sendError } = require("../utils/response");
 
 // ================================
 // 🔹 Register
@@ -9,76 +11,52 @@ const { User } = require("../models");
 exports.register = async (req, res) => {
   try {
     let { name, email, password, role, subject } = req.body;
-
     if (!name || !email || !password || !role) {
-      return res
-        .status(400)
-        .json({ error: "All required fields must be filled" });
+      return sendError(res, 400, "All required fields must be filled");
     }
 
-    // Normalize role to lowercase
     role = role.toLowerCase();
-
-    // Check if user already exists
     const existingUser = await User.findOne({ where: { email } });
-    if (existingUser) {
-      return res.status(409).json({ error: "Email already registered" });
-    }
+    if (existingUser) return sendError(res, 409, "Email already registered");
 
-    // Hash password
     const hashedPassword = await bcrypt.hash(password, 10);
+    let approval_status = role === "admin" || role === "teacher" ? "approved" : "pending";
 
-    // Role-based approval
-    let approvalStatus = "pending"; // default for students
-    if (role === "admin" || role === "teacher") {
-      approvalStatus = "approved"; // auto-approve admin/teacher
-    }
-
-    // Save new user
     const user = await User.create({
       name,
       email,
       password: hashedPassword,
       role,
       subject: role === "student" ? subject : null,
-      approval_status: approvalStatus,
+      approval_status,
     });
 
-    // ✅ Generate token only if auto-approved
     let token = null;
-    if (approvalStatus === "approved") {
-      token = jwt.sign(
-        { userId: user.id, role },   // 🔄 use `userId` consistently
-        process.env.JWT_SECRET,
-        { expiresIn: "7d" }
-      );
+    if (approval_status === "approved") {
+      token = jwt.sign({ userId: user.id, role }, process.env.JWT_SECRET, {
+        expiresIn: "7d",
+      });
     }
 
-    console.log("✅ New user registered:", {
-      id: user.id,
-      email: user.email,
-      role,
-      approval_status: approvalStatus,
-      tokenIssued: !!token,
-    });
-
-    return res.status(201).json({
-      message:
-        approvalStatus === "pending"
-          ? "Registration successful (pending approval)."
-          : "Registration successful.",
-      token, // only present for admin/teacher
-      user: {
-        id: user.id,
-        name: user.name,
-        email: user.email,
-        role, // always lowercase
-        approval_status: approvalStatus,
+    return sendSuccess(
+      res,
+      {
+        token,
+        user: {
+          id: user.id,
+          name: user.name,
+          email: user.email,
+          role,
+          approval_status,
+        },
       },
-    });
+      approval_status === "pending"
+        ? "Registration successful (pending approval)."
+        : "Registration successful.",
+      201
+    );
   } catch (err) {
-    console.error("❌ Registration error:", err.message, err.stack);
-    return res.status(500).json({ error: "Server error during registration" });
+    return sendError(res, 500, "Server error during registration", err.message);
   }
 };
 
@@ -88,86 +66,63 @@ exports.register = async (req, res) => {
 exports.login = async (req, res) => {
   try {
     const { email, password } = req.body;
+    if (!email || !password) return sendError(res, 400, "Email and password required");
 
-    if (!email || !password) {
-      return res.status(400).json({ error: "Email and password required" });
-    }
-
-    // Find user
     const user = await User.findOne({ where: { email } });
-    if (!user) {
-      return res.status(401).json({ error: "Invalid credentials" });
-    }
+    if (!user) return sendError(res, 401, "Invalid email or password");
 
     const role = user.role.toLowerCase();
-
-    // Students must be approved
     if (role === "student" && user.approval_status !== "approved") {
-      return res.status(403).json({ error: "Account pending approval" });
+      return sendError(res, 403, "Account pending approval");
     }
 
-    // Compare passwords
     const isMatch = await bcrypt.compare(password, user.password);
-    if (!isMatch) {
-      return res.status(401).json({ error: "Invalid credentials" });
-    }
+    if (!isMatch) return sendError(res, 401, "Invalid email or password");
 
-    // Generate JWT with normalized role
-    const token = jwt.sign(
-      { userId: user.id, role },   // 🔄 use `userId` consistently
-      process.env.JWT_SECRET,
-      { expiresIn: "7d" }
-    );
+    const token = jwt.sign({ userId: user.id, role }, process.env.JWT_SECRET, {
+      expiresIn: "7d",
+    });
 
-    // Update last login
     user.lastLogin = new Date();
     await user.save();
 
-    console.log("✅ User logged in:", {
-      id: user.id,
-      email: user.email,
-      role,
-    });
-
-    return res.json({
-      message: "Login successful",
+    return sendSuccess(res, {
       token,
       user: {
         id: user.id,
         name: user.name,
         email: user.email,
-        role, // always lowercase
+        role,
         approval_status: user.approval_status,
       },
-    });
+    }, "Login successful");
   } catch (err) {
-    console.error("❌ Login error:", err.message, err.stack);
-    return res.status(500).json({ error: "Server error during login" });
+    return sendError(res, 500, "Server error during login", err.message);
   }
 };
 
 // ================================
-// 🔹 Current User (me)
+// 🔹 Me
 // ================================
 exports.me = async (req, res) => {
   try {
-    const user = await User.findByPk(req.user.userId, {   // 🔄 match new payload
-      attributes: { exclude: ["password"] },
+    const user = await User.findByPk(req.user.userId, {
+      attributes: ["id", "name", "email", "role", "approval_status", "subject"],
     });
 
-    if (!user) {
-      return res.status(404).json({ error: "User not found" });
-    }
+    if (!user) return sendError(res, 404, "User not found");
 
-    // normalize role before sending back
-    const normalized = {
-      ...user.toJSON(),
-      role: user.role.toLowerCase(),
-    };
-
-    return res.json(normalized);
+    return sendSuccess(res, {
+      user: {
+        id: user.id,
+        name: user.name,
+        email: user.email,
+        role: user.role.toLowerCase(),
+        approval_status: user.approval_status,
+        subject: user.subject,
+      },
+    });
   } catch (err) {
-    console.error("❌ Me endpoint error:", err.message, err.stack);
-    return res.status(500).json({ error: "Failed to fetch user profile" });
+    return sendError(res, 500, "Failed to fetch user profile", err.message);
   }
 };

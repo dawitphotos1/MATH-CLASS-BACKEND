@@ -1,51 +1,92 @@
+// controllers/adminController.js
 const { User } = require("../models");
 const jwt = require("jsonwebtoken");
 const bcrypt = require("bcryptjs");
+const { sendSuccess, sendError } = require("../utils/response");
 
+// 🔹 Admin Login
 exports.login = async (req, res) => {
   try {
     const { email, password } = req.body;
-    console.log("🔐 Login attempt:", { email });
+    if (!email || !password) return sendError(res, 400, "Email and password required");
 
     const user = await User.findOne({ where: { email: email.toLowerCase() } });
-    if (!user) {
-      console.log("Login failed: User not found", { email });
-      return res.status(400).json({ error: "Invalid credentials" });
-    }
+    if (!user) return sendError(res, 401, "Invalid credentials");
 
     const isMatch = await bcrypt.compare(password, user.password);
-    if (!isMatch) {
-      console.log("Login failed: Incorrect password", { email });
-      return res.status(400).json({ error: "Invalid credentials" });
-    }
+    if (!isMatch) return sendError(res, 401, "Invalid credentials");
 
     if (user.approval_status !== "approved") {
-      console.log("Login failed: Account not approved", {
-        email,
-        approval_status: user.approval_status,
-      });
-      return res.status(403).json({ error: "Account pending approval" });
+      return sendError(res, 403, "Account pending approval");
     }
 
     const token = jwt.sign(
-      { userId: user.id, role: user.role }, // 🔄 use `userId` consistently
+      { userId: user.id, role: user.role },
       process.env.JWT_SECRET,
       { expiresIn: "1d" }
     );
 
-    console.log("✅ Login successful:", { email, role: user.role });
-    res.json({
+    return sendSuccess(res, {
       token,
       user: {
         id: user.id,
         name: user.name,
         email: user.email,
-        role: user.role,
+        role: user.role.toLowerCase(),
         approval_status: user.approval_status,
       },
-    });
+    }, "Admin login successful");
   } catch (error) {
-    console.error("Login error:", error);
-    res.status(500).json({ error: "Server error" });
+    return sendError(res, 500, "Server error", error.message);
+  }
+};
+
+// 🔹 Get Pending Users
+exports.getPendingUsers = async (req, res) => {
+  try {
+    const users = await User.findAll({
+      where: { approval_status: "pending" },
+      attributes: ["id", "name", "email", "role", "approval_status", "subject"],
+    });
+
+    return sendSuccess(res, { users }, "Pending users fetched");
+  } catch (error) {
+    return sendError(res, 500, "Server error", error.message);
+  }
+};
+
+// 🔹 Approve/Reject User
+exports.updateUserApproval = async (req, res) => {
+  try {
+    const { userId } = req.params;
+    const { status } = req.body;
+
+    const user = await User.findByPk(userId);
+    if (!user) return sendError(res, 404, "User not found");
+
+    user.approval_status = status.toLowerCase();
+    await user.save();
+
+    return sendSuccess(res, {
+      user: {
+        id: user.id,
+        name: user.name,
+        email: user.email,
+        role: user.role.toLowerCase(),
+        approval_status: user.approval_status,
+      },
+    }, `User ${status}`);
+  } catch (error) {
+    return sendError(res, 500, "Server error", error.message);
+  }
+};
+
+// 🔹 Get Enrollments (stub)
+exports.getEnrollments = async (req, res) => {
+  try {
+    const { status } = req.query;
+    return sendSuccess(res, { enrollments: [], status: status || "all" }, "Enrollments fetched");
+  } catch (error) {
+    return sendError(res, 500, "Server error", error.message);
   }
 };
