@@ -1,3 +1,180 @@
+// const express = require("express");
+// const bcrypt = require("bcryptjs");
+// const jwt = require("jsonwebtoken");
+// const { User, sequelize } = require("../models");
+// const authMiddleware = require("../middleware/authMiddleware");
+
+// const router = express.Router();
+
+// // POST /api/v1/auth/login
+// router.post("/login", async (req, res) => {
+//   try {
+//     const { email, password } = req.body;
+
+//     // Input validation
+//     if (!email || !password) {
+//       console.log("Auth/login: Missing email or password", { email });
+//       return res
+//         .status(400)
+//         .json({ success: false, error: "Email and password are required" });
+//     }
+
+//     // Verify database connection
+//     try {
+//       await sequelize.authenticate();
+//       console.log("Auth/login: Database connection verified");
+//     } catch (dbErr) {
+//       console.error("Auth/login: Database connection failed", {
+//         error: dbErr.message,
+//       });
+//       return res
+//         .status(500)
+//         .json({
+//           success: false,
+//           error: "Database connection error",
+//           details: dbErr.message,
+//         });
+//     }
+
+//     // Find user (case-insensitive)
+//     console.log("Auth/login: Attempting to find user", { email });
+//     const user = await User.findOne({ where: { email: email.toLowerCase() } });
+
+//     if (!user) {
+//       console.log("Auth/login: User not found", { email });
+//       return res.status(401).json({
+//         success: false,
+//         error: "Invalid email or password. Please try again",
+//       });
+//     }
+
+//     // Verify password field
+//     if (!user.password) {
+//       console.error("Auth/login: User has no password set", {
+//         email: user.email,
+//       });
+//       return res
+//         .status(500)
+//         .json({ success: false, error: "User account is misconfigured" });
+//     }
+
+//     // Compare password
+//     console.log("Auth/login: Comparing passwords for", { email: user.email });
+//     const isMatch = await bcrypt.compare(password, user.password);
+//     if (!isMatch) {
+//       console.log("Auth/login: Password mismatch", { email: user.email });
+//       return res.status(401).json({
+//         success: false,
+//         error: "Invalid email or password. Please try again",
+//       });
+//     }
+
+//     // Check approval status
+//     if (user.approvalStatus === "pending") {
+//       console.log("Auth/login: User pending approval", {
+//         email: user.email,
+//         approvalStatus: user.approvalStatus,
+//       });
+//       return res
+//         .status(403)
+//         .json({ success: false, error: "Your account is awaiting approval" });
+//     }
+//     if (user.approvalStatus === "rejected") {
+//       console.log("Auth/login: User rejected", {
+//         email: user.email,
+//         approvalStatus: user.approvalStatus,
+//       });
+//       return res
+//         .status(403)
+//         .json({ success: false, error: "Your account has been rejected" });
+//     }
+
+//     // Verify JWT_SECRET
+//     if (!process.env.JWT_SECRET) {
+//       console.error("Auth/login: JWT_SECRET not set");
+//       return res
+//         .status(500)
+//         .json({ success: false, error: "Server configuration error" });
+//     }
+
+//     // Generate JWT
+//     const token = jwt.sign(
+//       { userId: user.id, role: user.role, name: user.name },
+//       process.env.JWT_SECRET,
+//       { expiresIn: "7d" }
+//     );
+
+//     // Update last login
+//     await user.update({ lastLogin: new Date() });
+
+//     console.log("Auth/login: Login successful", {
+//       email: user.email,
+//       role: user.role,
+//     });
+//     res.json({
+//       success: true,
+//       message: "Login successful",
+//       token,
+//       user: {
+//         id: user.id,
+//         name: user.name,
+//         email: user.email,
+//         role: user.role,
+//         approval_status: user.approvalStatus, // Serialize as snake_case
+//       },
+//     });
+//   } catch (err) {
+//     console.error("Auth/login: Error", {
+//       error: err.message,
+//       stack: err.stack,
+//     });
+//     res.status(500).json({
+//       success: false,
+//       error: "Login failed",
+//       details: err.message,
+//     });
+//   }
+// });
+
+// // GET /api/v1/auth/me
+// router.get("/me", authMiddleware, async (req, res) => {
+//   try {
+//     const user = await User.findByPk(req.user.userId, {
+//       attributes: ["id", "name", "email", "role", "approvalStatus", "subject"],
+//     });
+//     if (!user) {
+//       console.log("Auth/me: User not found", { userId: req.user.userId });
+//       return res.status(404).json({ success: false, error: "User not found" });
+//     }
+//     console.log("Auth/me: User fetched successfully", {
+//       email: user.email,
+//       role: user.role,
+//     });
+//     res.json({
+//       success: true,
+//       user: {
+//         id: user.id,
+//         name: user.name,
+//         email: user.email,
+//         role: user.role,
+//         approval_status: user.approvalStatus, // Serialize as snake_case
+//         subject: user.subject,
+//       },
+//     });
+//   } catch (err) {
+//     console.error("Auth/me: Error", { error: err.message, stack: err.stack });
+//     res.status(500).json({ success: false, error: "Server error" });
+//   }
+// });
+
+// module.exports = router;
+
+
+
+
+
+
+// routes/auth.js
 const express = require("express");
 const bcrypt = require("bcryptjs");
 const jwt = require("jsonwebtoken");
@@ -11,106 +188,75 @@ router.post("/login", async (req, res) => {
   try {
     const { email, password } = req.body;
 
-    // Input validation
     if (!email || !password) {
-      console.log("Auth/login: Missing email or password", { email });
       return res
         .status(400)
         .json({ success: false, error: "Email and password are required" });
     }
 
-    // Verify database connection
+    // Verify DB connection
     try {
       await sequelize.authenticate();
-      console.log("Auth/login: Database connection verified");
     } catch (dbErr) {
-      console.error("Auth/login: Database connection failed", {
-        error: dbErr.message,
+      return res.status(500).json({
+        success: false,
+        error: "Database connection error",
+        details: dbErr.message,
       });
-      return res
-        .status(500)
-        .json({
-          success: false,
-          error: "Database connection error",
-          details: dbErr.message,
-        });
     }
 
-    // Find user (case-insensitive)
-    console.log("Auth/login: Attempting to find user", { email });
+    // Find user (force lowercase for email)
     const user = await User.findOne({ where: { email: email.toLowerCase() } });
-
     if (!user) {
-      console.log("Auth/login: User not found", { email });
       return res.status(401).json({
         success: false,
         error: "Invalid email or password. Please try again",
       });
     }
 
-    // Verify password field
     if (!user.password) {
-      console.error("Auth/login: User has no password set", {
-        email: user.email,
-      });
       return res
         .status(500)
         .json({ success: false, error: "User account is misconfigured" });
     }
 
-    // Compare password
-    console.log("Auth/login: Comparing passwords for", { email: user.email });
+    // Compare passwords
     const isMatch = await bcrypt.compare(password, user.password);
     if (!isMatch) {
-      console.log("Auth/login: Password mismatch", { email: user.email });
       return res.status(401).json({
         success: false,
         error: "Invalid email or password. Please try again",
       });
     }
 
-    // Check approval status
-    if (user.approvalStatus === "pending") {
-      console.log("Auth/login: User pending approval", {
-        email: user.email,
-        approvalStatus: user.approvalStatus,
-      });
+    // Check approval status (DB column is approval_status)
+    if (user.approval_status === "pending") {
       return res
         .status(403)
         .json({ success: false, error: "Your account is awaiting approval" });
     }
-    if (user.approvalStatus === "rejected") {
-      console.log("Auth/login: User rejected", {
-        email: user.email,
-        approvalStatus: user.approvalStatus,
-      });
+    if (user.approval_status === "rejected") {
       return res
         .status(403)
         .json({ success: false, error: "Your account has been rejected" });
     }
 
-    // Verify JWT_SECRET
     if (!process.env.JWT_SECRET) {
-      console.error("Auth/login: JWT_SECRET not set");
       return res
         .status(500)
         .json({ success: false, error: "Server configuration error" });
     }
 
-    // Generate JWT
+    // Create JWT
     const token = jwt.sign(
       { userId: user.id, role: user.role, name: user.name },
       process.env.JWT_SECRET,
       { expiresIn: "7d" }
     );
 
-    // Update last login
+    // Update last login timestamp
     await user.update({ lastLogin: new Date() });
 
-    console.log("Auth/login: Login successful", {
-      email: user.email,
-      role: user.role,
-    });
     res.json({
       success: true,
       message: "Login successful",
@@ -119,15 +265,12 @@ router.post("/login", async (req, res) => {
         id: user.id,
         name: user.name,
         email: user.email,
-        role: user.role,
-        approval_status: user.approvalStatus, // Serialize as snake_case
+        role: user.role.toLowerCase(),
+        approval_status: user.approval_status, // ✅ snake_case from DB
+        subject: user.subject,
       },
     });
   } catch (err) {
-    console.error("Auth/login: Error", {
-      error: err.message,
-      stack: err.stack,
-    });
     res.status(500).json({
       success: false,
       error: "Login failed",
@@ -140,29 +283,23 @@ router.post("/login", async (req, res) => {
 router.get("/me", authMiddleware, async (req, res) => {
   try {
     const user = await User.findByPk(req.user.userId, {
-      attributes: ["id", "name", "email", "role", "approvalStatus", "subject"],
+      attributes: ["id", "name", "email", "role", "approval_status", "subject"],
     });
     if (!user) {
-      console.log("Auth/me: User not found", { userId: req.user.userId });
       return res.status(404).json({ success: false, error: "User not found" });
     }
-    console.log("Auth/me: User fetched successfully", {
-      email: user.email,
-      role: user.role,
-    });
     res.json({
       success: true,
       user: {
         id: user.id,
         name: user.name,
         email: user.email,
-        role: user.role,
-        approval_status: user.approvalStatus, // Serialize as snake_case
+        role: user.role.toLowerCase(),
+        approval_status: user.approval_status, // ✅ corrected
         subject: user.subject,
       },
     });
   } catch (err) {
-    console.error("Auth/me: Error", { error: err.message, stack: err.stack });
     res.status(500).json({ success: false, error: "Server error" });
   }
 });
