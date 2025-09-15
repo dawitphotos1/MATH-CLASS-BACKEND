@@ -135,6 +135,10 @@
 
 // module.exports = router;
 
+
+
+
+
 const express = require("express");
 const bcrypt = require("bcryptjs");
 const jwt = require("jsonwebtoken");
@@ -257,7 +261,7 @@ router.post("/login", async (req, res) => {
         name: user.name,
         email: user.email,
         role: user.role,
-        approval_status: user.approvalStatus, // Serialize as snake_case for API
+        approval_status: user.approvalStatus, // Serialize as snake_case
       },
     });
   } catch (err) {
