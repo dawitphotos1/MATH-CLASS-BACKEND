@@ -1,8 +1,11 @@
+
+
+
 // // middleware/authMiddleware.js
 // const jwt = require("jsonwebtoken");
 // const { User } = require("../models");
 
-// module.exports = async (req, res, next) => {
+// const authenticateToken = async (req, res, next) => {
 //   const authHeader = req.headers["authorization"];
 //   const token = authHeader && authHeader.split(" ")[1];
 
@@ -12,9 +15,8 @@
 
 //   try {
 //     const decoded = jwt.verify(token, process.env.JWT_SECRET);
-
-//     // ✅ must match payload { userId }
 //     const user = await User.findByPk(decoded.userId);
+
 //     if (!user) {
 //       return res.status(401).json({ success: false, error: "Invalid token user" });
 //     }
@@ -34,6 +36,13 @@
 //       .json({ success: false, error: "Invalid or expired token" });
 //   }
 // };
+
+// module.exports = {
+//   authenticateToken,
+// };
+
+
+
 
 
 
@@ -57,6 +66,14 @@ const authenticateToken = async (req, res, next) => {
       return res.status(401).json({ success: false, error: "Invalid token user" });
     }
 
+    // Check if user is approved
+    if (user.approval_status !== "approved") {
+      return res.status(403).json({ 
+        success: false, 
+        error: "Account pending approval or rejected" 
+      });
+    }
+
     req.user = {
       userId: user.id,
       email: user.email,
@@ -67,6 +84,7 @@ const authenticateToken = async (req, res, next) => {
 
     next();
   } catch (err) {
+    console.error("Token verification error:", err.message);
     return res
       .status(403)
       .json({ success: false, error: "Invalid or expired token" });
