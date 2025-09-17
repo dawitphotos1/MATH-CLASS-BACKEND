@@ -4,7 +4,8 @@ const path = require("path");
 const multer = require("multer");
 const { Lesson, Course, User, UserCourseAccess } = require("../models");
 
-const auth = require("../middleware/auth");
+const courseController = require("../controllers/courseController");
+// const auth = require("../middleware/auth");
 const roleMiddleware = require("../middleware/roleMiddleware");
 const authenticateToken = require("../middleware/authenticateToken");
 const checkTeacherOrAdmin = require("../middleware/checkTeacherOrAdmin");
