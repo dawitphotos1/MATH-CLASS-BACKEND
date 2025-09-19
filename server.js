@@ -106,7 +106,6 @@
 
 
 
-
 // server.js
 require("dotenv").config();
 const express = require("express");
@@ -114,26 +113,29 @@ const cors = require("cors");
 const helmet = require("helmet");
 const cookieParser = require("cookie-parser");
 const rateLimit = require("express-rate-limit");
-const sequelize = require("./config/db"); // use updated db.js
+const sequelize = require("./config/db");
 
 const app = express();
-app.set("trust proxy", 1);
+app.set("trust proxy", 1); // For cookies over HTTPS in Render
 
-// 🔍 Log env presence
-console.log("🚀 DATABASE_URL:", process.env.DATABASE_URL ? "SET" : "MISSING");
-console.log("🚀 JWT_SECRET:", process.env.JWT_SECRET ? "SET" : "MISSING");
+// 🔍 Log env vars presence
+console.log("🚀 DATABASE_URL:", process.env.DATABASE_URL ? "✅ SET" : "❌ MISSING");
+console.log("🚀 JWT_SECRET:", process.env.JWT_SECRET ? "✅ SET" : "❌ MISSING");
 
-// Middleware
+// ====================
+// 🔹 Middleware
+// ====================
 app.use(helmet());
-app.use(cookieParser());
+app.use(cookieParser()); // ✅ Required for reading JWT cookies
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
-// ✅ CORS
+// ✅ CORS Configuration — allows credentials
 const allowedOrigins = [
   "http://localhost:3000",
   "https://mathe-class-website-frontend.onrender.com",
 ];
+
 app.use(
   cors({
     origin: (origin, callback) => {
@@ -144,13 +146,13 @@ app.use(
         callback(new Error("Not allowed by CORS"));
       }
     },
-    credentials: true,
+    credentials: true, // ✅ Needed for cookies
     methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
     allowedHeaders: ["Content-Type", "Authorization"],
   })
 );
 
-// Rate Limiting
+// ✅ Rate Limiting
 const apiLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
   max: 500,
@@ -158,18 +160,20 @@ const apiLimiter = rateLimit({
 });
 app.use("/api", apiLimiter);
 
-// Logger
+// ✅ Simple Request Logger
 app.use((req, res, next) => {
   console.log(`📥 [${req.method}] ${req.originalUrl}`);
   next();
 });
 
-// Routes
-console.log("🚀 Registering routes: /api/v1/auth, /api/v1/admin");
+// ====================
+// 🔹 Routes
+// ====================
+console.log("📦 Registering routes: /api/v1/auth, /api/v1/admin");
 app.use("/api/v1/auth", require("./routes/auth"));
-app.use("/api/v1/admin", require("./routes/admin"));
+app.use("/api/v1/admin", require("./routes/admin")); // leave this as-is
 
-// Health check (for Render)
+// 🔍 Health check route (for Render)
 app.get("/api/v1/health", async (req, res) => {
   try {
     await sequelize.authenticate();
@@ -179,22 +183,28 @@ app.get("/api/v1/health", async (req, res) => {
   }
 });
 
-// 404 Handler
+// ====================
+// 🔹 404 Handler
+// ====================
 app.use((req, res) => {
-  console.log("404: Route not found", { url: req.originalUrl });
+  console.log("❌ 404 Not Found:", req.originalUrl);
   res.status(404).json({ success: false, error: "Not Found" });
 });
 
-// Global Error Handler
+// ====================
+// 🔹 Global Error Handler
+// ====================
 app.use((err, req, res, next) => {
-  console.error("❌ Global Error:", { error: err.message });
+  console.error("❌ Global Error:", err.stack || err.message);
   res.status(err.status || 500).json({
     success: false,
     error: err.message || "Internal Server Error",
   });
 });
 
-// Start server
+// ====================
+// 🔹 Start Server
+// ====================
 const PORT = process.env.PORT || 5000;
 
 (async () => {
@@ -211,6 +221,5 @@ const PORT = process.env.PORT || 5000;
     });
   } catch (err) {
     console.error("❌ Server startup error:", err.message);
-    // Don’t exit — app keeps running and retries DB
   }
 })();

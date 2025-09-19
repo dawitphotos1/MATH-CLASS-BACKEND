@@ -1,11 +1,64 @@
 
+// // middleware/authMiddleware.js
+// const jwt = require("jsonwebtoken");
+// const { User } = require("../models");
+
+// const authenticateToken = async (req, res, next) => {
+//   const authHeader = req.headers["authorization"];
+//   const token = authHeader && authHeader.split(" ")[1];
+
+//   if (!token) {
+//     return res.status(401).json({ success: false, error: "No token provided" });
+//   }
+
+//   try {
+//     const decoded = jwt.verify(token, process.env.JWT_SECRET);
+//     const user = await User.findByPk(decoded.userId);
+
+//     if (!user) {
+//       return res.status(401).json({ success: false, error: "Invalid token user" });
+//     }
+
+//     // Check if user is approved
+//     if (user.approval_status !== "approved") {
+//       return res.status(403).json({ 
+//         success: false, 
+//         error: "Account pending approval or rejected" 
+//       });
+//     }
+
+//     req.user = {
+//       userId: user.id,
+//       email: user.email,
+//       role: user.role.toLowerCase(),
+//       name: user.name,
+//       approval_status: user.approval_status,
+//     };
+
+//     next();
+//   } catch (err) {
+//     console.error("Token verification error:", err.message);
+//     return res
+//       .status(403)
+//       .json({ success: false, error: "Invalid or expired token" });
+//   }
+// };
+
+// module.exports = {
+//   authenticateToken,
+// };
+
+
+
+
 // middleware/authMiddleware.js
 const jwt = require("jsonwebtoken");
 const { User } = require("../models");
 
 const authenticateToken = async (req, res, next) => {
-  const authHeader = req.headers["authorization"];
-  const token = authHeader && authHeader.split(" ")[1];
+  const token =
+    req.cookies?.token || // ✅ Cookie first
+    (req.headers["authorization"] && req.headers["authorization"].split(" ")[1]);
 
   if (!token) {
     return res.status(401).json({ success: false, error: "No token provided" });
@@ -19,11 +72,10 @@ const authenticateToken = async (req, res, next) => {
       return res.status(401).json({ success: false, error: "Invalid token user" });
     }
 
-    // Check if user is approved
     if (user.approval_status !== "approved") {
-      return res.status(403).json({ 
-        success: false, 
-        error: "Account pending approval or rejected" 
+      return res.status(403).json({
+        success: false,
+        error: "Account pending approval or rejected",
       });
     }
 
@@ -44,6 +96,4 @@ const authenticateToken = async (req, res, next) => {
   }
 };
 
-module.exports = {
-  authenticateToken,
-};
+module.exports = { authenticateToken };
