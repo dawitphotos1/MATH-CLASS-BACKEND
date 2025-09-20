@@ -136,18 +136,13 @@
 
 
 
-
 // controllers/adminController.js
+import { User, Course, UserCourseAccess } from "../models/index.js";
 import jwt from "jsonwebtoken";
 import bcrypt from "bcryptjs";
-import db from "../models/index.js"; // ✅ Centralized import
 import { sendSuccess, sendError } from "../utils/response.js";
 
-const { User, Course, UserCourseAccess } = db;
-
-// =========================
 // 🔹 Admin Login
-// =========================
 export const login = async (req, res) => {
   try {
     const { email, password } = req.body;
@@ -164,39 +159,23 @@ export const login = async (req, res) => {
       return sendError(res, 403, "Account pending approval");
     }
 
-    if (user.role.toLowerCase() !== "admin") {
-      return sendError(res, 403, "Not authorized as admin");
-    }
-
     const token = jwt.sign(
-      { userId: user.id, role: user.role.toLowerCase() },
+      { id: user.id, role: user.role.toLowerCase() },
       process.env.JWT_SECRET,
       { expiresIn: "1d" }
     );
 
     return sendSuccess(
       res,
-      {
-        token,
-        user: {
-          id: user.id,
-          name: user.name,
-          email: user.email,
-          role: user.role.toLowerCase(),
-          approval_status: user.approval_status,
-        },
-      },
+      { user, token },
       "Admin login successful"
     );
   } catch (error) {
-    console.error("Admin login error:", error);
     return sendError(res, 500, "Server error", error.message);
   }
 };
 
-// =========================
 // 🔹 Get Pending Users
-// =========================
 export const getPendingUsers = async (req, res) => {
   try {
     const users = await User.findAll({
@@ -206,14 +185,11 @@ export const getPendingUsers = async (req, res) => {
 
     return sendSuccess(res, { users }, "Pending users fetched");
   } catch (error) {
-    console.error("GetPendingUsers error:", error);
     return sendError(res, 500, "Server error", error.message);
   }
 };
 
-// =========================
 // 🔹 Approve/Reject User
-// =========================
 export const updateUserApproval = async (req, res) => {
   try {
     const { userId } = req.params;
@@ -225,28 +201,13 @@ export const updateUserApproval = async (req, res) => {
     user.approval_status = status.toLowerCase();
     await user.save();
 
-    return sendSuccess(
-      res,
-      {
-        user: {
-          id: user.id,
-          name: user.name,
-          email: user.email,
-          role: user.role.toLowerCase(),
-          approval_status: user.approval_status,
-        },
-      },
-      `User ${status}`
-    );
+    return sendSuccess(res, { user }, `User ${status}`);
   } catch (error) {
-    console.error("UpdateUserApproval error:", error);
     return sendError(res, 500, "Server error", error.message);
   }
 };
 
-// =========================
 // 🔹 Get Enrollments
-// =========================
 export const getEnrollments = async (req, res) => {
   try {
     const { status } = req.query;
@@ -265,15 +226,14 @@ export const getEnrollments = async (req, res) => {
       {
         enrollments: enrollments.map((e) => ({
           id: e.id,
-          student: { name: e.User?.name, email: e.User?.email },
-          course: { title: e.Course?.title },
+          student: { name: e.User.name, email: e.User.email },
+          course: { title: e.Course.title },
         })),
         status: status || "all",
       },
       "Enrollments fetched"
     );
   } catch (error) {
-    console.error("GetEnrollments error:", error);
     return sendError(res, 500, "Server error", error.message);
   }
 };
