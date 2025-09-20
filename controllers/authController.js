@@ -153,7 +153,7 @@
 
 
 
-// controllers/authController.js
+
 const { User } = require("../models");
 const jwt = require("jsonwebtoken");
 const bcrypt = require("bcryptjs");
@@ -166,10 +166,11 @@ exports.register = async (req, res) => {
   try {
     const { name, email, password, role, subject } = req.body;
 
-    const existingUser = await User.findOne({ where: { email: email.toLowerCase() } });
-    if (existingUser) {
+    const existingUser = await User.findOne({
+      where: { email: email.toLowerCase() },
+    });
+    if (existingUser)
       return sendError(res, 400, "User with this email already exists");
-    }
 
     const hashedPassword = await bcrypt.hash(password, 10);
 
@@ -182,22 +183,6 @@ exports.register = async (req, res) => {
       subject: subject || null,
       avatar: null,
     });
-
-    // Set cookie only if approved
-    if (user.approval_status === "approved") {
-      const token = jwt.sign(
-        { userId: user.id, role: user.role },
-        process.env.JWT_SECRET,
-        { expiresIn: "7d" }
-      );
-
-      res.cookie("token", token, {
-        httpOnly: true,
-        secure: process.env.NODE_ENV === "production",
-        sameSite: "None",
-        maxAge: 7 * 24 * 60 * 60 * 1000,
-      });
-    }
 
     return sendSuccess(
       res,
@@ -245,9 +230,7 @@ exports.login = async (req, res) => {
       { expiresIn: "7d" }
     );
 
-    await user.update({ last_login: new Date() });
-
-    // ✅ Set HttpOnly cookie
+    // ✅ Set cookie
     res.cookie("token", token, {
       httpOnly: true,
       secure: process.env.NODE_ENV === "production",
@@ -266,7 +249,6 @@ exports.login = async (req, res) => {
           approval_status: user.approval_status,
           subject: user.subject,
           avatar: user.avatar,
-          last_login: user.last_login,
         },
       },
       "Login successful"
@@ -281,17 +263,21 @@ exports.login = async (req, res) => {
 // 🔹 Logout
 // =========================
 exports.logout = async (req, res) => {
-  res.clearCookie("token", {
-    httpOnly: true,
-    secure: process.env.NODE_ENV === "production",
-    sameSite: "None",
-  });
-
-  return sendSuccess(res, {}, "Logout successful");
+  try {
+    res.clearCookie("token", {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === "production",
+      sameSite: "None",
+    });
+    return sendSuccess(res, {}, "Logged out successfully");
+  } catch (error) {
+    console.error("Logout error:", error);
+    return sendError(res, 500, "Logout failed", error.message);
+  }
 };
 
 // =========================
-// 🔹 Me (get current user)
+// 🔹 Me
 // =========================
 exports.me = async (req, res) => {
   try {
@@ -310,9 +296,7 @@ exports.me = async (req, res) => {
 
     if (!user) return sendError(res, 404, "User not found");
 
-    return sendSuccess(res, {
-      user,
-    });
+    return sendSuccess(res, { user });
   } catch (err) {
     console.error("Me endpoint error:", err);
     return sendError(res, 500, "Failed to fetch user profile", err.message);

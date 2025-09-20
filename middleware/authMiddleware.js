@@ -51,14 +51,15 @@
 
 
 
-// middleware/authMiddleware.js
+
 const jwt = require("jsonwebtoken");
 const { User } = require("../models");
 
 const authenticateToken = async (req, res, next) => {
   const token =
-    req.cookies?.token || // ✅ Cookie first
-    (req.headers["authorization"] && req.headers["authorization"].split(" ")[1]);
+    req.cookies?.token ||
+    (req.headers["authorization"] &&
+      req.headers["authorization"].split(" ")[1]);
 
   if (!token) {
     return res.status(401).json({ success: false, error: "No token provided" });
@@ -69,7 +70,9 @@ const authenticateToken = async (req, res, next) => {
     const user = await User.findByPk(decoded.userId);
 
     if (!user) {
-      return res.status(401).json({ success: false, error: "Invalid token user" });
+      return res
+        .status(401)
+        .json({ success: false, error: "Invalid token user" });
     }
 
     if (user.approval_status !== "approved") {
