@@ -35,10 +35,10 @@
 
 // export default authMiddleware;
 
-
 // middleware/authMiddleware.js
 import jwt from "jsonwebtoken";
-import { User } from "../models/index.js"; // ✅ use models/index.js
+import db from "../models/index.js"; // ✅ import default
+const { User } = db;                // ✅ destructure User
 
 export const authenticateToken = async (req, res, next) => {
   try {

@@ -139,11 +139,11 @@
 // };
 
 
-
 // controllers/authController.js
 import jwt from "jsonwebtoken";
 import bcrypt from "bcryptjs";
-import { User } from "../models/index.js"; // ✅ import from models/index.js
+import db from "../models/index.js"; // ✅ use default import
+const { User } = db;                 // ✅ destructure User from db
 import { sendSuccess, sendError } from "../utils/response.js";
 
 // =========================
