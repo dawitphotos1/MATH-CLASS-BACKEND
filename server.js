@@ -107,17 +107,22 @@
 
 
 
+// server.js
+import dotenv from "dotenv";
+dotenv.config();
 
-require("dotenv").config();
-const express = require("express");
-const cors = require("cors");
-const helmet = require("helmet");
-const cookieParser = require("cookie-parser");
-const rateLimit = require("express-rate-limit");
-const sequelize = require("./config/db");
+import express from "express";
+import cors from "cors";
+import helmet from "helmet";
+import cookieParser from "cookie-parser";
+import rateLimit from "express-rate-limit";
+import sequelize from "./config/db.js"; // Make sure this is ES module compatible
+
+import authRoutes from "./routes/auth.js";
+import adminRoutes from "./routes/admin.js";
 
 const app = express();
-app.set("trust proxy", 1); // Needed for cookies on Render (HTTPS + proxy)
+app.set("trust proxy", 1); // Needed for cookies behind proxy
 
 // 🔍 Log critical env vars presence
 console.log(
@@ -130,7 +135,7 @@ console.log("🚀 JWT_SECRET:", process.env.JWT_SECRET ? "✅ SET" : "❌ MISSIN
 // 🔹 Middleware
 // ====================
 app.use(helmet());
-app.use(cookieParser()); // ✅ Needed for JWT cookies
+app.use(cookieParser()); // Needed for JWT cookies
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
@@ -166,8 +171,8 @@ app.use((req, res, next) => {
 // 🔹 Routes
 // ====================
 console.log("📦 Registering routes: /api/v1/auth, /api/v1/admin");
-app.use("/api/v1/auth", require("./routes/auth"));
-app.use("/api/v1/admin", require("./routes/admin")); // keep as-is
+app.use("/api/v1/auth", authRoutes);
+app.use("/api/v1/admin", adminRoutes);
 
 // ✅ Health check (for Render)
 app.get("/api/v1/health", async (req, res) => {

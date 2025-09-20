@@ -26,12 +26,17 @@
 
 // module.exports = router;
 
-
 // routes/auth.js
-const express = require("express");
+import express from "express";
+import {
+  register,
+  login,
+  logout,
+  getMe,
+} from "../controllers/authController.js";
+import { authenticateToken } from "../middleware/authMiddleware.js";
+
 const router = express.Router();
-const { register, login, me, logout } = require("../controllers/authController");
-const { authenticateToken } = require("../middleware/authMiddleware");
 
 // User registration
 router.post("/register", register);
@@ -40,9 +45,9 @@ router.post("/register", register);
 router.post("/login", login);
 
 // Get current logged-in user
-router.get("/me", authenticateToken, me);
+router.get("/me", authenticateToken, getMe);
 
-// Logout user (optional but useful)
+// Logout user
 router.post("/logout", logout);
 
-module.exports = router;
+export default router;
