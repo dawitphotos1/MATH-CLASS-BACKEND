@@ -151,11 +151,10 @@
 // };
 
 
-
 // controllers/authController.js
 import jwt from "jsonwebtoken";
 import bcrypt from "bcryptjs";
-import { User } from "../models/User.js"; // or adjust path to your Sequelize model
+import User from "../models/User.js"; // ✅ Fixed import
 import { sendSuccess, sendError } from "../utils/response.js";
 
 // =========================
@@ -193,17 +192,15 @@ export const register = async (req, res) => {
       avatar: null,
     });
 
-    // Generate token if approved
     let token = null;
     if (user.approval_status === "approved") {
       token = generateToken(user);
 
-      // Set HttpOnly cookie
       res.cookie("token", token, {
         httpOnly: true,
         secure: process.env.NODE_ENV === "production",
         sameSite: "None",
-        maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
+        maxAge: 7 * 24 * 60 * 60 * 1000,
       });
     }
 
@@ -249,15 +246,13 @@ export const login = async (req, res) => {
 
     const token = generateToken(user);
 
-    // Update last login
     await user.update({ last_login: new Date() });
 
-    // Set HttpOnly cookie
     res.cookie("token", token, {
       httpOnly: true,
       secure: process.env.NODE_ENV === "production",
       sameSite: "None",
-      maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
+      maxAge: 7 * 24 * 60 * 60 * 1000,
     });
 
     return sendSuccess(
