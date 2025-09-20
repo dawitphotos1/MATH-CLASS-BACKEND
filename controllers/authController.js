@@ -153,152 +153,120 @@
 
 
 
-
-const { User } = require("../models");
-const jwt = require("jsonwebtoken");
+// controllers/authController.js
 const bcrypt = require("bcryptjs");
-const { sendSuccess, sendError } = require("../utils/response");
+const jwt = require("jsonwebtoken");
+const { User } = require("../models");
 
-// =========================
-// 🔹 Register
-// =========================
+// Helper: create JWT and cookie
+const sendToken = (user, res) => {
+  const token = jwt.sign(
+    { id: user.id, email: user.email, role: user.role },
+    process.env.JWT_SECRET,
+    { expiresIn: "1d" }
+  );
+
+  // Send token as HTTP-only cookie
+  res.cookie("token", token, {
+    httpOnly: true,
+    secure: process.env.NODE_ENV === "production", // secure only in prod
+    sameSite: "None", // allow cross-site cookies
+    maxAge: 24 * 60 * 60 * 1000, // 1 day
+  });
+
+  res.json({
+    success: true,
+    message: "Logged in successfully",
+    token,
+    user: { id: user.id, email: user.email, role: user.role },
+  });
+};
+
+// ==========================
+// Register Controller
+// ==========================
 exports.register = async (req, res) => {
   try {
-    const { name, email, password, role, subject } = req.body;
+    const { name, email, password } = req.body;
 
-    const existingUser = await User.findOne({
-      where: { email: email.toLowerCase() },
-    });
-    if (existingUser)
-      return sendError(res, 400, "User with this email already exists");
+    if (!name || !email || !password) {
+      return res
+        .status(400)
+        .json({ success: false, error: "All fields are required" });
+    }
+
+    const existing = await User.findOne({ where: { email } });
+    if (existing) {
+      return res
+        .status(400)
+        .json({ success: false, error: "Email already registered" });
+    }
 
     const hashedPassword = await bcrypt.hash(password, 10);
-
     const user = await User.create({
       name,
-      email: email.toLowerCase(),
+      email,
       password: hashedPassword,
-      role: role.toLowerCase(),
-      approval_status: role === "student" ? "pending" : "approved",
-      subject: subject || null,
-      avatar: null,
+      role: "student",
     });
 
-    return sendSuccess(
-      res,
-      {
-        user: {
-          id: user.id,
-          name: user.name,
-          email: user.email,
-          role: user.role,
-          approval_status: user.approval_status,
-          subject: user.subject,
-          avatar: user.avatar,
-        },
-      },
-      user.approval_status === "approved"
-        ? "Registration successful"
-        : "Registration pending approval"
-    );
-  } catch (error) {
-    console.error("Registration error:", error);
-    return sendError(res, 500, "Registration failed", error.message);
+    sendToken(user, res);
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
   }
 };
 
-// =========================
-// 🔹 Login
-// =========================
+// ==========================
+// Login Controller
+// ==========================
 exports.login = async (req, res) => {
   try {
     const { email, password } = req.body;
-    const user = await User.findOne({ where: { email: email.toLowerCase() } });
 
-    if (!user) return sendError(res, 401, "Invalid credentials");
-
-    const isMatch = await bcrypt.compare(password, user.password);
-    if (!isMatch) return sendError(res, 401, "Invalid credentials");
-
-    if (user.approval_status !== "approved") {
-      return sendError(res, 403, "Account pending approval");
+    const user = await User.findOne({ where: { email } });
+    if (!user) {
+      return res
+        .status(400)
+        .json({ success: false, error: "Invalid credentials" });
     }
 
-    const token = jwt.sign(
-      { userId: user.id, role: user.role },
-      process.env.JWT_SECRET,
-      { expiresIn: "7d" }
-    );
+    const isMatch = await bcrypt.compare(password, user.password);
+    if (!isMatch) {
+      return res
+        .status(400)
+        .json({ success: false, error: "Invalid credentials" });
+    }
 
-    // ✅ Set cookie
-    res.cookie("token", token, {
-      httpOnly: true,
-      secure: process.env.NODE_ENV === "production",
-      sameSite: "None",
-      maxAge: 7 * 24 * 60 * 60 * 1000,
-    });
-
-    return sendSuccess(
-      res,
-      {
-        user: {
-          id: user.id,
-          name: user.name,
-          email: user.email,
-          role: user.role,
-          approval_status: user.approval_status,
-          subject: user.subject,
-          avatar: user.avatar,
-        },
-      },
-      "Login successful"
-    );
-  } catch (error) {
-    console.error("Login error:", error);
-    return sendError(res, 500, "Login failed", error.message);
+    sendToken(user, res);
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
   }
 };
 
-// =========================
-// 🔹 Logout
-// =========================
-exports.logout = async (req, res) => {
-  try {
-    res.clearCookie("token", {
-      httpOnly: true,
-      secure: process.env.NODE_ENV === "production",
-      sameSite: "None",
-    });
-    return sendSuccess(res, {}, "Logged out successfully");
-  } catch (error) {
-    console.error("Logout error:", error);
-    return sendError(res, 500, "Logout failed", error.message);
-  }
-};
-
-// =========================
-// 🔹 Me
-// =========================
+// ==========================
+// Me Controller
+// ==========================
 exports.me = async (req, res) => {
   try {
-    const user = await User.findByPk(req.user.userId, {
-      attributes: [
-        "id",
-        "name",
-        "email",
-        "role",
-        "approval_status",
-        "subject",
-        "avatar",
-        "last_login",
-      ],
-    });
+    if (!req.user) {
+      return res.status(401).json({ success: false, error: "Unauthorized" });
+    }
 
-    if (!user) return sendError(res, 404, "User not found");
-
-    return sendSuccess(res, { user });
+    res.json({ success: true, user: req.user });
   } catch (err) {
-    console.error("Me endpoint error:", err);
-    return sendError(res, 500, "Failed to fetch user profile", err.message);
+    res.status(500).json({ success: false, error: err.message });
   }
+};
+
+// ==========================
+// Logout Controller
+// ==========================
+exports.logout = (req, res) => {
+  res.clearCookie("token", {
+    httpOnly: true,
+    secure: process.env.NODE_ENV === "production",
+    sameSite: "None",
+  });
+
+  res.json({ success: true, message: "Logged out successfully" });
 };

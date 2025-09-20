@@ -27,24 +27,22 @@
 // module.exports = router;
 
 
-
 // routes/auth.js
 const express = require("express");
 const router = express.Router();
-const { login, register, me, logout } = require("../controllers/authController");
+const { register, login, me, logout } = require("../controllers/authController");
 const { authenticateToken } = require("../middleware/authMiddleware");
 
-// ✅ TEST route to confirm deployment
-router.get("/test", (req, res) => {
-  res.json({ success: true, message: "✅ Auth routes are working!" });
-});
-
-// Public routes
+// User registration
 router.post("/register", register);
-router.post("/login", login);
-router.post("/logout", logout);
 
-// Protected routes
+// User login
+router.post("/login", login);
+
+// Get current logged-in user
 router.get("/me", authenticateToken, me);
+
+// Logout user (optional but useful)
+router.post("/logout", logout);
 
 module.exports = router;
