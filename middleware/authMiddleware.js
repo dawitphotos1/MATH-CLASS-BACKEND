@@ -1,56 +1,4 @@
 
-// // // middleware/authMiddleware.js
-// // const jwt = require("jsonwebtoken");
-// // const { User } = require("../models");
-
-// // const authenticateToken = async (req, res, next) => {
-// //   const authHeader = req.headers["authorization"];
-// //   const token = authHeader && authHeader.split(" ")[1];
-
-// //   if (!token) {
-// //     return res.status(401).json({ success: false, error: "No token provided" });
-// //   }
-
-// //   try {
-// //     const decoded = jwt.verify(token, process.env.JWT_SECRET);
-// //     const user = await User.findByPk(decoded.userId);
-
-// //     if (!user) {
-// //       return res.status(401).json({ success: false, error: "Invalid token user" });
-// //     }
-
-// //     // Check if user is approved
-// //     if (user.approval_status !== "approved") {
-// //       return res.status(403).json({ 
-// //         success: false, 
-// //         error: "Account pending approval or rejected" 
-// //       });
-// //     }
-
-// //     req.user = {
-// //       userId: user.id,
-// //       email: user.email,
-// //       role: user.role.toLowerCase(),
-// //       name: user.name,
-// //       approval_status: user.approval_status,
-// //     };
-
-// //     next();
-// //   } catch (err) {
-// //     console.error("Token verification error:", err.message);
-// //     return res
-// //       .status(403)
-// //       .json({ success: false, error: "Invalid or expired token" });
-// //   }
-// // };
-
-// // module.exports = {
-// //   authenticateToken,
-// // };
-
-
-
-
 // // middleware/authMiddleware.js
 // import jwt from "jsonwebtoken";
 // import User from "../models/User.js";
@@ -89,17 +37,22 @@
 
 
 
-
-
 // middleware/authMiddleware.js
 import jwt from "jsonwebtoken";
-import User from "../models/User.js";
+import db from "../models/index.js";
 
-const authMiddleware = async (req, res, next) => {
+const { User } = db;
+
+export const authenticateToken = async (req, res, next) => {
   try {
-    let token = req.cookies?.token;
+    let token;
 
-    if (!token && req.headers["authorization"]?.startsWith("Bearer ")) {
+    // ✅ Check cookies first
+    if (req.cookies?.token) {
+      token = req.cookies.token;
+    } 
+    // ✅ Then check Authorization header
+    else if (req.headers["authorization"]?.startsWith("Bearer ")) {
       token = req.headers["authorization"].split(" ")[1];
     }
 
@@ -107,22 +60,21 @@ const authMiddleware = async (req, res, next) => {
       return res.status(401).json({ message: "No token, authorization denied" });
     }
 
+    // ✅ Decode JWT
     const decoded = jwt.verify(token, process.env.JWT_SECRET);
 
-    const user = await User.findByPk(decoded.userId, {
+    // ⚠️ Note: in your token you use `userId`, not `id`
+    req.user = await User.findByPk(decoded.userId, {
       attributes: { exclude: ["password"] },
     });
 
-    if (!user) {
+    if (!req.user) {
       return res.status(401).json({ message: "User not found" });
     }
 
-    req.user = { userId: user.id, role: user.role };
     next();
-  } catch (err) {
-    console.error("Auth Middleware Error:", err.message);
+  } catch (error) {
+    console.error("Auth Middleware Error:", error.message);
     res.status(401).json({ message: "Token is not valid" });
   }
 };
-
-export default authMiddleware;

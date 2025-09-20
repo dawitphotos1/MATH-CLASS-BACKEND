@@ -1,10 +1,19 @@
 
+// import db from "../models/index.js";
+// const { User, Course, UserCourseAccess } = db;
 
-// // controllers/adminController.js
-// import { User, Course, UserCourseAccess } from "../models/index.js";
 // import jwt from "jsonwebtoken";
 // import bcrypt from "bcryptjs";
 // import { sendSuccess, sendError } from "../utils/response.js";
+
+// // ✅ Optional Debug: Log if models are undefined
+// if (!User || !Course || !UserCourseAccess) {
+//   console.error("❌ Models not loaded correctly:", {
+//     User: !!User,
+//     Course: !!Course,
+//     UserCourseAccess: !!UserCourseAccess,
+//   });
+// }
 
 // // 🔹 Admin Login
 // export const login = async (req, res) => {
@@ -128,30 +137,22 @@
 
 
 
-
-import db from "../models/index.js";
-const { User, Course, UserCourseAccess } = db;
-
+// controllers/adminController.js
 import jwt from "jsonwebtoken";
 import bcrypt from "bcryptjs";
+import db from "../models/index.js"; // ✅ Centralized import
 import { sendSuccess, sendError } from "../utils/response.js";
 
-// ✅ Optional Debug: Log if models are undefined
-if (!User || !Course || !UserCourseAccess) {
-  console.error("❌ Models not loaded correctly:", {
-    User: !!User,
-    Course: !!Course,
-    UserCourseAccess: !!UserCourseAccess,
-  });
-}
+const { User, Course, UserCourseAccess } = db;
 
+// =========================
 // 🔹 Admin Login
+// =========================
 export const login = async (req, res) => {
   try {
     const { email, password } = req.body;
-    if (!email || !password) {
+    if (!email || !password)
       return sendError(res, 400, "Email and password required");
-    }
 
     const user = await User.findOne({ where: { email: email.toLowerCase() } });
     if (!user) return sendError(res, 401, "Invalid credentials");
@@ -161,6 +162,10 @@ export const login = async (req, res) => {
 
     if (user.approval_status !== "approved") {
       return sendError(res, 403, "Account pending approval");
+    }
+
+    if (user.role.toLowerCase() !== "admin") {
+      return sendError(res, 403, "Not authorized as admin");
     }
 
     const token = jwt.sign(
@@ -184,11 +189,14 @@ export const login = async (req, res) => {
       "Admin login successful"
     );
   } catch (error) {
+    console.error("Admin login error:", error);
     return sendError(res, 500, "Server error", error.message);
   }
 };
 
+// =========================
 // 🔹 Get Pending Users
+// =========================
 export const getPendingUsers = async (req, res) => {
   try {
     const users = await User.findAll({
@@ -198,11 +206,14 @@ export const getPendingUsers = async (req, res) => {
 
     return sendSuccess(res, { users }, "Pending users fetched");
   } catch (error) {
+    console.error("GetPendingUsers error:", error);
     return sendError(res, 500, "Server error", error.message);
   }
 };
 
+// =========================
 // 🔹 Approve/Reject User
+// =========================
 export const updateUserApproval = async (req, res) => {
   try {
     const { userId } = req.params;
@@ -228,11 +239,14 @@ export const updateUserApproval = async (req, res) => {
       `User ${status}`
     );
   } catch (error) {
+    console.error("UpdateUserApproval error:", error);
     return sendError(res, 500, "Server error", error.message);
   }
 };
 
+// =========================
 // 🔹 Get Enrollments
+// =========================
 export const getEnrollments = async (req, res) => {
   try {
     const { status } = req.query;
@@ -251,14 +265,15 @@ export const getEnrollments = async (req, res) => {
       {
         enrollments: enrollments.map((e) => ({
           id: e.id,
-          student: { name: e.User.name, email: e.User.email },
-          course: { title: e.Course.title },
+          student: { name: e.User?.name, email: e.User?.email },
+          course: { title: e.Course?.title },
         })),
         status: status || "all",
       },
       "Enrollments fetched"
     );
   } catch (error) {
+    console.error("GetEnrollments error:", error);
     return sendError(res, 500, "Server error", error.message);
   }
 };

@@ -2,22 +2,18 @@
 // // controllers/authController.js
 // import jwt from "jsonwebtoken";
 // import bcrypt from "bcryptjs";
-// import User from "../models/User.js"; // ✅ Fixed import
-// import { sendSuccess, sendError } from "../utils/response.js";
+// import User from "../models/User.js";
 
-// // =========================
-// // 🔐 Generate JWT Token
-// // =========================
 // const generateToken = (user) => {
 //   return jwt.sign(
-//     { userId: user.id, role: user.role },
+//     { userId: user.id, role: user.role }, // ✅ use userId
 //     process.env.JWT_SECRET,
 //     { expiresIn: "7d" }
 //   );
 // };
 
 // // =========================
-// // 🔹 Register
+// // Register
 // // =========================
 // export const register = async (req, res) => {
 //   try {
@@ -25,7 +21,7 @@
 
 //     const existingUser = await User.findOne({ where: { email: email.toLowerCase() } });
 //     if (existingUser) {
-//       return sendError(res, 400, "User with this email already exists");
+//       return res.status(400).json({ error: "User with this email already exists" });
 //     }
 
 //     const hashedPassword = await bcrypt.hash(password, 10);
@@ -37,7 +33,6 @@
 //       role: role.toLowerCase(),
 //       approval_status: role === "student" ? "pending" : "approved",
 //       subject: subject || null,
-//       avatar: null,
 //     });
 
 //     let token = null;
@@ -52,48 +47,41 @@
 //       });
 //     }
 
-//     return sendSuccess(
-//       res,
-//       {
-//         user: {
-//           id: user.id,
-//           name: user.name,
-//           email: user.email,
-//           role: user.role,
-//           approval_status: user.approval_status,
-//           subject: user.subject,
-//           avatar: user.avatar,
-//         },
+//     return res.status(201).json({
+//       user: {
+//         id: user.id,
+//         name: user.name,
+//         email: user.email,
+//         role: user.role,
+//         approval_status: user.approval_status,
+//         subject: user.subject,
 //       },
-//       user.approval_status === "approved"
-//         ? "Registration successful"
-//         : "Registration pending approval"
-//     );
-//   } catch (error) {
-//     console.error("Registration error:", error);
-//     return sendError(res, 500, "Registration failed", error.message);
+//       token, // send token for localStorage
+//     });
+//   } catch (err) {
+//     console.error("Register error:", err);
+//     res.status(500).json({ error: "Registration failed" });
 //   }
 // };
 
 // // =========================
-// // 🔹 Login
+// // Login
 // // =========================
 // export const login = async (req, res) => {
 //   try {
 //     const { email, password } = req.body;
 
 //     const user = await User.findOne({ where: { email: email.toLowerCase() } });
-//     if (!user) return sendError(res, 401, "Invalid credentials");
+//     if (!user) return res.status(401).json({ error: "Invalid credentials" });
 
 //     const isMatch = await bcrypt.compare(password, user.password);
-//     if (!isMatch) return sendError(res, 401, "Invalid credentials");
+//     if (!isMatch) return res.status(401).json({ error: "Invalid credentials" });
 
 //     if (user.approval_status !== "approved") {
-//       return sendError(res, 403, "Account pending approval");
+//       return res.status(403).json({ error: "Account pending approval" });
 //     }
 
 //     const token = generateToken(user);
-
 //     await user.update({ last_login: new Date() });
 
 //     res.cookie("token", token, {
@@ -103,68 +91,43 @@
 //       maxAge: 7 * 24 * 60 * 60 * 1000,
 //     });
 
-//     return sendSuccess(
-//       res,
-//       {
-//         user: {
-//           id: user.id,
-//           name: user.name,
-//           email: user.email,
-//           role: user.role,
-//           approval_status: user.approval_status,
-//           subject: user.subject,
-//           avatar: user.avatar,
-//           last_login: user.last_login,
-//         },
-//       },
-//       "Login successful"
-//     );
-//   } catch (error) {
-//     console.error("Login error:", error);
-//     return sendError(res, 500, "Login failed", error.message);
-//   }
-// };
-
-// // =========================
-// // 🔹 Get Current User
-// // =========================
-// export const getMe = async (req, res) => {
-//   try {
-//     const user = await User.findByPk(req.user.userId, {
-//       attributes: [
-//         "id",
-//         "name",
-//         "email",
-//         "role",
-//         "approval_status",
-//         "subject",
-//         "avatar",
-//         "last_login",
-//       ],
-//     });
-
-//     if (!user) return sendError(res, 404, "User not found");
-
-//     return sendSuccess(res, {
+//     res.json({
 //       user: {
 //         id: user.id,
 //         name: user.name,
 //         email: user.email,
-//         role: user.role.toLowerCase(),
+//         role: user.role,
 //         approval_status: user.approval_status,
 //         subject: user.subject,
-//         avatar: user.avatar,
 //         last_login: user.last_login,
 //       },
+//       token, // also return for frontend
 //     });
 //   } catch (err) {
-//     console.error("Me endpoint error:", err);
-//     return sendError(res, 500, "Failed to fetch user profile", err.message);
+//     console.error("Login error:", err);
+//     res.status(500).json({ error: "Login failed" });
 //   }
 // };
 
 // // =========================
-// // 🔹 Logout
+// // Get Current User
+// // =========================
+// export const me = async (req, res) => {
+//   try {
+//     const user = await User.findByPk(req.user.userId, {
+//       attributes: { exclude: ["password"] },
+//     });
+//     if (!user) return res.status(404).json({ error: "User not found" });
+
+//     res.json({ user });
+//   } catch (err) {
+//     console.error("Me error:", err);
+//     res.status(500).json({ error: "Failed to fetch user profile" });
+//   }
+// };
+
+// // =========================
+// // Logout
 // // =========================
 // export const logout = (req, res) => {
 //   res.clearCookie("token", {
@@ -172,9 +135,8 @@
 //     secure: process.env.NODE_ENV === "production",
 //     sameSite: "None",
 //   });
-//   return res.status(200).json({ success: true, message: "Logged out successfully" });
+//   res.json({ success: true, message: "Logged out successfully" });
 // };
-
 
 
 
@@ -182,18 +144,24 @@
 // controllers/authController.js
 import jwt from "jsonwebtoken";
 import bcrypt from "bcryptjs";
-import User from "../models/User.js";
+import db from "../models/index.js"; // ✅ Centralized import
+import { sendSuccess, sendError } from "../utils/response.js";
 
+const { User } = db;
+
+// =========================
+// 🔐 Generate JWT Token
+// =========================
 const generateToken = (user) => {
   return jwt.sign(
-    { userId: user.id, role: user.role }, // ✅ use userId
+    { userId: user.id, role: user.role }, // ⚠️ use userId (matches middleware)
     process.env.JWT_SECRET,
     { expiresIn: "7d" }
   );
 };
 
 // =========================
-// Register
+// 🔹 Register
 // =========================
 export const register = async (req, res) => {
   try {
@@ -201,7 +169,7 @@ export const register = async (req, res) => {
 
     const existingUser = await User.findOne({ where: { email: email.toLowerCase() } });
     if (existingUser) {
-      return res.status(400).json({ error: "User with this email already exists" });
+      return sendError(res, 400, "User with this email already exists");
     }
 
     const hashedPassword = await bcrypt.hash(password, 10);
@@ -213,6 +181,7 @@ export const register = async (req, res) => {
       role: role.toLowerCase(),
       approval_status: role === "student" ? "pending" : "approved",
       subject: subject || null,
+      avatar: null,
     });
 
     let token = null;
@@ -227,93 +196,52 @@ export const register = async (req, res) => {
       });
     }
 
-    return res.status(201).json({
-      user: {
-        id: user.id,
-        name: user.name,
-        email: user.email,
-        role: user.role,
-        approval_status: user.approval_status,
-        subject: user.subject,
+    return sendSuccess(
+      res,
+      {
+        user: {
+          id: user.id,
+          name: user.name,
+          email: user.email,
+          role: user.role,
+          approval_status: user.approval_status,
+          subject: user.subject,
+          avatar: user.avatar,
+        },
+        ...(token && { token }), // only include token if issued
       },
-      token, // send token for localStorage
-    });
-  } catch (err) {
-    console.error("Register error:", err);
-    res.status(500).json({ error: "Registration failed" });
+      user.approval_status === "approved"
+        ? "Registration successful"
+        : "Registration pending approval"
+    );
+  } catch (error) {
+    console.error("Registration error:", error);
+    return sendError(res, 500, "Registration failed", error.message);
   }
 };
 
 // =========================
-// Login
+// 🔹 Login
 // =========================
 export const login = async (req, res) => {
   try {
     const { email, password } = req.body;
 
     const user = await User.findOne({ where: { email: email.toLowerCase() } });
-    if (!user) return res.status(401).json({ error: "Invalid credentials" });
+    if (!user) return sendError(res, 401, "Invalid credentials");
 
     const isMatch = await bcrypt.compare(password, user.password);
-    if (!isMatch) return res.status(401).json({ error: "Invalid credentials" });
+    if (!isMatch) return sendError(res, 401, "Invalid credentials");
 
     if (user.approval_status !== "approved") {
-      return res.status(403).json({ error: "Account pending approval" });
+      return sendError(res, 403, "Account pending approval");
     }
 
     const token = generateToken(user);
+
     await user.update({ last_login: new Date() });
 
     res.cookie("token", token, {
       httpOnly: true,
       secure: process.env.NODE_ENV === "production",
-      sameSite: "None",
-      maxAge: 7 * 24 * 60 * 60 * 1000,
-    });
-
-    res.json({
-      user: {
-        id: user.id,
-        name: user.name,
-        email: user.email,
-        role: user.role,
-        approval_status: user.approval_status,
-        subject: user.subject,
-        last_login: user.last_login,
-      },
-      token, // also return for frontend
-    });
-  } catch (err) {
-    console.error("Login error:", err);
-    res.status(500).json({ error: "Login failed" });
-  }
-};
-
-// =========================
-// Get Current User
-// =========================
-export const me = async (req, res) => {
-  try {
-    const user = await User.findByPk(req.user.userId, {
-      attributes: { exclude: ["password"] },
-    });
-    if (!user) return res.status(404).json({ error: "User not found" });
-
-    res.json({ user });
-  } catch (err) {
-    console.error("Me error:", err);
-    res.status(500).json({ error: "Failed to fetch user profile" });
-  }
-};
-
-// =========================
-// Logout
-// =========================
-export const logout = (req, res) => {
-  res.clearCookie("token", {
-    httpOnly: true,
-    secure: process.env.NODE_ENV === "production",
-    sameSite: "None",
-  });
-  res.json({ success: true, message: "Logged out successfully" });
-};
+      sameSite: "
