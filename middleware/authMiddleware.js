@@ -49,17 +49,17 @@
 // };
 
 
+
+
 // middleware/authMiddleware.js
 import jwt from "jsonwebtoken";
-import User from "../models/user.js";
+import User from "../models/User.js";
 
-export const authenticateToken = async (req, res, next) => {
+const authMiddleware = async (req, res, next) => {
   try {
-    let token;
+    let token = req.cookies?.token;
 
-    if (req.cookies?.token) {
-      token = req.cookies.token;
-    } else if (req.headers["authorization"]?.startsWith("Bearer ")) {
+    if (!token && req.headers["authorization"]?.startsWith("Bearer ")) {
       token = req.headers["authorization"].split(" ")[1];
     }
 
@@ -69,17 +69,20 @@ export const authenticateToken = async (req, res, next) => {
 
     const decoded = jwt.verify(token, process.env.JWT_SECRET);
 
-    req.user = await User.findByPk(decoded.id, {
+    const user = await User.findByPk(decoded.userId, {
       attributes: { exclude: ["password"] },
     });
 
-    if (!req.user) {
+    if (!user) {
       return res.status(401).json({ message: "User not found" });
     }
 
+    req.user = { userId: user.id, role: user.role };
     next();
-  } catch (error) {
-    console.error("Auth Middleware Error:", error.message);
+  } catch (err) {
+    console.error("Auth Middleware Error:", err.message);
     res.status(401).json({ message: "Token is not valid" });
   }
 };
+
+export default authMiddleware;
