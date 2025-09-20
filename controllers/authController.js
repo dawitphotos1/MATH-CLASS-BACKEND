@@ -152,92 +152,182 @@
 
 
 
-
 // controllers/authController.js
 import jwt from "jsonwebtoken";
 import bcrypt from "bcryptjs";
-import User from "../models/user.js";
+import { User } from "../models/User.js"; // or adjust path to your Sequelize model
+import { sendSuccess, sendError } from "../utils/response.js";
 
-// Generate JWT
-const generateToken = (userId) => {
-  return jwt.sign({ id: userId }, process.env.JWT_SECRET, {
-    expiresIn: "1d",
-  });
+// =========================
+// 🔐 Generate JWT Token
+// =========================
+const generateToken = (user) => {
+  return jwt.sign(
+    { userId: user.id, role: user.role },
+    process.env.JWT_SECRET,
+    { expiresIn: "7d" }
+  );
 };
 
-// @desc    Register new user
+// =========================
+// 🔹 Register
+// =========================
 export const register = async (req, res) => {
   try {
-    const { name, email, password } = req.body;
+    const { name, email, password, role, subject } = req.body;
 
-    const existingUser = await User.findOne({ where: { email } });
+    const existingUser = await User.findOne({ where: { email: email.toLowerCase() } });
     if (existingUser) {
-      return res.status(400).json({ message: "User already exists" });
+      return sendError(res, 400, "User with this email already exists");
     }
 
     const hashedPassword = await bcrypt.hash(password, 10);
 
     const user = await User.create({
       name,
-      email,
+      email: email.toLowerCase(),
       password: hashedPassword,
+      role: role.toLowerCase(),
+      approval_status: role === "student" ? "pending" : "approved",
+      subject: subject || null,
+      avatar: null,
     });
 
-    res.status(201).json({ message: "User registered", user });
+    // Generate token if approved
+    let token = null;
+    if (user.approval_status === "approved") {
+      token = generateToken(user);
+
+      // Set HttpOnly cookie
+      res.cookie("token", token, {
+        httpOnly: true,
+        secure: process.env.NODE_ENV === "production",
+        sameSite: "None",
+        maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
+      });
+    }
+
+    return sendSuccess(
+      res,
+      {
+        user: {
+          id: user.id,
+          name: user.name,
+          email: user.email,
+          role: user.role,
+          approval_status: user.approval_status,
+          subject: user.subject,
+          avatar: user.avatar,
+        },
+      },
+      user.approval_status === "approved"
+        ? "Registration successful"
+        : "Registration pending approval"
+    );
   } catch (error) {
-    console.error(error);
-    res.status(500).json({ message: "Server error" });
+    console.error("Registration error:", error);
+    return sendError(res, 500, "Registration failed", error.message);
   }
 };
 
-// @desc    Login user
+// =========================
+// 🔹 Login
+// =========================
 export const login = async (req, res) => {
   try {
     const { email, password } = req.body;
 
-    const user = await User.findOne({ where: { email } });
-    if (!user) return res.status(400).json({ message: "Invalid credentials" });
+    const user = await User.findOne({ where: { email: email.toLowerCase() } });
+    if (!user) return sendError(res, 401, "Invalid credentials");
 
     const isMatch = await bcrypt.compare(password, user.password);
-    if (!isMatch)
-      return res.status(400).json({ message: "Invalid credentials" });
+    if (!isMatch) return sendError(res, 401, "Invalid credentials");
 
-    const token = generateToken(user.id);
+    if (user.approval_status !== "approved") {
+      return sendError(res, 403, "Account pending approval");
+    }
 
-    // Store token in cookie
+    const token = generateToken(user);
+
+    // Update last login
+    await user.update({ last_login: new Date() });
+
+    // Set HttpOnly cookie
     res.cookie("token", token, {
       httpOnly: true,
-      secure: process.env.NODE_ENV === "production", // 🔥 important for Render (HTTPS)
-      sameSite: "none", // 🔥 allow cross-site cookies
-      maxAge: 24 * 60 * 60 * 1000, // 1 day
+      secure: process.env.NODE_ENV === "production",
+      sameSite: "None",
+      maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
     });
 
-    res.json({ message: "Logged in successfully", user });
+    return sendSuccess(
+      res,
+      {
+        user: {
+          id: user.id,
+          name: user.name,
+          email: user.email,
+          role: user.role,
+          approval_status: user.approval_status,
+          subject: user.subject,
+          avatar: user.avatar,
+          last_login: user.last_login,
+        },
+      },
+      "Login successful"
+    );
   } catch (error) {
-    console.error(error);
-    res.status(500).json({ message: "Server error" });
+    console.error("Login error:", error);
+    return sendError(res, 500, "Login failed", error.message);
   }
 };
 
-// @desc    Get logged in user
+// =========================
+// 🔹 Get Current User
+// =========================
 export const getMe = async (req, res) => {
   try {
-    if (!req.user) {
-      return res.status(401).json({ message: "Unauthorized" });
-    }
-    res.json({ user: req.user });
-  } catch (error) {
-    console.error(error);
-    res.status(500).json({ message: "Server error" });
+    const user = await User.findByPk(req.user.userId, {
+      attributes: [
+        "id",
+        "name",
+        "email",
+        "role",
+        "approval_status",
+        "subject",
+        "avatar",
+        "last_login",
+      ],
+    });
+
+    if (!user) return sendError(res, 404, "User not found");
+
+    return sendSuccess(res, {
+      user: {
+        id: user.id,
+        name: user.name,
+        email: user.email,
+        role: user.role.toLowerCase(),
+        approval_status: user.approval_status,
+        subject: user.subject,
+        avatar: user.avatar,
+        last_login: user.last_login,
+      },
+    });
+  } catch (err) {
+    console.error("Me endpoint error:", err);
+    return sendError(res, 500, "Failed to fetch user profile", err.message);
   }
 };
 
-// @desc    Logout user
+// =========================
+// 🔹 Logout
+// =========================
 export const logout = (req, res) => {
   res.clearCookie("token", {
     httpOnly: true,
     secure: process.env.NODE_ENV === "production",
-    sameSite: "none",
+    sameSite: "None",
   });
-  res.json({ message: "Logged out successfully" });
+  return res.status(200).json({ success: true, message: "Logged out successfully" });
 };
