@@ -247,7 +247,7 @@ export const login = async (req, res) => {
 // =========================
 // 🔹 Get Current User
 // =========================
-export const me = async (req, res) => {
+export const getMe = async (req, res) => {
   try {
     if (!req.user) return sendError(res, 404, "User not found");
     return sendSuccess(res, { user: req.user });
