@@ -49,17 +49,14 @@
 // };
 
 
-
-
 // middleware/authMiddleware.js
 import jwt from "jsonwebtoken";
 import User from "../models/user.js";
 
-export const authMiddleware = async (req, res, next) => {
+export const authenticateToken = async (req, res, next) => {
   try {
     let token;
 
-    // Get token from cookie or Authorization header
     if (req.cookies?.token) {
       token = req.cookies.token;
     } else if (req.headers["authorization"]?.startsWith("Bearer ")) {
@@ -67,15 +64,11 @@ export const authMiddleware = async (req, res, next) => {
     }
 
     if (!token) {
-      return res
-        .status(401)
-        .json({ message: "No token, authorization denied" });
+      return res.status(401).json({ message: "No token, authorization denied" });
     }
 
-    // Verify token
     const decoded = jwt.verify(token, process.env.JWT_SECRET);
 
-    // Attach user to request
     req.user = await User.findByPk(decoded.id, {
       attributes: { exclude: ["password"] },
     });
