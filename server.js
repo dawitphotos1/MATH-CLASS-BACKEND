@@ -12,6 +12,7 @@ import sequelize from "./config/db.js"; // Make sure this is ES module compatibl
 
 import authRoutes from "./routes/auth.js";
 import adminRoutes from "./routes/admin.js";
+import listEndpoints from "express-list-endpoints";
 
 const app = express();
 app.set("trust proxy", 1); // Needed for cookies behind proxy
