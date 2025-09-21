@@ -66,6 +66,12 @@ console.log("📦 Registering routes: /api/v1/auth, /api/v1/admin");
 app.use("/api/v1/auth", authRoutes);
 app.use("/api/v1/admin", adminRoutes);
 
+
+// Debug: list all endpoints
+console.log("📋 Registered endpoints:");
+console.table(listEndpoints(app));
+
+
 // ✅ Health check (for Render)
 app.get("/api/v1/health", async (req, res) => {
   try {
