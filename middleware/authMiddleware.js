@@ -40,10 +40,10 @@
 // };
 
 
-
 // middleware/authMiddleware.js
 import jwt from "jsonwebtoken";
-import { User } from "../models/User.js";
+import db from "../models/index.js"; // ✅ Centralized import
+const { User } = db;
 
 export const authenticateToken = async (req, res, next) => {
   try {
