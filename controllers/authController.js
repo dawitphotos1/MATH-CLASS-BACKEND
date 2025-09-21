@@ -130,10 +130,14 @@
 // };
 
 
+
+
 // controllers/authController.js
+
 import jwt from "jsonwebtoken";
 import bcrypt from "bcryptjs";
-import { User } from "../models/User.js";
+import db from "../models/index.js"; // ✅ Centralized model import
+const { User } = db; // ✅ Destructure from db
 
 // Helper: sign JWT
 const generateToken = (userId) => {
