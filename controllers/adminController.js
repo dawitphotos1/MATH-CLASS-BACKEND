@@ -6,6 +6,9 @@ const { User, Course, UserCourseAccess } = db; // ✅ destructure models
 import jwt from "jsonwebtoken";
 import bcrypt from "bcryptjs";
 import { sendSuccess, sendError } from "../utils/response.js";
+import User from "../models/User.js";
+import Enrollment from "../models/Enrollment.js";
+import Course from "../models/Course.js";
 
 // 🔹 Admin Login
 export const login = async (req, res) => {
