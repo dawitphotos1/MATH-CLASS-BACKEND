@@ -8,7 +8,7 @@
 // import helmet from "helmet";
 // import cookieParser from "cookie-parser";
 // import rateLimit from "express-rate-limit";
-// import sequelize from "./config/db.js"; // Make sure this is ES module compatible
+// import sequelize from "./config/db.js"; // DB instance
 
 // import authRoutes from "./routes/auth.js";
 // import adminRoutes from "./routes/admin.js";
@@ -46,13 +46,18 @@
 //   })
 // );
 
-// // ✅ Rate limiting
-// const apiLimiter = rateLimit({
-//   windowMs: 15 * 60 * 1000,
-//   max: 500,
-//   message: { success: false, error: "Too many requests. Try again later." },
-// });
-// app.use("/api", apiLimiter);
+// // ✅ Rate limiting (disable in dev to prevent 429 flood)
+// if (process.env.NODE_ENV === "production") {
+//   const apiLimiter = rateLimit({
+//     windowMs: 15 * 60 * 1000,
+//     max: 500,
+//     message: { success: false, error: "Too many requests. Try again later." },
+//   });
+//   app.use("/api", apiLimiter);
+//   console.log("✅ Rate limiting enabled (production)");
+// } else {
+//   console.log("⚡ Rate limiting disabled (development mode)");
+// }
 
 // // ✅ Logger
 // app.use((req, res, next) => {
@@ -67,11 +72,9 @@
 // app.use("/api/v1/auth", authRoutes);
 // app.use("/api/v1/admin", adminRoutes);
 
-
 // // Debug: list all endpoints
 // console.log("📋 Registered endpoints:");
 // console.table(listEndpoints(app));
-
 
 // // ✅ Health check (for Render)
 // app.get("/api/v1/health", async (req, res) => {
@@ -128,7 +131,6 @@
 
 
 
-
 // server.js
 import dotenv from "dotenv";
 dotenv.config();
@@ -145,7 +147,7 @@ import adminRoutes from "./routes/admin.js";
 import listEndpoints from "express-list-endpoints";
 
 const app = express();
-app.set("trust proxy", 1); // Needed for cookies behind proxy
+app.set("trust proxy", 1); // Needed for cookies behind proxy (Render)
 
 // 🔍 Log critical env vars presence
 console.log(
@@ -153,6 +155,7 @@ console.log(
   process.env.DATABASE_URL ? "✅ SET" : "❌ MISSING"
 );
 console.log("🚀 JWT_SECRET:", process.env.JWT_SECRET ? "✅ SET" : "❌ MISSING");
+console.log("🚀 FRONTEND_URL:", process.env.FRONTEND_URL || "❌ MISSING");
 
 // ====================
 // 🔹 Middleware
@@ -162,21 +165,29 @@ app.use(cookieParser()); // Needed for JWT cookies
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
-// ✅ CORS (allow frontend domains + credentials)
+// ✅ CORS
 const allowedOrigins = [
-  "http://localhost:3000",
-  "https://mathe-class-website-frontend.onrender.com",
+  "http://localhost:3000", // local dev
+  process.env.FRONTEND_URL, // production (Netlify)
 ];
+
 app.use(
   cors({
-    origin: allowedOrigins,
+    origin: function (origin, callback) {
+      if (!origin) return callback(null, true); // allow curl/mobile
+      if (allowedOrigins.includes(origin)) {
+        return callback(null, true);
+      }
+      console.warn("❌ Blocked by CORS:", origin);
+      return callback(new Error("Not allowed by CORS"));
+    },
     credentials: true,
     methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
     allowedHeaders: ["Content-Type", "Authorization"],
   })
 );
 
-// ✅ Rate limiting (disable in dev to prevent 429 flood)
+// ✅ Rate limiting
 if (process.env.NODE_ENV === "production") {
   const apiLimiter = rateLimit({
     windowMs: 15 * 60 * 1000,
@@ -191,6 +202,7 @@ if (process.env.NODE_ENV === "production") {
 
 // ✅ Logger
 app.use((req, res, next) => {
+  console.log(`🌍 Incoming Origin: ${req.headers.origin || "undefined"}`);
   console.log(`📥 [${req.method}] ${req.originalUrl}`);
   next();
 });
@@ -206,7 +218,7 @@ app.use("/api/v1/admin", adminRoutes);
 console.log("📋 Registered endpoints:");
 console.table(listEndpoints(app));
 
-// ✅ Health check (for Render)
+// ✅ Health check
 app.get("/api/v1/health", async (req, res) => {
   try {
     await sequelize.authenticate();
