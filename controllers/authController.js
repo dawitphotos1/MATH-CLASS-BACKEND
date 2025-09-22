@@ -3,7 +3,6 @@
 import jwt from "jsonwebtoken";
 import bcrypt from "bcryptjs";
 import db from "../models/index.js"; // ✅ Use centralized model index
-
 const { User } = db;
 
 // =========================
