@@ -71,9 +71,7 @@
 
 
 
-
 // models/User.js
-
 const UserModel = (sequelize, DataTypes) => {
   const User = sequelize.define("User", {
     name: {
@@ -103,6 +101,12 @@ const UserModel = (sequelize, DataTypes) => {
       defaultValue: "pending",
     },
   });
+
+  User.associate = (models) => {
+    User.hasMany(models.Enrollment, { foreignKey: "studentId" });
+    User.hasMany(models.UserCourseAccess, { foreignKey: "userId" });
+    // Add more associations if needed
+  };
 
   return User;
 };

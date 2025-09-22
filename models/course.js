@@ -23,19 +23,28 @@
 
 
 
-
 // models/Course.js
-import { DataTypes } from "sequelize";
-import sequelize from "../config/db.js";
+const CourseModel = (sequelize, DataTypes) => {
+  const Course = sequelize.define("Course", {
+    title: {
+      type: DataTypes.STRING,
+      allowNull: false,
+    },
+    description: {
+      type: DataTypes.TEXT,
+      allowNull: true,
+    },
+    // Add more course fields as needed
+  });
 
-const Course = sequelize.define("Course", {
-  title: {
-    type: DataTypes.STRING,
-    allowNull: false,
-  },
-  description: {
-    type: DataTypes.TEXT,
-  },
-});
+  Course.associate = (models) => {
+    Course.belongsTo(models.Teacher, { foreignKey: "teacherId" });
+    Course.hasMany(models.Lesson, { foreignKey: "courseId" });
+    Course.hasMany(models.Enrollment, { foreignKey: "courseId" });
+    Course.hasMany(models.UserCourseAccess, { foreignKey: "courseId" });
+  };
 
-export default Course;
+  return Course;
+};
+
+export default CourseModel;

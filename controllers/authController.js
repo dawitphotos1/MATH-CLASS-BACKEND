@@ -130,103 +130,103 @@
 // };
 
 
-
-
 // controllers/authController.js
-
 import jwt from "jsonwebtoken";
 import bcrypt from "bcryptjs";
-import db from "../models/index.js"; // ✅ Centralized model import
-const { User } = db; // ✅ Destructure from db
+import db from "../models/index.js";
+
+const { User } = db;
 
 // Helper: sign JWT
-const generateToken = (userId) => {
-  return jwt.sign({ id: userId }, process.env.JWT_SECRET, {
-    expiresIn: "7d",
-  });
+const generateToken = (user) => {
+  return jwt.sign(
+    { id: user.id, role: user.role },
+    process.env.JWT_SECRET,
+    { expiresIn: "1d" }
+  );
 };
 
-// 🔹 Register
+// ====================
+// Register
+// ====================
 export const register = async (req, res) => {
   try {
     const { name, email, password, role, subject } = req.body;
 
-    const existing = await User.findOne({ where: { email } });
-    if (existing) {
-      return res.status(400).json({ error: "Email already registered" });
+    const existingUser = await User.findOne({ where: { email } });
+    if (existingUser) {
+      return res.status(400).json({ error: "User already exists" });
     }
 
     const hashedPassword = await bcrypt.hash(password, 10);
-    const user = await User.create({
+    const newUser = await User.create({
       name,
       email,
       password: hashedPassword,
       role,
       subject,
-      approval_status: role === "admin" ? "approved" : "pending",
+      approval_status: role === "student" ? "approved" : "pending",
     });
 
-    // Auto-login only if approved
-    if (user.approval_status === "approved") {
-      const token = generateToken(user.id);
-      res.cookie("token", token, {
-        httpOnly: true,
-        secure: process.env.NODE_ENV === "production",
-        sameSite: "lax",
-        maxAge: 7 * 24 * 60 * 60 * 1000,
-      });
-    }
-
-    return res.status(201).json({ user });
+    res.status(201).json({ user: newUser });
   } catch (err) {
-    console.error("Register error:", err);
-    return res.status(500).json({ error: "Server error" });
+    console.error("❌ Register error:", err);
+    res.status(500).json({ error: "Server error" });
   }
 };
 
-// 🔹 Login
+// ====================
+// Login
+// ====================
 export const login = async (req, res) => {
   try {
     const { email, password } = req.body;
 
     const user = await User.findOne({ where: { email } });
-    if (!user) return res.status(400).json({ error: "Invalid credentials" });
+    if (!user) return res.status(401).json({ error: "Invalid credentials" });
 
     const isMatch = await bcrypt.compare(password, user.password);
-    if (!isMatch) return res.status(400).json({ error: "Invalid credentials" });
+    if (!isMatch) return res.status(401).json({ error: "Invalid credentials" });
 
     if (user.approval_status !== "approved") {
       return res.status(403).json({ error: "Account not approved yet" });
     }
 
-    const token = generateToken(user.id);
+    const token = generateToken(user);
+
     res.cookie("token", token, {
       httpOnly: true,
       secure: process.env.NODE_ENV === "production",
       sameSite: "lax",
-      maxAge: 7 * 24 * 60 * 60 * 1000,
+      maxAge: 24 * 60 * 60 * 1000,
     });
 
-    return res.json({ message: "Login successful" });
+    res.json({ user });
   } catch (err) {
-    console.error("Login error:", err);
-    return res.status(500).json({ error: "Server error" });
+    console.error("❌ Login error:", err);
+    res.status(500).json({ error: "Server error" });
   }
 };
 
-// 🔹 Get logged-in user
+// ====================
+// Get Me
+// ====================
 export const getMe = async (req, res) => {
   try {
-    if (!req.user) return res.status(401).json({ error: "Not authenticated" });
-    return res.json({ user: req.user });
+    const user = await User.findByPk(req.user.id);
+    if (!user) return res.status(404).json({ error: "User not found" });
+
+    res.json({ user });
   } catch (err) {
-    console.error("getMe error:", err);
-    return res.status(500).json({ error: "Server error" });
+    console.error("❌ GetMe error:", err);
+    res.status(500).json({ error: "Server error" });
   }
 };
 
-// 🔹 Logout
+// ====================
+// Logout
+// ====================
 export const logout = (req, res) => {
   res.clearCookie("token");
-  return res.json({ message: "Logged out" });
+  res.json({ message: "Logged out" });
 };

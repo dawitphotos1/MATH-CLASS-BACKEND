@@ -18,26 +18,24 @@
 // };
 
 
-
-
 // models/Enrollment.js
-import { DataTypes } from "sequelize";
-import sequelize from "../config/db.js";
-import User from "./User.js";
-import Course from "./Course.js";
+const EnrollmentModel = (sequelize, DataTypes) => {
+  const Enrollment = sequelize.define("Enrollment", {
+    approval_status: {
+      type: DataTypes.ENUM("pending", "approved", "rejected"),
+      defaultValue: "pending",
+    },
+  });
 
-const Enrollment = sequelize.define("Enrollment", {
-  status: {
-    type: DataTypes.ENUM("pending", "approved", "rejected"),
-    defaultValue: "pending",
-  },
-});
+  Enrollment.associate = (models) => {
+    models.User.hasMany(Enrollment, { foreignKey: "studentId" });
+    Enrollment.belongsTo(models.User, { foreignKey: "studentId" });
 
-// associations
-User.hasMany(Enrollment, { foreignKey: "studentId" });
-Enrollment.belongsTo(User, { foreignKey: "studentId", as: "student" });
+    models.Course.hasMany(Enrollment, { foreignKey: "courseId" });
+    Enrollment.belongsTo(models.Course, { foreignKey: "courseId" });
+  };
 
-Course.hasMany(Enrollment, { foreignKey: "courseId" });
-Enrollment.belongsTo(Course, { foreignKey: "courseId", as: "course" });
+  return Enrollment;
+};
 
-export default Enrollment;
+export default EnrollmentModel;
