@@ -29,7 +29,6 @@
 
 
 
-
 // routes/auth.js
 import express from "express";
 import {
@@ -48,7 +47,7 @@ router.post("/register", register);
 // Login
 router.post("/login", login);
 
-// Current user
+// Get current logged-in user
 router.get("/me", authenticateToken, getMe);
 
 // Logout
