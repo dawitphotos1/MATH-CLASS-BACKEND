@@ -49,7 +49,7 @@ app.use(
 // ✅ Rate limiting (disable in dev to prevent 429 flood)
 if (process.env.NODE_ENV === "production") {
   const apiLimiter = rateLimit({
-    windowMs: 15 * 60 * 1000,
+    windowMs: 15 * 60 * 5000,
     max: 500,
     message: { success: false, error: "Too many requests. Try again later." },
   });
