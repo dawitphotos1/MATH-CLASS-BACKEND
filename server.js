@@ -168,10 +168,10 @@ app.use(express.urlencoded({ extended: true }));
 // ✅ CORS
 const allowedOrigins = [
   "http://localhost:3000",
-  "https://mathe-class-website-frontend.onrender.com",
+  process.env.FRONTEND_URL, // ✅ Use env variable for flexibility
 ];
 
-];
+
 
 app.use(
   cors({
