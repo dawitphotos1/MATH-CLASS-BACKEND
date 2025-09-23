@@ -130,21 +130,20 @@
 
 
 
-
 // server.js
-const dotenv = require("dotenv");
+import dotenv from "dotenv";
 dotenv.config();
 
-const express = require("express");
-const cors = require("cors");
-const helmet = require("helmet");
-const cookieParser = require("cookie-parser");
-const rateLimit = require("express-rate-limit");
-const listEndpoints = require("express-list-endpoints");
+import express from "express";
+import cors from "cors";
+import helmet from "helmet";
+import cookieParser from "cookie-parser";
+import rateLimit from "express-rate-limit";
+import listEndpoints from "express-list-endpoints";
 
-const sequelize = require("./config/db.js"); // DB instance
-const authRoutes = require("./routes/auth.js");
-const adminRoutes = require("./routes/admin.js");
+import sequelize from "./config/db.js"; // DB instance
+import authRoutes from "./routes/auth.js";
+import adminRoutes from "./routes/admin.js";
 
 const app = express();
 app.set("trust proxy", 1); // Needed for cookies behind proxy
