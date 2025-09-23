@@ -167,8 +167,10 @@ app.use(express.urlencoded({ extended: true }));
 
 // ✅ CORS
 const allowedOrigins = [
-  "http://localhost:3000", // local dev
-  process.env.FRONTEND_URL, // production (Netlify)
+  "http://localhost:3000",
+  "https://mathe-class-website-frontend.onrender.com",
+];
+
 ];
 
 app.use(
