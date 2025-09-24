@@ -22,9 +22,6 @@
 // export default EnrollmentModel;
 
 
-
-
-
 // models/Enrollment.js
 const EnrollmentModel = (sequelize, DataTypes) => {
   const Enrollment = sequelize.define("Enrollment", {
@@ -35,24 +32,24 @@ const EnrollmentModel = (sequelize, DataTypes) => {
   });
 
   Enrollment.associate = (models) => {
-    // Student association
+    // User ↔ Enrollment
     models.User.hasMany(Enrollment, {
       foreignKey: "studentId",
-      as: "enrollments",
+      as: "studentEnrollments", // ✅ unique
     });
     Enrollment.belongsTo(models.User, {
       foreignKey: "studentId",
-      as: "student", // ✅ alias matches controller include
+      as: "student",
     });
 
-    // Course association
+    // Course ↔ Enrollment
     models.Course.hasMany(Enrollment, {
       foreignKey: "courseId",
-      as: "enrollments",
+      as: "courseEnrollments", // ✅ unique
     });
     Enrollment.belongsTo(models.Course, {
       foreignKey: "courseId",
-      as: "course", // ✅ alias matches controller include
+      as: "course",
     });
   };
 
