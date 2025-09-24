@@ -306,22 +306,13 @@
 
 
 
-
 // controllers/courseController.js
 import { Course, Lesson, User } from "../models/index.js";
-import path from "path";
-import fs from "fs";
 
-// Normalize file path (replace Windows \ with / and keep Uploads relative URL)
-const normalizePath = (filePath) => {
-  if (!filePath) return null;
-  return filePath.replace(/\\/g, "/").replace(/^.*Uploads/, "/Uploads");
-};
-
-/**
- * 📘 Create Course (teachers only)
- */
-const createCourse = async (req, res) => {
+// ====================
+// Create Course
+// ====================
+export const createCourse = async (req, res) => {
   try {
     const { title, description } = req.body;
 
@@ -329,174 +320,92 @@ const createCourse = async (req, res) => {
       return res.status(400).json({ success: false, error: "Title is required" });
     }
 
-    // Files (multer)
-    const thumbnail = req.files?.thumbnail?.[0];
-    const introVideo = req.files?.introVideo?.[0];
-    const attachments = req.files?.attachments || [];
-
     const course = await Course.create({
       title,
       description,
-      teacherId: req.user.id, // ✅ auto set teacher
-      thumbnailUrl: thumbnail ? normalizePath(thumbnail.path) : null,
-      introVideoUrl: introVideo ? normalizePath(introVideo.path) : null,
-      attachmentUrls: attachments.map((f) => normalizePath(f.path)),
+      teacherId: req.user.id, // ✅ from auth middleware
     });
 
-    return res.status(201).json({ success: true, course });
+    res.status(201).json({ success: true, course });
   } catch (err) {
-    console.error("🔥 createCourse error:", err.message);
+    console.error("❌ createCourse error:", err);
     res.status(500).json({ success: false, error: "Failed to create course" });
   }
 };
 
-/**
- * 📘 Get public course by slug (for marketing, no auth)
- */
-const getPublicCourseBySlug = async (req, res) => {
+// ====================
+// Get courses for logged-in teacher
+// ====================
+export const getCourses = async (req, res) => {
+  try {
+    const filter = req.user.role === "teacher" ? { teacherId: req.user.id } : {};
+    const courses = await Course.findAll({
+      where: filter,
+      include: [{ model: User, as: "teacher", attributes: ["id", "name", "email"] }],
+    });
+
+    res.json({ success: true, courses });
+  } catch (err) {
+    console.error("❌ getCourses error:", err);
+    res.status(500).json({ success: false, error: "Failed to fetch courses" });
+  }
+};
+
+// ====================
+// Get course by slug (public, no lessons)
+// ====================
+export const getPublicCourseBySlug = async (req, res) => {
   try {
     const { slug } = req.params;
     const course = await Course.findOne({
       where: { slug },
-      attributes: ["id", "title", "description", "thumbnailUrl"],
+      attributes: ["id", "title", "description"],
       include: [{ model: User, as: "teacher", attributes: ["id", "name"] }],
     });
 
-    if (!course) return res.status(404).json({ success: false, error: "Course not found" });
+    if (!course) {
+      return res.status(404).json({ success: false, error: "Course not found" });
+    }
 
     res.json({ success: true, course });
   } catch (err) {
-    console.error("🔥 getPublicCourseBySlug error:", err.message);
+    console.error("❌ getPublicCourseBySlug error:", err);
     res.status(500).json({ success: false, error: "Failed to fetch course" });
   }
 };
 
-/**
- * 📘 Get full course with lessons (auth required)
- */
-const getCourseWithLessonsBySlug = async (req, res) => {
-  try {
-    const { slug } = req.params;
-
-    const course = await Course.findOne({
-      where: { slug },
-      include: [
-        { model: User, as: "teacher", attributes: ["id", "name", "email"] },
-        { model: Lesson, as: "lessons" },
-      ],
-    });
-
-    if (!course) return res.status(404).json({ success: false, error: "Course not found" });
-
-    res.json({ success: true, course });
-  } catch (err) {
-    console.error("🔥 getCourseWithLessonsBySlug error:", err.message);
-    res.status(500).json({ success: false, error: "Failed to fetch course" });
-  }
-};
-
-/**
- * 📘 Get lessons by courseId
- */
-const getLessonsByCourse = async (req, res) => {
+// ====================
+// Get lessons by courseId
+// ====================
+export const getLessonsByCourse = async (req, res) => {
   try {
     const { courseId } = req.params;
 
     const lessons = await Lesson.findAll({ where: { courseId } });
+
     res.json({ success: true, lessons });
   } catch (err) {
-    console.error("🔥 getLessonsByCourse error:", err.message);
+    console.error("❌ getLessonsByCourse error:", err);
     res.status(500).json({ success: false, error: "Failed to fetch lessons" });
   }
 };
 
-/**
- * 📘 Delete a course (teacher or admin only)
- */
-const deleteCourse = async (req, res) => {
+// ====================
+// Delete course
+// ====================
+export const deleteCourse = async (req, res) => {
   try {
     const { id } = req.params;
+
     const course = await Course.findByPk(id);
-
-    if (!course) return res.status(404).json({ success: false, error: "Course not found" });
-
-    // Only teacher who owns it or admin can delete
-    if (req.user.role !== "admin" && req.user.id !== course.teacherId) {
-      return res.status(403).json({ success: false, error: "Unauthorized" });
+    if (!course) {
+      return res.status(404).json({ success: false, error: "Course not found" });
     }
 
     await course.destroy();
     res.json({ success: true, message: "Course deleted" });
   } catch (err) {
-    console.error("🔥 deleteCourse error:", err.message);
+    console.error("❌ deleteCourse error:", err);
     res.status(500).json({ success: false, error: "Failed to delete course" });
   }
-};
-
-/**
- * 📘 Rename attachment
- */
-const renameCourseAttachment = async (req, res) => {
-  try {
-    const { courseId, index } = req.params;
-    const { newName } = req.body;
-
-    const course = await Course.findByPk(courseId);
-    if (!course) return res.status(404).json({ success: false, error: "Course not found" });
-
-    const attachments = course.attachmentUrls || [];
-    if (!attachments[index]) return res.status(404).json({ success: false, error: "Attachment not found" });
-
-    const oldPath = path.join(process.cwd(), attachments[index]);
-    const ext = path.extname(oldPath);
-    const newPath = path.join(path.dirname(oldPath), `${newName}${ext}`);
-
-    fs.renameSync(oldPath, newPath);
-
-    attachments[index] = normalizePath(newPath);
-    course.attachmentUrls = attachments;
-    await course.save();
-
-    res.json({ success: true, updatedUrl: attachments[index] });
-  } catch (err) {
-    console.error("🔥 renameCourseAttachment error:", err.message);
-    res.status(500).json({ success: false, error: "Failed to rename attachment" });
-  }
-};
-
-/**
- * 📘 Delete attachment
- */
-const deleteCourseAttachment = async (req, res) => {
-  try {
-    const { courseId, index } = req.params;
-
-    const course = await Course.findByPk(courseId);
-    if (!course) return res.status(404).json({ success: false, error: "Course not found" });
-
-    const attachments = course.attachmentUrls || [];
-    if (!attachments[index]) return res.status(404).json({ success: false, error: "Attachment not found" });
-
-    const filePath = path.join(process.cwd(), attachments[index]);
-    if (fs.existsSync(filePath)) fs.unlinkSync(filePath);
-
-    attachments.splice(index, 1);
-    course.attachmentUrls = attachments;
-    await course.save();
-
-    res.json({ success: true, attachmentUrls: attachments });
-  } catch (err) {
-    console.error("🔥 deleteCourseAttachment error:", err.message);
-    res.status(500).json({ success: false, error: "Failed to delete attachment" });
-  }
-};
-
-export default {
-  createCourse,
-  getPublicCourseBySlug,
-  getCourseWithLessonsBySlug,
-  getLessonsByCourse,
-  deleteCourse,
-  renameCourseAttachment,
-  deleteCourseAttachment,
 };
