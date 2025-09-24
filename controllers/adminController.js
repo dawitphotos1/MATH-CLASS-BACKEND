@@ -11,11 +11,13 @@
 //   try {
 //     const users = await User.findAll({
 //       where: { approval_status: "pending" },
-//       attributes: { exclude: ["password"] }, // never send password
+//       attributes: { exclude: ["password"] },
+//       order: [["createdAt", "ASC"]],
 //     });
 //     res.json({ users });
 //   } catch (err) {
-//     console.error("❌ getPendingUsers error:", err);
+//     console.error("❌ getPendingUsers error:", err.message);
+//     console.error(err.stack);
 //     res.status(500).json({ error: "Server error" });
 //   }
 // };
@@ -36,7 +38,8 @@
 
 //     res.json({ user });
 //   } catch (err) {
-//     console.error("❌ updateUserApproval error:", err);
+//     console.error("❌ updateUserApproval error:", err.message);
+//     console.error(err.stack);
 //     res.status(500).json({ error: "Server error" });
 //   }
 // };
@@ -48,25 +51,29 @@
 //   try {
 //     const { status } = req.query;
 
+//     const whereClause = status ? { approval_status: status } : {};
+
 //     const enrollments = await Enrollment.findAll({
-//       where: status ? { approval_status: status } : {},
+//       where: whereClause,
 //       include: [
 //         {
 //           model: User,
-//           as: "student", // must match Enrollment.association
+//           as: "student", // must match Enrollment.belongsTo(..., as: "student")
 //           attributes: ["id", "name", "email"],
 //         },
 //         {
 //           model: Course,
-//           as: "course", // must match Enrollment.association
+//           as: "course", // must match Enrollment.belongsTo(..., as: "course")
 //           attributes: ["id", "title"],
 //         },
 //       ],
+//       order: [["createdAt", "DESC"]],
 //     });
 
 //     res.json({ enrollments });
 //   } catch (err) {
-//     console.error("❌ getEnrollments error:", err.message, err.stack);
+//     console.error("❌ getEnrollments error:", err.message);
+//     console.error(err.stack);
 //     res.status(500).json({ error: "Server error" });
 //   }
 // };
@@ -88,7 +95,8 @@
 
 //     res.json({ enrollment });
 //   } catch (err) {
-//     console.error("❌ approveEnrollment error:", err.message, err.stack);
+//     console.error("❌ approveEnrollment error:", err.message);
+//     console.error(err.stack);
 //     res.status(500).json({ error: "Server error" });
 //   }
 // };
@@ -108,13 +116,13 @@ export const getPendingUsers = async (req, res) => {
   try {
     const users = await User.findAll({
       where: { approval_status: "pending" },
-      attributes: { exclude: ["password"] },
-      order: [["createdAt", "ASC"]],
+      attributes: { exclude: ["password"] }, // ✅ never send password
+      order: [["createdAt", "DESC"]],
     });
+
     res.json({ users });
   } catch (err) {
-    console.error("❌ getPendingUsers error:", err.message);
-    console.error(err.stack);
+    console.error("❌ getPendingUsers error:", err);
     res.status(500).json({ error: "Server error" });
   }
 };
@@ -133,10 +141,9 @@ export const updateUserApproval = async (req, res) => {
     user.approval_status = status;
     await user.save();
 
-    res.json({ user });
+    res.json({ success: true, user });
   } catch (err) {
-    console.error("❌ updateUserApproval error:", err.message);
-    console.error(err.stack);
+    console.error("❌ updateUserApproval error:", err);
     res.status(500).json({ error: "Server error" });
   }
 };
@@ -148,19 +155,17 @@ export const getEnrollments = async (req, res) => {
   try {
     const { status } = req.query;
 
-    const whereClause = status ? { approval_status: status } : {};
-
     const enrollments = await Enrollment.findAll({
-      where: whereClause,
+      where: status ? { approval_status: status } : {},
       include: [
         {
           model: User,
-          as: "student", // must match Enrollment.belongsTo(..., as: "student")
+          as: "student", // ✅ matches Enrollment.belongsTo(User, { as: "student" })
           attributes: ["id", "name", "email"],
         },
         {
           model: Course,
-          as: "course", // must match Enrollment.belongsTo(..., as: "course")
+          as: "course", // ✅ matches Enrollment.belongsTo(Course, { as: "course" })
           attributes: ["id", "title"],
         },
       ],
@@ -169,8 +174,7 @@ export const getEnrollments = async (req, res) => {
 
     res.json({ enrollments });
   } catch (err) {
-    console.error("❌ getEnrollments error:", err.message);
-    console.error(err.stack);
+    console.error("❌ getEnrollments error:", err);
     res.status(500).json({ error: "Server error" });
   }
 };
@@ -182,7 +186,13 @@ export const approveEnrollment = async (req, res) => {
   try {
     const { enrollmentId } = req.params;
 
-    const enrollment = await Enrollment.findByPk(enrollmentId);
+    const enrollment = await Enrollment.findByPk(enrollmentId, {
+      include: [
+        { model: User, as: "student", attributes: ["id", "name", "email"] },
+        { model: Course, as: "course", attributes: ["id", "title"] },
+      ],
+    });
+
     if (!enrollment) {
       return res.status(404).json({ error: "Enrollment not found" });
     }
@@ -190,10 +200,9 @@ export const approveEnrollment = async (req, res) => {
     enrollment.approval_status = "approved";
     await enrollment.save();
 
-    res.json({ enrollment });
+    res.json({ success: true, enrollment });
   } catch (err) {
-    console.error("❌ approveEnrollment error:", err.message);
-    console.error(err.stack);
+    console.error("❌ approveEnrollment error:", err);
     res.status(500).json({ error: "Server error" });
   }
 };

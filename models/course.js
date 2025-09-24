@@ -1,18 +1,26 @@
 // // models/Course.js
 // const CourseModel = (sequelize, DataTypes) => {
-//   const Course = sequelize.define("Course", {
-//     title: {
-//       type: DataTypes.STRING,
-//       allowNull: false,
+//   const Course = sequelize.define(
+//     "Course",
+//     {
+//       title: {
+//         type: DataTypes.STRING,
+//         allowNull: false,
+//       },
+//       description: {
+//         type: DataTypes.TEXT,
+//         allowNull: true,
+//       },
 //     },
-//     description: {
-//       type: DataTypes.TEXT,
-//       allowNull: true,
-//     },
-//   });
+//     {
+//       tableName: "Courses",
+//       freezeTableName: true,
+//       timestamps: true,
+//     }
+//   );
 
 //   Course.associate = (models) => {
-//     // Teacher relationship (teachers are users with role="teacher")
+//     // Teacher relationship (teachers are User rows with role="teacher")
 //     Course.belongsTo(models.User, {
 //       as: "teacher",
 //       foreignKey: "teacherId",
@@ -24,9 +32,9 @@
 //       foreignKey: "courseId",
 //     });
 
-//     // Enrollments
+//     // Enrollments (unique alias to avoid collisions)
 //     Course.hasMany(models.Enrollment, {
-//       as: "courseEnrollments", // ✅ only defined here
+//       as: "courseEnrollments",
 //       foreignKey: "courseId",
 //     });
 
@@ -47,48 +55,30 @@
 
 // models/Course.js
 const CourseModel = (sequelize, DataTypes) => {
-  const Course = sequelize.define(
-    "Course",
-    {
-      title: {
-        type: DataTypes.STRING,
-        allowNull: false,
-      },
-      description: {
-        type: DataTypes.TEXT,
-        allowNull: true,
-      },
+  const Course = sequelize.define("Course", {
+    title: {
+      type: DataTypes.STRING,
+      allowNull: false,
     },
-    {
-      tableName: "Courses",
-      freezeTableName: true,
-      timestamps: true,
-    }
-  );
+    description: {
+      type: DataTypes.TEXT,
+      allowNull: true,
+    },
+  });
 
   Course.associate = (models) => {
-    // Teacher relationship (teachers are User rows with role="teacher")
     Course.belongsTo(models.User, {
-      as: "teacher",
       foreignKey: "teacherId",
+      as: "teacher", // ✅ use User, not Teacher (since Teacher is a role)
     });
-
-    // Lessons
-    Course.hasMany(models.Lesson, {
-      as: "lessons",
-      foreignKey: "courseId",
-    });
-
-    // Enrollments (unique alias to avoid collisions)
+    Course.hasMany(models.Lesson, { foreignKey: "courseId", as: "lessons" });
     Course.hasMany(models.Enrollment, {
-      as: "courseEnrollments",
       foreignKey: "courseId",
+      as: "enrollments",
     });
-
-    // UserCourseAccess
     Course.hasMany(models.UserCourseAccess, {
-      as: "userAccess",
       foreignKey: "courseId",
+      as: "access",
     });
   };
 

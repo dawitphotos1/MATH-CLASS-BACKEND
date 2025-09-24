@@ -39,22 +39,22 @@
 //   );
 
 //   User.associate = (models) => {
-//     // Enrollments (for students)
+//     // Enrollments (student's enrollments)
 //     User.hasMany(models.Enrollment, {
-//       as: "studentEnrollments", // ✅ renamed to avoid conflict
+//       as: "enrollments",
 //       foreignKey: "studentId",
+//     });
+
+//     // Courses they teach (teacher)
+//     User.hasMany(models.Course, {
+//       as: "teachingCourses",
+//       foreignKey: "teacherId",
 //     });
 
 //     // UserCourseAccess (generic)
 //     User.hasMany(models.UserCourseAccess, {
 //       as: "courseAccess",
 //       foreignKey: "userId",
-//     });
-
-//     // Courses they teach (for teachers)
-//     User.hasMany(models.Course, {
-//       as: "teachingCourses",
-//       foreignKey: "teacherId",
 //     });
 //   };
 
@@ -99,29 +99,20 @@ const UserModel = (sequelize, DataTypes) => {
       },
     },
     {
-      tableName: "Users",
+      tableName: "Users", // ✅ match migration
       freezeTableName: true,
       timestamps: true,
     }
   );
 
   User.associate = (models) => {
-    // Enrollments (student's enrollments)
     User.hasMany(models.Enrollment, {
-      as: "enrollments",
       foreignKey: "studentId",
+      as: "enrollments", // ✅ unique alias
     });
-
-    // Courses they teach (teacher)
-    User.hasMany(models.Course, {
-      as: "teachingCourses",
-      foreignKey: "teacherId",
-    });
-
-    // UserCourseAccess (generic)
     User.hasMany(models.UserCourseAccess, {
-      as: "courseAccess",
       foreignKey: "userId",
+      as: "courseAccess",
     });
   };
 
