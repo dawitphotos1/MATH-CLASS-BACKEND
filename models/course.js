@@ -57,9 +57,10 @@ const CourseModel = (sequelize, DataTypes) => {
 
     // Enrollments
     Course.hasMany(models.Enrollment, {
-      as: "enrollments",
+      as: "courseEnrollments", // ✅ unique alias
       foreignKey: "courseId",
     });
+
 
     // UserCourseAccess
     Course.hasMany(models.UserCourseAccess, {

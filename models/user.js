@@ -94,9 +94,10 @@ const UserModel = (sequelize, DataTypes) => {
   User.associate = (models) => {
     // Enrollments (for students)
     User.hasMany(models.Enrollment, {
-      as: "enrollments",
+      as: "enrollments", // ✅ OK here
       foreignKey: "studentId",
     });
+
 
     // UserCourseAccess (generic)
     User.hasMany(models.UserCourseAccess, {
