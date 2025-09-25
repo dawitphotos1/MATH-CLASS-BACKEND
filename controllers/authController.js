@@ -1,9 +1,158 @@
 
 
+// // controllers/authController.js
+// import jwt from "jsonwebtoken";
+// import bcrypt from "bcryptjs";
+// import db from "../models/index.js";
+// const { User } = db;
+
+// // =========================
+// // 🔑 Helper: Generate JWT
+// // =========================
+// const generateToken = (user) => {
+//   return jwt.sign({ id: user.id, role: user.role }, process.env.JWT_SECRET, {
+//     expiresIn: "7d",
+//   });
+// };
+
+// // ✅ Shared cookie options
+// const cookieOptions = {
+//   httpOnly: true,
+//   secure: process.env.NODE_ENV === "production", // only secure in prod
+//   sameSite: process.env.NODE_ENV === "production" ? "None" : "Lax", // 🔑 Lax for dev
+//   maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
+// };
+
+// // =========================
+// // 🔹 Register
+// // =========================
+// export const register = async (req, res) => {
+//   try {
+//     const { name, email, password, role, subject } = req.body;
+
+//     const existingUser = await User.findOne({
+//       where: { email: email.toLowerCase() },
+//     });
+//     if (existingUser) {
+//       return res
+//         .status(400)
+//         .json({ success: false, error: "User already exists" });
+//     }
+
+//     const hashedPassword = await bcrypt.hash(password, 10);
+
+//     const user = await User.create({
+//       name,
+//       email: email.toLowerCase(),
+//       password: hashedPassword,
+//       role: role || "student",
+//       subject: subject || null,
+//       approval_status: role === "student" ? "pending" : "approved",
+//     });
+
+//     // Auto-login only if approved
+//     if (user.approval_status === "approved") {
+//       const token = generateToken(user);
+//       res.cookie("token", token, cookieOptions);
+//     }
+
+//     return res.status(201).json({
+//       success: true,
+//       message:
+//         user.approval_status === "approved"
+//           ? "Registration successful"
+//           : "Registration pending approval",
+//       user,
+//     });
+//   } catch (err) {
+//     console.error("❌ Register error:", err.message);
+//     return res.status(500).json({ success: false, error: "Server error" });
+//   }
+// };
+
+// // =========================
+// // 🔹 Login
+// // =========================
+// export const login = async (req, res) => {
+//   try {
+//     const { email, password } = req.body;
+
+//     const user = await User.findOne({ where: { email: email.toLowerCase() } });
+//     if (!user) {
+//       return res
+//         .status(401)
+//         .json({ success: false, error: "Invalid credentials" });
+//     }
+
+//     const isMatch = await bcrypt.compare(password, user.password);
+//     if (!isMatch) {
+//       return res
+//         .status(401)
+//         .json({ success: false, error: "Invalid credentials" });
+//     }
+
+//     if (user.approval_status !== "approved") {
+//       return res
+//         .status(403)
+//         .json({ success: false, error: "Account pending approval" });
+//     }
+
+//     const token = generateToken(user);
+//     res.cookie("token", token, cookieOptions);
+
+//     return res.json({ success: true, message: "Login successful", user });
+//   } catch (err) {
+//     console.error("❌ Login error:", err.message);
+//     return res.status(500).json({ success: false, error: "Server error" });
+//   }
+// };
+
+// // =========================
+// // 🔹 Get Current User
+// // =========================
+// export const getMe = async (req, res) => {
+//   try {
+//     console.log("🔍 Incoming cookies:", req.cookies);
+
+//     if (!req.user?.id) {
+//       return res
+//         .status(401)
+//         .json({ success: false, error: "Not authenticated" });
+//     }
+
+//     // Fetch the *full* user from DB
+//     const user = await User.findByPk(req.user.id, {
+//       attributes: { exclude: ["password"] }, // ✅ never send password
+//     });
+
+//     if (!user) {
+//       return res.status(404).json({ success: false, error: "User not found" });
+//     }
+
+//     return res.json({ success: true, user });
+//   } catch (err) {
+//     console.error("❌ getMe error:", err.message);
+//     return res.status(500).json({ success: false, error: "Server error" });
+//   }
+// };
+
+// // =========================
+// // 🔹 Logout
+// // =========================
+// export const logout = (req, res) => {
+//   res.clearCookie("token", cookieOptions);
+//   return res.json({ success: true, message: "Logged out successfully" });
+// };
+
+
+
+
+
 // controllers/authController.js
 import jwt from "jsonwebtoken";
 import bcrypt from "bcryptjs";
 import db from "../models/index.js";
+
 const { User } = db;
 
 // =========================
@@ -18,8 +167,8 @@ const generateToken = (user) => {
 // ✅ Shared cookie options
 const cookieOptions = {
   httpOnly: true,
-  secure: process.env.NODE_ENV === "production", // only secure in prod
-  sameSite: process.env.NODE_ENV === "production" ? "None" : "Lax", // 🔑 Lax for dev
+  secure: process.env.NODE_ENV === "production",
+  sameSite: process.env.NODE_ENV === "production" ? "None" : "Lax",
   maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
 };
 
@@ -30,9 +179,16 @@ export const register = async (req, res) => {
   try {
     const { name, email, password, role, subject } = req.body;
 
+    if (!email || !password || !name) {
+      return res
+        .status(400)
+        .json({ success: false, error: "All fields are required" });
+    }
+
     const existingUser = await User.findOne({
       where: { email: email.toLowerCase() },
     });
+
     if (existingUser) {
       return res
         .status(400)
@@ -62,10 +218,17 @@ export const register = async (req, res) => {
         user.approval_status === "approved"
           ? "Registration successful"
           : "Registration pending approval",
-      user,
+      user: {
+        id: user.id,
+        name: user.name,
+        email: user.email,
+        role: user.role,
+        subject: user.subject,
+        approval_status: user.approval_status,
+      },
     });
   } catch (err) {
-    console.error("❌ Register error:", err.message);
+    console.error("❌ Register error:", err.stack || err.message);
     return res.status(500).json({ success: false, error: "Server error" });
   }
 };
@@ -77,7 +240,14 @@ export const login = async (req, res) => {
   try {
     const { email, password } = req.body;
 
+    if (!email || !password) {
+      return res
+        .status(400)
+        .json({ success: false, error: "Email and password required" });
+    }
+
     const user = await User.findOne({ where: { email: email.toLowerCase() } });
+
     if (!user) {
       return res
         .status(401)
@@ -100,9 +270,19 @@ export const login = async (req, res) => {
     const token = generateToken(user);
     res.cookie("token", token, cookieOptions);
 
-    return res.json({ success: true, message: "Login successful", user });
+    return res.status(200).json({
+      success: true,
+      message: "Login successful",
+      user: {
+        id: user.id,
+        name: user.name,
+        email: user.email,
+        role: user.role,
+        subject: user.subject,
+      },
+    });
   } catch (err) {
-    console.error("❌ Login error:", err.message);
+    console.error("❌ Login error:", err.stack || err.message);
     return res.status(500).json({ success: false, error: "Server error" });
   }
 };
@@ -112,17 +292,14 @@ export const login = async (req, res) => {
 // =========================
 export const getMe = async (req, res) => {
   try {
-    console.log("🔍 Incoming cookies:", req.cookies);
-
     if (!req.user?.id) {
       return res
         .status(401)
         .json({ success: false, error: "Not authenticated" });
     }
 
-    // Fetch the *full* user from DB
     const user = await User.findByPk(req.user.id, {
-      attributes: { exclude: ["password"] }, // ✅ never send password
+      attributes: { exclude: ["password"] },
     });
 
     if (!user) {
@@ -131,7 +308,7 @@ export const getMe = async (req, res) => {
 
     return res.json({ success: true, user });
   } catch (err) {
-    console.error("❌ getMe error:", err.message);
+    console.error("❌ getMe error:", err.stack || err.message);
     return res.status(500).json({ success: false, error: "Server error" });
   }
 };
