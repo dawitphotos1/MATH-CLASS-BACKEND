@@ -134,7 +134,6 @@
 
 
 
-
 // server.js
 import dotenv from "dotenv";
 dotenv.config();
@@ -145,42 +144,42 @@ import helmet from "helmet";
 import cookieParser from "cookie-parser";
 import rateLimit from "express-rate-limit";
 import listEndpoints from "express-list-endpoints";
-import sequelize from "./config/db.js"; // DB instance
 
+import sequelize from "./config/db.js";
 import authRoutes from "./routes/auth.js";
 import adminRoutes from "./routes/admin.js";
 import courseRoutes from "./routes/courses.js";
 
 const app = express();
-app.set("trust proxy", 1); // Required for cookies on Render
+app.set("trust proxy", 1); // needed for cookies in many hosted environments
 
-// Environment Check
-console.log("🚀 DATABASE_URL:", !!process.env.DATABASE_URL);
-console.log("🚀 JWT_SECRET:", !!process.env.JWT_SECRET);
+// Log key env vars
+console.log("🚀 DATABASE_URL set?", !!process.env.DATABASE_URL);
+console.log("🚀 JWT_SECRET set?", !!process.env.JWT_SECRET);
 console.log("🌍 FRONTEND_URL:", process.env.FRONTEND_URL);
 
-// ========================
-// 🔹 Middleware
-// ========================
+// ========== Middleware ==========
 app.use(helmet());
 app.use(cookieParser());
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
-// ✅ CORS
+// ========== CORS ==========
+// Allowed origins should include Netlify frontend + localhost (for dev)
 const allowedOrigins = [
   "http://localhost:3000",
-  "https://mathe-class-website-frontend.onrender.com",
+  process.env.FRONTEND_URL, // e.g. https://math-class-platform.netlify.app
 ];
 
 app.use(
   cors({
     origin: (origin, callback) => {
       console.log("🌍 Incoming Origin:", origin);
+      // Accept if no origin (like some requests) OR origin in allowedOrigins
       if (!origin || allowedOrigins.includes(origin)) {
         callback(null, true);
       } else {
-        console.warn("🚫 Blocked by CORS:", origin);
+        console.warn("🚫 Blocked by CORS, origin:", origin);
         callback(new Error("Not allowed by CORS"));
       }
     },
@@ -188,33 +187,31 @@ app.use(
   })
 );
 
-// ✅ Rate Limiting
+// ========== Rate Limiting ==========
 if (process.env.NODE_ENV === "production") {
-  app.use(
-    "/api",
-    rateLimit({
-      windowMs: 15 * 60 * 1000,
-      max: 500,
-      message: { success: false, error: "Too many requests" },
-    })
-  );
-  console.log("✅ Rate limiting enabled");
+  const limiter = rateLimit({
+    windowMs: 15 * 60 * 1000,
+    max: 500,
+    message: { success: false, error: "Too many requests" },
+  });
+  app.use("/api", limiter);
+  console.log("✅ Rate limiting enabled (production)");
+} else {
+  console.log("⚡ Rate limiting disabled (development)");
 }
 
-// Logger
+// ========== Request Logger ==========
 app.use((req, res, next) => {
   console.log(`📥 [${req.method}] ${req.originalUrl}`);
   next();
 });
 
-// ========================
-// 🔹 Routes
-// ========================
+// ========== Routes ==========
 app.use("/api/v1/auth", authRoutes);
 app.use("/api/v1/admin", adminRoutes);
 app.use("/api/v1/courses", courseRoutes);
 
-// Health Check
+// Health check
 app.get("/api/v1/health", async (req, res) => {
   try {
     await sequelize.authenticate();
@@ -224,21 +221,17 @@ app.get("/api/v1/health", async (req, res) => {
   }
 });
 
-// ========================
-// 🔹 Fallback & Errors
-// ========================
+// ========== 404 + Error Handler ==========
 app.use((req, res) => {
   res.status(404).json({ success: false, error: "Not Found" });
 });
 
 app.use((err, req, res, next) => {
-  console.error("❌ Error:", err.stack || err.message);
+  console.error("❌ Global Error Handler:", err.stack || err.message);
   res.status(500).json({ success: false, error: "Server error" });
 });
 
-// ========================
-// 🔹 Start Server
-// ========================
+// ========== Start Server ==========
 const PORT = process.env.PORT || 5000;
 
 (async () => {
@@ -246,13 +239,12 @@ const PORT = process.env.PORT || 5000;
     if (!process.env.JWT_SECRET || !process.env.DATABASE_URL) {
       throw new Error("Missing critical env vars");
     }
-
     await sequelize.sync({ alter: false });
     console.log("✅ DB Synced");
 
-    app.listen(PORT, "0.0.0.0", () =>
-      console.log(`🚀 Server running on port ${PORT}`)
-    );
+    app.listen(PORT, "0.0.0.0", () => {
+      console.log(`🚀 Server running on port ${PORT}`);
+    });
   } catch (err) {
     console.error("❌ Startup Error:", err.message);
   }
