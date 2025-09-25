@@ -147,7 +147,6 @@
 
 
 
-
 // controllers/authController.js
 import jwt from "jsonwebtoken";
 import bcrypt from "bcryptjs";
@@ -159,9 +158,11 @@ const { User } = db;
 // 🔑 Helper: Generate JWT
 // =========================
 const generateToken = (user) => {
-  return jwt.sign({ id: user.id, role: user.role }, process.env.JWT_SECRET, {
-    expiresIn: "7d",
-  });
+  return jwt.sign(
+    { id: user.id, role: user.role },
+    process.env.JWT_SECRET,
+    { expiresIn: "7d" }
+  );
 };
 
 // ✅ Shared cookie options
@@ -179,16 +180,15 @@ export const register = async (req, res) => {
   try {
     const { name, email, password, role, subject } = req.body;
 
-    if (!email || !password || !name) {
+    if (!name || !email || !password) {
       return res
         .status(400)
-        .json({ success: false, error: "All fields are required" });
+        .json({ success: false, error: "Name, email and password are required" });
     }
 
     const existingUser = await User.findOne({
       where: { email: email.toLowerCase() },
     });
-
     if (existingUser) {
       return res
         .status(400)
@@ -240,13 +240,16 @@ export const login = async (req, res) => {
   try {
     const { email, password } = req.body;
 
+    // Basic validation
     if (!email || !password) {
       return res
         .status(400)
         .json({ success: false, error: "Email and password required" });
     }
 
-    const user = await User.findOne({ where: { email: email.toLowerCase() } });
+    const user = await User.findOne({
+      where: { email: email.toLowerCase() },
+    });
 
     if (!user) {
       return res
@@ -292,7 +295,8 @@ export const login = async (req, res) => {
 // =========================
 export const getMe = async (req, res) => {
   try {
-    if (!req.user?.id) {
+    // At this point, authMiddleware should have populated req.user
+    if (!req.user || !req.user.id) {
       return res
         .status(401)
         .json({ success: false, error: "Not authenticated" });
@@ -303,10 +307,15 @@ export const getMe = async (req, res) => {
     });
 
     if (!user) {
-      return res.status(404).json({ success: false, error: "User not found" });
+      return res
+        .status(404)
+        .json({ success: false, error: "User not found" });
     }
 
-    return res.json({ success: true, user });
+    return res.json({
+      success: true,
+      user,
+    });
   } catch (err) {
     console.error("❌ getMe error:", err.stack || err.message);
     return res.status(500).json({ success: false, error: "Server error" });
@@ -317,6 +326,11 @@ export const getMe = async (req, res) => {
 // 🔹 Logout
 // =========================
 export const logout = (req, res) => {
-  res.clearCookie("token", cookieOptions);
-  return res.json({ success: true, message: "Logged out successfully" });
+  try {
+    res.clearCookie("token", cookieOptions);
+    return res.json({ success: true, message: "Logged out successfully" });
+  } catch (err) {
+    console.error("❌ Logout error:", err.stack || err.message);
+    return res.status(500).json({ success: false, error: "Server error" });
+  }
 };
