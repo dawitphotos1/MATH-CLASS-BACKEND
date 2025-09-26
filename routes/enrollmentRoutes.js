@@ -55,7 +55,7 @@ import {
   createEnrollment,
   getMyEnrollments,
   getMyCourses,
-  checkEnrollment,
+  // checkEnrollment,
   getPendingEnrollments,
   getApprovedEnrollments,
   approveEnrollment,
