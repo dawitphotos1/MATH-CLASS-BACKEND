@@ -146,14 +146,18 @@ import rateLimit from "express-rate-limit";
 import listEndpoints from "express-list-endpoints";
 
 import sequelize from "./config/db.js";
+
+// ✅ Correct routes
 import authRoutes from "./routes/auth.js";
-import adminRoutes from "./routes/admin.js";
+import adminRoutes from "./routes/adminRoutes.js"; // fixed filename
 import courseRoutes from "./routes/courses.js";
+import lessonRoutes from "./routes/lessons.js"; // add if you already have it
+import enrollmentRoutes from "./routes/enrollmentRoutes.js"; // add if you already have it
 
 const app = express();
-app.set("trust proxy", 1); // needed for cookies in many hosted environments
+app.set("trust proxy", 1); // needed for cookies in hosted environments
 
-// Log key env vars
+// Log env vars for sanity check
 console.log("🚀 DATABASE_URL set?", !!process.env.DATABASE_URL);
 console.log("🚀 JWT_SECRET set?", !!process.env.JWT_SECRET);
 console.log("🌍 FRONTEND_URL:", process.env.FRONTEND_URL);
@@ -165,7 +169,6 @@ app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
 // ========== CORS ==========
-// Allowed origins should include Netlify frontend + localhost (for dev)
 const allowedOrigins = [
   "http://localhost:3000",
   process.env.FRONTEND_URL, // e.g. https://math-class-platform.netlify.app
@@ -175,7 +178,6 @@ app.use(
   cors({
     origin: (origin, callback) => {
       console.log("🌍 Incoming Origin:", origin);
-      // Accept if no origin (like some requests) OR origin in allowedOrigins
       if (!origin || allowedOrigins.includes(origin)) {
         callback(null, true);
       } else {
@@ -210,6 +212,8 @@ app.use((req, res, next) => {
 app.use("/api/v1/auth", authRoutes);
 app.use("/api/v1/admin", adminRoutes);
 app.use("/api/v1/courses", courseRoutes);
+app.use("/api/v1/lessons", lessonRoutes); // optional if you created lessons API
+app.use("/api/v1/enrollments", enrollmentRoutes); // optional if you created enrollments API
 
 // Health check
 app.get("/api/v1/health", async (req, res) => {
@@ -245,6 +249,9 @@ const PORT = process.env.PORT || 5000;
     app.listen(PORT, "0.0.0.0", () => {
       console.log(`🚀 Server running on port ${PORT}`);
     });
+
+    // log all endpoints for debugging
+    console.log("📌 Registered Endpoints:", listEndpoints(app));
   } catch (err) {
     console.error("❌ Startup Error:", err.message);
   }
