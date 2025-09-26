@@ -133,7 +133,9 @@
 
 
 
-// server.js
+
+
+
 import dotenv from "dotenv";
 dotenv.config();
 
@@ -142,10 +144,11 @@ import cors from "cors";
 import helmet from "helmet";
 import cookieParser from "cookie-parser";
 import rateLimit from "express-rate-limit";
+import listEndpoints from "express-list-endpoints";
 
 import sequelize from "./config/db.js";
 
-// ✅ Routes
+// 🔹 Routes
 import authRoutes from "./routes/authRoutes.js";
 import adminRoutes from "./routes/adminRoutes.js";
 import courseRoutes from "./routes/courses.js";
@@ -153,9 +156,9 @@ import lessonRoutes from "./routes/lessonRoutes.js";
 import enrollmentRoutes from "./routes/enrollmentRoutes.js";
 
 const app = express();
-app.set("trust proxy", 1); // needed for cookies in many hosted environments
+app.set("trust proxy", 1);
 
-// Log key env vars
+// Debug important envs
 console.log("🚀 DATABASE_URL set?", !!process.env.DATABASE_URL);
 console.log("🚀 JWT_SECRET set?", !!process.env.JWT_SECRET);
 console.log("🌍 FRONTEND_URL:", process.env.FRONTEND_URL);
@@ -167,10 +170,7 @@ app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
 // ========== CORS ==========
-const allowedOrigins = [
-  "http://localhost:3000",
-  process.env.FRONTEND_URL, // e.g. https://math-class-platform.netlify.app
-];
+const allowedOrigins = ["http://localhost:3000", process.env.FRONTEND_URL];
 
 app.use(
   cors({
@@ -200,7 +200,7 @@ if (process.env.NODE_ENV === "production") {
   console.log("⚡ Rate limiting disabled (development)");
 }
 
-// ========== Request Logger ==========
+// ========== Logger ==========
 app.use((req, res, next) => {
   console.log(`📥 [${req.method}] ${req.originalUrl}`);
   next();
@@ -233,7 +233,7 @@ app.use((err, req, res, next) => {
   res.status(500).json({ success: false, error: "Server error" });
 });
 
-// ========== Start Server ==========
+// ========== Start ==========
 const PORT = process.env.PORT || 5000;
 
 (async () => {
@@ -247,6 +247,8 @@ const PORT = process.env.PORT || 5000;
     app.listen(PORT, "0.0.0.0", () => {
       console.log(`🚀 Server running on port ${PORT}`);
     });
+
+    console.log("📋 Endpoints:", listEndpoints(app));
   } catch (err) {
     console.error("❌ Startup Error:", err.message);
   }
