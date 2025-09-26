@@ -68,28 +68,28 @@
 // module.exports = router;
 
 
+
+
 import express from "express";
+import { authenticateToken, isAdmin } from "../middleware/authMiddleware.js";
 import {
-  getPendingUsers,
-  updateUserApproval,
-  getEnrollments,
-  approveEnrollment,
+  getStudentsByStatus,
+  approveStudent,
+  rejectStudent,
 } from "../controllers/adminController.js";
-import { protect, isAdmin } from "../middleware/authMiddleware.js";
 
 const router = express.Router();
 
-// Users
-router.get("/pending-users", protect, isAdmin, getPendingUsers);
-router.patch("/users/:userId/approval", protect, isAdmin, updateUserApproval);
+// Students by status (pending, approved, rejected)
+router.get("/students", authenticateToken, isAdmin, getStudentsByStatus);
 
-// Enrollments
-router.get("/enrollments", protect, isAdmin, getEnrollments);
-router.put(
-  "/enrollments/:enrollmentId/approve",
-  protect,
+// Approve / reject
+router.patch(
+  "/students/:id/approve",
+  authenticateToken,
   isAdmin,
-  approveEnrollment
+  approveStudent
 );
+router.patch("/students/:id/reject", authenticateToken, isAdmin, rejectStudent);
 
 export default router;

@@ -105,117 +105,75 @@
 
 
 
-
 // controllers/adminController.js
-import db from "../models/index.js";
-
-const { User, Enrollment, Course } = db;
+import User from "../models/User.js";
 
 /**
- * GET /api/v1/admin/pending-users
- * Return users with approval_status = 'pending' (usually newly-registered students)
+ * Get students by approval status
+ * @route GET /admin/students?status=pending|approved|rejected
  */
-export const getPendingUsers = async (req, res) => {
-  try {
-    const users = await User.findAll({
-      where: { approval_status: "pending" },
-      attributes: ["id", "name", "email", "role", "subject", "createdAt"],
-      order: [["createdAt", "DESC"]],
-    });
-
-    return res.json({ success: true, users });
-  } catch (err) {
-    console.error("❌ getPendingUsers error:", err);
-    return res.status(500).json({ success: false, error: "Server error" });
-  }
-};
-
-/**
- * PATCH /api/v1/admin/users/:id/approval
- * Body: { status: "approved" | "rejected" }
- */
-export const updateUserApproval = async (req, res) => {
-  try {
-    const userId = req.params.id || req.params.userId; // support either param name
-    const { status } = req.body;
-
-    if (!["approved", "rejected", "pending"].includes(status)) {
-      return res.status(400).json({ success: false, error: "Invalid status" });
-    }
-
-    const user = await User.findByPk(userId);
-    if (!user) return res.status(404).json({ success: false, error: "User not found" });
-
-    user.approval_status = status;
-    await user.save();
-
-    return res.json({ success: true, user: {
-      id: user.id,
-      name: user.name,
-      email: user.email,
-      role: user.role,
-      subject: user.subject,
-      approval_status: user.approval_status,
-    }});
-  } catch (err) {
-    console.error("❌ updateUserApproval error:", err);
-    return res.status(500).json({ success: false, error: "Server error" });
-  }
-};
-
-/**
- * GET /api/v1/admin/enrollments?status=pending
- * Return enrollments optionally filtered by approval_status
- */
-export const getEnrollments = async (req, res) => {
+export const getStudentsByStatus = async (req, res) => {
   try {
     const { status } = req.query;
 
-    const whereClause = {};
-    if (status) whereClause.approval_status = status;
+    if (!status || !["pending", "approved", "rejected"].includes(status)) {
+      return res.status(400).json({ error: "Invalid or missing status" });
+    }
 
-    const enrollments = await Enrollment.findAll({
-      where: whereClause,
-      include: [
-        { model: User, as: "student", attributes: ["id", "name", "email"] },
-        { model: Course, as: "course", attributes: ["id", "title", "slug"] },
-      ],
-      order: [["createdAt", "DESC"]],
+    const students = await User.findAll({
+      where: { role: "student", approval_status: status },
+      attributes: ["id", "name", "email", "subject", "approval_status", "updatedAt"],
     });
 
-    return res.json({ success: true, enrollments });
+    return res.json({ students });
   } catch (err) {
-    console.error("❌ getEnrollments error:", err);
-    return res.status(500).json({ success: false, error: "Server error" });
+    console.error("❌ Error fetching students:", err);
+    return res.status(500).json({ error: "Failed to fetch students" });
   }
 };
 
 /**
- * PUT /api/v1/admin/enrollments/:id/approve
- * Approve a specific enrollment
+ * Approve a student
+ * @route PATCH /admin/students/:id/approve
  */
-export const approveEnrollment = async (req, res) => {
+export const approveStudent = async (req, res) => {
   try {
-    const enrollmentId = req.params.id || req.params.enrollmentId;
-    const enrollment = await Enrollment.findByPk(enrollmentId, {
-      include: [
-        { model: User, as: "student", attributes: ["id", "name", "email"] },
-        { model: Course, as: "course", attributes: ["id", "title", "slug"] },
-      ],
-    });
+    const { id } = req.params;
 
-    if (!enrollment) {
-      return res.status(404).json({ success: false, error: "Enrollment not found" });
+    const student = await User.findByPk(id);
+    if (!student || student.role !== "student") {
+      return res.status(404).json({ error: "Student not found" });
     }
 
-    enrollment.approval_status = "approved";
-    await enrollment.save();
+    student.approval_status = "approved";
+    await student.save();
 
-    // Optionally: create UserCourseAccess or other side-effects here
-
-    return res.json({ success: true, enrollment });
+    return res.json({ message: "Student approved", student });
   } catch (err) {
-    console.error("❌ approveEnrollment error:", err);
-    return res.status(500).json({ success: false, error: "Server error" });
+    console.error("❌ Error approving student:", err);
+    return res.status(500).json({ error: "Failed to approve student" });
+  }
+};
+
+/**
+ * Reject a student
+ * @route PATCH /admin/students/:id/reject
+ */
+export const rejectStudent = async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    const student = await User.findByPk(id);
+    if (!student || student.role !== "student") {
+      return res.status(404).json({ error: "Student not found" });
+    }
+
+    student.approval_status = "rejected";
+    await student.save();
+
+    return res.json({ message: "Student rejected", student });
+  } catch (err) {
+    console.error("❌ Error rejecting student:", err);
+    return res.status(500).json({ error: "Failed to reject student" });
   }
 };
