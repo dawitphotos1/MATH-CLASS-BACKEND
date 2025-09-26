@@ -48,28 +48,32 @@
 
 // module.exports = exports;
 
-
 // routes/enrollmentRoutes.js
 import express from "express";
-import * as enrollmentController from "../controllers/enrollmentController.js";
+import {
+  createEnrollment,
+  getMyEnrollments,
+  getMyCourses,
+  checkEnrollmentStatus,
+  getPendingEnrollments,
+  getApprovedEnrollments,
+  approveEnrollment,
+  rejectEnrollment,
+} from "../controllers/enrollmentController.js";
 import { protect } from "../middleware/authMiddleware.js";
 
 const router = express.Router();
 
-// ====================
 // Student routes
-// ====================
-router.post("/request", protect, enrollmentController.createEnrollment);
-router.get("/my-enrollments", protect, enrollmentController.getMyEnrollments);
-router.get("/my-courses", protect, enrollmentController.getMyCourses);
-router.get("/status/:courseId", protect, enrollmentController.checkEnrollment);
+router.post("/request", protect, createEnrollment);
+router.get("/my-enrollments", protect, getMyEnrollments);
+router.get("/my-courses", protect, getMyCourses);
+router.get("/status/:courseId", protect, checkEnrollmentStatus);
 
-// ====================
 // Admin / teacher routes
-// ====================
-router.get("/pending", protect, enrollmentController.getPendingEnrollments);
-router.get("/approved", protect, enrollmentController.getApprovedEnrollments);
-router.patch("/:id/approve", protect, enrollmentController.approveEnrollment);
-router.delete("/:id/reject", protect, enrollmentController.rejectEnrollment);
+router.get("/pending", protect, getPendingEnrollments);
+router.get("/approved", protect, getApprovedEnrollments);
+router.patch("/:id/approve", protect, approveEnrollment);
+router.delete("/:id/reject", protect, rejectEnrollment);
 
 export default router;

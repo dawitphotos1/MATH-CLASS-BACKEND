@@ -69,34 +69,19 @@
 
 
 
-
-
 // routes/adminRoutes.js
 import express from "express";
-import {
-  getPendingUsers,
-  updateUserApproval,
-  getEnrollments,
-  approveEnrollment,
-} from "../controllers/adminController.js";
-import { authenticateToken, isAdmin } from "../middleware/authMiddleware.js";
+import { getPendingUsers, updateUserApproval, getEnrollments, approveEnrollment } from "../controllers/adminController.js";
+import { protect, isAdmin } from "../middleware/authMiddleware.js";
 
 const router = express.Router();
 
-// Pending student list shown in Admin Dashboard
-// Frontend calls: GET /api/v1/admin/pending-users
-router.get("/pending-users", authenticateToken, isAdmin, getPendingUsers);
+// Users
+router.get("/pending-users", protect, isAdmin, getPendingUsers);
+router.patch("/users/:userId/approval", protect, isAdmin, updateUserApproval);
 
-// Approve/reject user
-// Frontend calls: PATCH /api/v1/admin/users/:id/approval  with { status: "approved" }
-router.patch("/users/:id/approval", authenticateToken, isAdmin, updateUserApproval);
-
-// Enrollments listing
-// Frontend calls: GET /api/v1/admin/enrollments?status=pending
-router.get("/enrollments", authenticateToken, isAdmin, getEnrollments);
-
-// Approve a pending enrollment
-// Frontend calls: PUT /api/v1/admin/enrollments/:id/approve
-router.put("/enrollments/:id/approve", authenticateToken, isAdmin, approveEnrollment);
+// Enrollments
+router.get("/enrollments", protect, isAdmin, getEnrollments);
+router.put("/enrollments/:enrollmentId/approve", protect, isAdmin, approveEnrollment);
 
 export default router;

@@ -133,7 +133,6 @@
 
 
 
-
 // server.js
 import dotenv from "dotenv";
 dotenv.config();
@@ -143,21 +142,20 @@ import cors from "cors";
 import helmet from "helmet";
 import cookieParser from "cookie-parser";
 import rateLimit from "express-rate-limit";
-import listEndpoints from "express-list-endpoints";
 
 import sequelize from "./config/db.js";
 
-// ✅ Correct routes
-import authRoutes from "./routes/auth.js";
-import adminRoutes from "./routes/adminRoutes.js"; // fixed filename
+// ✅ Routes
+import authRoutes from "./routes/authRoutes.js";
+import adminRoutes from "./routes/adminRoutes.js";
 import courseRoutes from "./routes/courses.js";
 import lessonRoutes from "./routes/lessonRoutes.js";
-import enrollmentRoutes from "./routes/enrollmentRoutes.js"; // add if you already have it
+import enrollmentRoutes from "./routes/enrollmentRoutes.js";
 
 const app = express();
-app.set("trust proxy", 1); // needed for cookies in hosted environments
+app.set("trust proxy", 1); // needed for cookies in many hosted environments
 
-// Log env vars for sanity check
+// Log key env vars
 console.log("🚀 DATABASE_URL set?", !!process.env.DATABASE_URL);
 console.log("🚀 JWT_SECRET set?", !!process.env.JWT_SECRET);
 console.log("🌍 FRONTEND_URL:", process.env.FRONTEND_URL);
@@ -212,8 +210,8 @@ app.use((req, res, next) => {
 app.use("/api/v1/auth", authRoutes);
 app.use("/api/v1/admin", adminRoutes);
 app.use("/api/v1/courses", courseRoutes);
-app.use("/api/v1/lessons", lessonRoutes); // optional if you created lessons API
-app.use("/api/v1/enrollments", enrollmentRoutes); // optional if you created enrollments API
+app.use("/api/v1/lessons", lessonRoutes);
+app.use("/api/v1/enrollments", enrollmentRoutes);
 
 // Health check
 app.get("/api/v1/health", async (req, res) => {
@@ -249,9 +247,6 @@ const PORT = process.env.PORT || 5000;
     app.listen(PORT, "0.0.0.0", () => {
       console.log(`🚀 Server running on port ${PORT}`);
     });
-
-    // log all endpoints for debugging
-    console.log("📌 Registered Endpoints:", listEndpoints(app));
   } catch (err) {
     console.error("❌ Startup Error:", err.message);
   }
