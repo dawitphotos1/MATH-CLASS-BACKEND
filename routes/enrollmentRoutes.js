@@ -50,7 +50,6 @@
 
 
 
-
 import express from "express";
 import {
   createEnrollment,
@@ -62,6 +61,7 @@ import {
   approveEnrollment,
   rejectEnrollment,
 } from "../controllers/enrollmentController.js";
+
 import { protect } from "../middleware/authMiddleware.js";
 
 const router = express.Router();
@@ -72,7 +72,7 @@ router.get("/my-enrollments", protect, getMyEnrollments);
 router.get("/my-courses", protect, getMyCourses);
 router.get("/status/:courseId", protect, checkEnrollment);
 
-// Admin/teacher routes
+// Admin / teacher routes
 router.get("/pending", protect, getPendingEnrollments);
 router.get("/approved", protect, getApprovedEnrollments);
 router.patch("/:id/approve", protect, approveEnrollment);

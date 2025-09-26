@@ -7,7 +7,7 @@ const {
   createTableIfNotExists,
   dropTableIfExists,
   addIndexIfNotExists,
-} = require("../utils/migrationHelpers");
+} = require("../utils/migrationHelpers.cjs");
 
 module.exports = {
   async up(queryInterface, Sequelize) {

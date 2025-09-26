@@ -3,28 +3,28 @@
 
 module.exports = {
   up: async (queryInterface, Sequelize) => {
-    const table = await queryInterface.describeTable("Lessons");
+    const table = await queryInterface.describeTable("lessons");
 
     if (!table.unitTitle) {
-      await queryInterface.addColumn("Lessons", "unitTitle", {
+      await queryInterface.addColumn("lessons", "unitTitle", {
         type: Sequelize.STRING,
         allowNull: true,
       });
     }
 
     if (!table.isUnitHeader) {
-      await queryInterface.addColumn("Lessons", "isUnitHeader", {
+      await queryInterface.addColumn("lessons", "isUnitHeader", {
         type: Sequelize.BOOLEAN,
         defaultValue: false,
       });
     }
 
     if (!table.unitId) {
-      await queryInterface.addColumn("Lessons", "unitId", {
+      await queryInterface.addColumn("lessons", "unitId", {
         type: Sequelize.INTEGER,
         allowNull: true,
         references: {
-          model: "Lessons",
+          model: "lessons",
           key: "id",
         },
       });
@@ -33,18 +33,18 @@ module.exports = {
 
   down: async (queryInterface, Sequelize) => {
     // Only attempt to remove columns if they exist
-    const table = await queryInterface.describeTable("Lessons");
+    const table = await queryInterface.describeTable("lessons");
 
     if (table.unitTitle) {
-      await queryInterface.removeColumn("Lessons", "unitTitle");
+      await queryInterface.removeColumn("lessons", "unitTitle");
     }
 
     if (table.isUnitHeader) {
-      await queryInterface.removeColumn("Lessons", "isUnitHeader");
+      await queryInterface.removeColumn("lessons", "isUnitHeader");
     }
 
     if (table.unitId) {
-      await queryInterface.removeColumn("Lessons", "unitId");
+      await queryInterface.removeColumn("lessons", "unitId");
     }
   },
 };
