@@ -49,23 +49,27 @@
 // module.exports = exports;
 
 
-
 // routes/enrollmentRoutes.js
-const express = require("express");
-const router = express.Router();
-const enrollmentController = require("../controllers/enrollmentController");
-const { protect } = require("../middleware/authMiddleware");
+import express from "express";
+import * as enrollmentController from "../controllers/enrollmentController.js";
+import { protect } from "../middleware/authMiddleware.js";
 
+const router = express.Router();
+
+// ====================
 // Student routes
+// ====================
 router.post("/request", protect, enrollmentController.createEnrollment);
 router.get("/my-enrollments", protect, enrollmentController.getMyEnrollments);
 router.get("/my-courses", protect, enrollmentController.getMyCourses);
 router.get("/status/:courseId", protect, enrollmentController.checkEnrollment);
 
+// ====================
 // Admin / teacher routes
+// ====================
 router.get("/pending", protect, enrollmentController.getPendingEnrollments);
 router.get("/approved", protect, enrollmentController.getApprovedEnrollments);
 router.patch("/:id/approve", protect, enrollmentController.approveEnrollment);
 router.delete("/:id/reject", protect, enrollmentController.rejectEnrollment);
 
-module.exports = router;
+export default router;

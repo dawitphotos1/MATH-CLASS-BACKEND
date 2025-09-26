@@ -151,7 +151,7 @@ import sequelize from "./config/db.js";
 import authRoutes from "./routes/auth.js";
 import adminRoutes from "./routes/adminRoutes.js"; // fixed filename
 import courseRoutes from "./routes/courses.js";
-import lessonRoutes from "./routes/lessons.js"; // add if you already have it
+import lessonRoutes from "./routes/lessonRoutes.js";
 import enrollmentRoutes from "./routes/enrollmentRoutes.js"; // add if you already have it
 
 const app = express();
