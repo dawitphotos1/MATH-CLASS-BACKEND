@@ -135,7 +135,7 @@
 
 
 
-
+// server.js
 import dotenv from "dotenv";
 dotenv.config();
 
@@ -156,7 +156,7 @@ import lessonRoutes from "./routes/lessonRoutes.js";
 import enrollmentRoutes from "./routes/enrollmentRoutes.js";
 
 const app = express();
-app.set("trust proxy", 1);
+app.set("trust proxy", 1); // for cookies/session security
 
 // Debug important envs
 console.log("🚀 DATABASE_URL set?", !!process.env.DATABASE_URL);
