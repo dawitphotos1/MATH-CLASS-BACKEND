@@ -121,46 +121,41 @@
 
 
 
-
-// middleware/authMiddleware.js
 import jwt from "jsonwebtoken";
 import db from "../models/index.js";
 
 const { User } = db;
 
-// ✅ Main auth middleware
+// ✅ Protect middleware (used for all authenticated routes)
 export const protect = async (req, res, next) => {
   try {
-    const token = req.cookies?.token;
+    const token =
+      req.cookies?.token || req.headers.authorization?.split(" ")[1];
 
     if (!token) {
-      return res.status(401).json({ success: false, error: "Not authenticated" });
+      return res.status(401).json({ error: "Not authorized, no token" });
     }
 
-    let decoded;
-    try {
-      decoded = jwt.verify(token, process.env.JWT_SECRET);
-    } catch (err) {
-      return res.status(403).json({ success: false, error: "Invalid or expired token" });
+    const decoded = jwt.verify(token, process.env.JWT_SECRET);
+    req.user = await User.findByPk(decoded.id, {
+      attributes: { exclude: ["password"] },
+    });
+
+    if (!req.user) {
+      return res.status(401).json({ error: "User not found" });
     }
 
-    const user = await User.findByPk(decoded.id);
-    if (!user) {
-      return res.status(401).json({ success: false, error: "User not found" });
-    }
-
-    req.user = { id: user.id, email: user.email, role: user.role };
     next();
   } catch (err) {
-    console.error("❌ Auth middleware error:", err.stack || err.message);
-    res.status(500).json({ success: false, error: "Authentication error" });
+    console.error("❌ Auth error:", err.message);
+    res.status(401).json({ error: "Not authorized, token failed" });
   }
 };
 
-// ✅ Admin check
+// ✅ Admin only middleware
 export const isAdmin = (req, res, next) => {
-  if (req.user?.role !== "admin") {
-    return res.status(403).json({ success: false, error: "Access denied: Admins only" });
+  if (req.user && req.user.role === "admin") {
+    return next();
   }
-  next();
+  res.status(403).json({ error: "Admin access only" });
 };

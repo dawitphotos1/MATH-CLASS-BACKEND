@@ -48,13 +48,15 @@
 
 // module.exports = exports;
 
-// routes/enrollmentRoutes.js
+
+
+
 import express from "express";
 import {
   createEnrollment,
   getMyEnrollments,
   getMyCourses,
-  checkEnrollmentStatus,
+  checkEnrollment,
   getPendingEnrollments,
   getApprovedEnrollments,
   approveEnrollment,
@@ -68,9 +70,9 @@ const router = express.Router();
 router.post("/request", protect, createEnrollment);
 router.get("/my-enrollments", protect, getMyEnrollments);
 router.get("/my-courses", protect, getMyCourses);
-router.get("/status/:courseId", protect, checkEnrollmentStatus);
+router.get("/status/:courseId", protect, checkEnrollment);
 
-// Admin / teacher routes
+// Admin/teacher routes
 router.get("/pending", protect, getPendingEnrollments);
 router.get("/approved", protect, getApprovedEnrollments);
 router.patch("/:id/approve", protect, approveEnrollment);

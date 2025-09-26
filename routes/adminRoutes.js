@@ -68,10 +68,13 @@
 // module.exports = router;
 
 
-
-// routes/adminRoutes.js
 import express from "express";
-import { getPendingUsers, updateUserApproval, getEnrollments, approveEnrollment } from "../controllers/adminController.js";
+import {
+  getPendingUsers,
+  updateUserApproval,
+  getEnrollments,
+  approveEnrollment,
+} from "../controllers/adminController.js";
 import { protect, isAdmin } from "../middleware/authMiddleware.js";
 
 const router = express.Router();
@@ -82,6 +85,11 @@ router.patch("/users/:userId/approval", protect, isAdmin, updateUserApproval);
 
 // Enrollments
 router.get("/enrollments", protect, isAdmin, getEnrollments);
-router.put("/enrollments/:enrollmentId/approve", protect, isAdmin, approveEnrollment);
+router.put(
+  "/enrollments/:enrollmentId/approve",
+  protect,
+  isAdmin,
+  approveEnrollment
+);
 
 export default router;
