@@ -51,27 +51,25 @@
 
 
 
-
 // routes/lessonRoutes.js
 import express from "express";
-import { protect, isAdmin } from "../middleware/authMiddleware.js";
 import {
   createLesson,
   getLessonsByCourse,
+  getLessonById,
   updateLesson,
   deleteLesson,
-  reorderLessons,
 } from "../controllers/lessonController.js";
+
+import { protect } from "../middleware/authMiddleware.js";
 
 const router = express.Router();
 
-// Lessons inside a course
-router.post("/course/:courseId/lessons", protect, createLesson);
-router.get("/course/:courseId/lessons", protect, getLessonsByCourse);
-router.patch("/lessons/:lessonId", protect, updateLesson);
-router.delete("/lessons/:lessonId", protect, deleteLesson);
-
-// Reordering
-router.patch("/lessons/reorder", protect, reorderLessons);
+// Lesson CRUD
+router.post("/", protect, createLesson);
+router.get("/course/:courseId", protect, getLessonsByCourse);
+router.get("/:id", protect, getLessonById);
+router.put("/:id", protect, updateLesson);
+router.delete("/:id", protect, deleteLesson);
 
 export default router;
