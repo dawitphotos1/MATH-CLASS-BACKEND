@@ -15,9 +15,9 @@ module.exports = {
         -- Only add column if it doesn't exist
         IF NOT EXISTS (
           SELECT 1 FROM information_schema.columns 
-          WHERE table_name = 'Users' AND column_name = 'approval_status'
+          WHERE table_name = 'users' AND column_name = 'approval_status'
         ) THEN
-          ALTER TABLE "Users" ADD COLUMN "approval_status" "enum_Users_approvalStatus" 
+          ALTER TABLE "users" ADD COLUMN "approval_status" "enum_Users_approvalStatus" 
           DEFAULT 'approved' NOT NULL;
         END IF;
       END $$;
@@ -26,7 +26,7 @@ module.exports = {
 
   down: async (queryInterface) => {
     await queryInterface.sequelize.query(`
-      ALTER TABLE "Users" DROP COLUMN IF EXISTS "approval_status";
+      ALTER TABLE "users" DROP COLUMN IF EXISTS "approval_status";
       DROP TYPE IF EXISTS "enum_Users_approvalStatus";
     `);
   },

@@ -48,14 +48,12 @@
 
 // module.exports = exports;
 
-
-// routes/enrollmentRoutes.js
 import express from "express";
 import {
   createEnrollment,
   getMyEnrollments,
   getMyCourses,
-  // checkEnrollment,
+  checkEnrollment,
   getPendingEnrollments,
   getApprovedEnrollments,
   approveEnrollment,
