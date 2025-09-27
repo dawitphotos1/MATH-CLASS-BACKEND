@@ -35,7 +35,7 @@ import sequelize from "../config/db.js";
 
 import UserModel from "./User.js";
 import CourseModel from "./Course.js";
-import LessonModel from "./tempLesson.js";
+import Lesson from './Lesson.js'; // ✅ CORRECT
 import EnrollmentModel from "./Enrollment.js";
 import UserCourseAccessModel from "./UserCourseAccess.js";
 
