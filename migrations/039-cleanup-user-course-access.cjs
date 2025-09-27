@@ -29,35 +29,13 @@
 //     });
 //   },
 // };
-
 "use strict";
 
 module.exports = {
-  async up(queryInterface, Sequelize) {
-    const tableDescription = await queryInterface.describeTable(
-      "user_course_access"
-    );
-    if (tableDescription.approval_status) {
-      await queryInterface.removeColumn(
-        "user_course_access",
-        "approval_status"
-      );
-    } else {
-      console.log("Column 'approval_status' does not exist; skipping drop.");
-    }
+  up: async () => {
+    // ⚠️ No-op: Cleanup already handled in 005-create-user-course-access.cjs
   },
-
-  async down(queryInterface, Sequelize) {
-    // Optionally, add the column back on down migration
-    const tableDescription = await queryInterface.describeTable(
-      "user_course_access"
-    );
-    if (!tableDescription.approval_status) {
-      await queryInterface.addColumn("user_course_access", "approval_status", {
-        type: Sequelize.ENUM("pending", "approved", "rejected"),
-        allowNull: false,
-        defaultValue: "pending",
-      });
-    }
+  down: async () => {
+    // ⚠️ No-op
   },
 };

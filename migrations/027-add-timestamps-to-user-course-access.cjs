@@ -24,34 +24,13 @@
 
 
 
-
 "use strict";
 
 module.exports = {
-  up: async (queryInterface, Sequelize) => {
-    // Check and add "createdAt"
-    const table = await queryInterface.describeTable("user_course_access");
-
-    if (!table.createdAt) {
-      await queryInterface.addColumn("user_course_access", "createdAt", {
-        type: Sequelize.DATE,
-        allowNull: false,
-        defaultValue: Sequelize.literal("CURRENT_TIMESTAMP"),
-      });
-    }
-
-    if (!table.updatedAt) {
-      await queryInterface.addColumn("user_course_access", "updatedAt", {
-        type: Sequelize.DATE,
-        allowNull: false,
-        defaultValue: Sequelize.literal("CURRENT_TIMESTAMP"),
-      });
-    }
+  up: async () => {
+    // ⚠️ No-op: 'createdAt' and 'updatedAt' already exist in 005-create-user-course-access.cjs
   },
-
-  down: async (queryInterface, Sequelize) => {
-    // These will only run if the columns exist — safe to call directly
-    await queryInterface.removeColumn("user_course_access", "createdAt");
-    await queryInterface.removeColumn("user_course_access", "updatedAt");
+  down: async () => {
+    // ⚠️ No-op
   },
 };
