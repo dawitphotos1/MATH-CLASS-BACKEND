@@ -1,6 +1,6 @@
 module.exports = {
   up: async (queryInterface, Sequelize) => {
-    await queryInterface.createTable("LessonViews", {
+    await queryInterface.createTable("lesson_views", {
       userId: {
         type: Sequelize.INTEGER,
         allowNull: false,
@@ -16,7 +16,7 @@ module.exports = {
       },
     });
 
-    await queryInterface.addConstraint("LessonViews", {
+    await queryInterface.addConstraint("lesson_views", {
       type: "unique",
       fields: ["userId", "lessonId"],
       name: "unique_user_lesson_view",
@@ -24,7 +24,7 @@ module.exports = {
   },
 
   down: async (queryInterface) => {
-    await queryInterface.dropTable("LessonViews");
+    await queryInterface.dropTable("lesson_views");
   },
 };
   
