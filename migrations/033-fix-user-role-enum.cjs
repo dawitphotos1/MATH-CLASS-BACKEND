@@ -10,17 +10,17 @@ module.exports = {
 
     // 2. Drop default on "role" column to avoid cast issues
     await queryInterface.sequelize.query(`
-      ALTER TABLE "users" ALTER COLUMN "role" DROP DEFAULT;
+      ALTER TABLE "Users" ALTER COLUMN "role" DROP DEFAULT;
     `);
 
     // 3. Alter column type to new enum, casting through text
     await queryInterface.sequelize.query(`
-      ALTER TABLE "users" ALTER COLUMN "role" TYPE "enum_Users_role_new" USING "role"::text::"enum_Users_role_new";
+      ALTER TABLE "Users" ALTER COLUMN "role" TYPE "enum_Users_role_new" USING "role"::text::"enum_Users_role_new";
     `);
 
     // 4. Set default back on "role" column
     await queryInterface.sequelize.query(`
-      ALTER TABLE "users" ALTER COLUMN "role" SET DEFAULT 'student';
+      ALTER TABLE "Users" ALTER COLUMN "role" SET DEFAULT 'student';
     `);
 
     // 5. Drop old enum type
@@ -42,17 +42,17 @@ module.exports = {
 
     // Drop default on role
     await queryInterface.sequelize.query(`
-      ALTER TABLE "users" ALTER COLUMN "role" DROP DEFAULT;
+      ALTER TABLE "Users" ALTER COLUMN "role" DROP DEFAULT;
     `);
 
     // Change role column back to old enum
     await queryInterface.sequelize.query(`
-      ALTER TABLE "users" ALTER COLUMN "role" TYPE "enum_Users_role_old" USING "role"::text::"enum_Users_role_old";
+      ALTER TABLE "Users" ALTER COLUMN "role" TYPE "enum_Users_role_old" USING "role"::text::"enum_Users_role_old";
     `);
 
     // Reset default
     await queryInterface.sequelize.query(`
-      ALTER TABLE "users" ALTER COLUMN "role" SET DEFAULT 'student';
+      ALTER TABLE "Users" ALTER COLUMN "role" SET DEFAULT 'student';
     `);
 
     // Drop new enum type

@@ -38,7 +38,7 @@ module.exports = {
         type: Sequelize.ENUM("pending", "paid", "failed"),
         defaultValue: "pending",
       },
-      createdAt: {
+      created_at: {
         allowNull: false,
         type: Sequelize.DATE,
         defaultValue: Sequelize.fn("NOW"),
