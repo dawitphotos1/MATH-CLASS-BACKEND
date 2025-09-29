@@ -24,7 +24,6 @@
 
 
 
-
 // models/Teacher.js
 export default (sequelize, DataTypes) => {
   const Teacher = sequelize.define(
@@ -35,7 +34,6 @@ export default (sequelize, DataTypes) => {
         type: DataTypes.INTEGER,
         allowNull: false,
         unique: true,
-        field: "user_id",
       },
     },
     {
@@ -46,16 +44,9 @@ export default (sequelize, DataTypes) => {
   );
 
   Teacher.associate = (models) => {
-    // Link to User
     Teacher.belongsTo(models.User, {
       foreignKey: "user_id",
       as: "user",
-    });
-
-    // Optional: if you want reverse association
-    models.User.hasOne(Teacher, {
-      foreignKey: "user_id",
-      as: "teacherProfile",
     });
   };
 

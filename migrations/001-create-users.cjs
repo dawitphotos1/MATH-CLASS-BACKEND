@@ -1,5 +1,65 @@
 
-// migrations/20230923120000-create-users.cjs
+// // migrations/20230923120000-create-users.cjs
+// "use strict";
+
+// module.exports = {
+//   async up(queryInterface, Sequelize) {
+//     await queryInterface.createTable("users", {
+//       id: {
+//         type: Sequelize.INTEGER,
+//         autoIncrement: true,
+//         primaryKey: true,
+//         allowNull: false,
+//       },
+//       name: {
+//         type: Sequelize.STRING,
+//         allowNull: false,
+//       },              
+//       email: {
+//         type: Sequelize.STRING,
+//         allowNull: false,
+//         unique: true,
+//       },
+//       password: {
+//         type: Sequelize.STRING,
+//         allowNull: false,
+//       },
+//       role: {
+//         type: Sequelize.ENUM("student", "teacher", "admin"),
+//         allowNull: false,
+//         defaultValue: "student",
+//       },
+//       subject: {
+//         type: Sequelize.STRING,
+//         allowNull: true,
+//       },
+//       approval_status: {
+//         type: Sequelize.ENUM("pending", "approved", "rejected"),
+//         allowNull: false,
+//         defaultValue: "pending",
+//       },
+//       createdAt: {
+//         type: Sequelize.DATE,
+//         allowNull: false,
+//         defaultValue: Sequelize.fn("NOW"),
+//       },
+//       updatedAt: {
+//         type: Sequelize.DATE,
+//         allowNull: false,
+//         defaultValue: Sequelize.fn("NOW"),
+//       },
+//     });
+//   },
+
+//   async down(queryInterface, Sequelize) {
+//     await queryInterface.dropTable("users");
+//   },
+// };
+
+
+
+
+
 "use strict";
 
 module.exports = {
@@ -9,12 +69,11 @@ module.exports = {
         type: Sequelize.INTEGER,
         autoIncrement: true,
         primaryKey: true,
-        allowNull: false,
       },
       name: {
         type: Sequelize.STRING,
         allowNull: false,
-      },              
+      },
       email: {
         type: Sequelize.STRING,
         allowNull: false,
@@ -25,7 +84,7 @@ module.exports = {
         allowNull: false,
       },
       role: {
-        type: Sequelize.ENUM("student", "teacher", "admin"),
+        type: Sequelize.ENUM("admin", "teacher", "student"),
         allowNull: false,
         defaultValue: "student",
       },
@@ -38,12 +97,12 @@ module.exports = {
         allowNull: false,
         defaultValue: "pending",
       },
-      createdAt: {
+      created_at: {
         type: Sequelize.DATE,
         allowNull: false,
         defaultValue: Sequelize.fn("NOW"),
       },
-      updatedAt: {
+      updated_at: {
         type: Sequelize.DATE,
         allowNull: false,
         defaultValue: Sequelize.fn("NOW"),
@@ -51,7 +110,7 @@ module.exports = {
     });
   },
 
-  async down(queryInterface, Sequelize) {
+  async down(queryInterface) {
     await queryInterface.dropTable("users");
   },
 };

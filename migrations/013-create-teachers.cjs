@@ -33,7 +33,6 @@
 // };
 
 
-
 "use strict";
 
 module.exports = {
@@ -48,7 +47,7 @@ module.exports = {
       user_id: {
         type: Sequelize.INTEGER,
         allowNull: false,
-        unique: true, // one user → one teacher record
+        unique: true,
         references: { model: "users", key: "id" },
         onDelete: "CASCADE",
         onUpdate: "CASCADE",

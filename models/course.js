@@ -1,4 +1,42 @@
 
+// // models/Course.js
+// export default (sequelize, DataTypes) => {
+//   const Course = sequelize.define(
+//     "Course",
+//     {
+//       id: { type: DataTypes.INTEGER, autoIncrement: true, primaryKey: true },
+//       title: { type: DataTypes.STRING, allowNull: false },
+//       slug: { type: DataTypes.STRING, allowNull: false, unique: true },
+//       description: { type: DataTypes.TEXT, allowNull: true },
+//       category: { type: DataTypes.STRING, defaultValue: "Uncategorized" },
+//       created_by: { type: DataTypes.INTEGER, allowNull: false },
+//     },
+//     {
+//       tableName: "courses",
+//       underscored: true,
+//       timestamps: true,
+//     }
+//   );
+
+//   Course.associate = (models) => {
+//     Course.hasMany(models.Lesson, { foreignKey: "course_id", as: "lessons" });
+//     Course.hasMany(models.UserCourseAccess, {
+//       foreignKey: "course_id",
+//       as: "enrollments",
+//     });
+//     Course.belongsTo(models.User, {
+//       foreignKey: "created_by",
+//       as: "teacher",
+//     });
+//   };
+
+//   return Course;
+// };
+
+
+
+
+
 // models/Course.js
 export default (sequelize, DataTypes) => {
   const Course = sequelize.define(
@@ -7,9 +45,13 @@ export default (sequelize, DataTypes) => {
       id: { type: DataTypes.INTEGER, autoIncrement: true, primaryKey: true },
       title: { type: DataTypes.STRING, allowNull: false },
       slug: { type: DataTypes.STRING, allowNull: false, unique: true },
-      description: { type: DataTypes.TEXT, allowNull: true },
+      description: { type: DataTypes.TEXT },
       category: { type: DataTypes.STRING, defaultValue: "Uncategorized" },
-      created_by: { type: DataTypes.INTEGER, allowNull: false },
+      price: { type: DataTypes.DECIMAL(10, 2), allowNull: false, defaultValue: 0 },
+      created_by: {
+        type: DataTypes.INTEGER,
+        allowNull: false,
+      },
     },
     {
       tableName: "courses",
@@ -19,14 +61,19 @@ export default (sequelize, DataTypes) => {
   );
 
   Course.associate = (models) => {
-    Course.hasMany(models.Lesson, { foreignKey: "course_id", as: "lessons" });
+    Course.belongsTo(models.User, {
+      foreignKey: "created_by",
+      as: "teacher", // really a User with role=teacher
+    });
+
+    Course.hasMany(models.Lesson, {
+      foreignKey: "course_id",
+      as: "lessons",
+    });
+
     Course.hasMany(models.UserCourseAccess, {
       foreignKey: "course_id",
       as: "enrollments",
-    });
-    Course.belongsTo(models.User, {
-      foreignKey: "created_by",
-      as: "teacher",
     });
   };
 
