@@ -1,65 +1,3 @@
-
-// // migrations/20230923120000-create-users.cjs
-// "use strict";
-
-// module.exports = {
-//   async up(queryInterface, Sequelize) {
-//     await queryInterface.createTable("users", {
-//       id: {
-//         type: Sequelize.INTEGER,
-//         autoIncrement: true,
-//         primaryKey: true,
-//         allowNull: false,
-//       },
-//       name: {
-//         type: Sequelize.STRING,
-//         allowNull: false,
-//       },              
-//       email: {
-//         type: Sequelize.STRING,
-//         allowNull: false,
-//         unique: true,
-//       },
-//       password: {
-//         type: Sequelize.STRING,
-//         allowNull: false,
-//       },
-//       role: {
-//         type: Sequelize.ENUM("student", "teacher", "admin"),
-//         allowNull: false,
-//         defaultValue: "student",
-//       },
-//       subject: {
-//         type: Sequelize.STRING,
-//         allowNull: true,
-//       },
-//       approval_status: {
-//         type: Sequelize.ENUM("pending", "approved", "rejected"),
-//         allowNull: false,
-//         defaultValue: "pending",
-//       },
-//       createdAt: {
-//         type: Sequelize.DATE,
-//         allowNull: false,
-//         defaultValue: Sequelize.fn("NOW"),
-//       },
-//       updatedAt: {
-//         type: Sequelize.DATE,
-//         allowNull: false,
-//         defaultValue: Sequelize.fn("NOW"),
-//       },
-//     });
-//   },
-
-//   async down(queryInterface, Sequelize) {
-//     await queryInterface.dropTable("users");
-//   },
-// };
-
-
-
-
-
 "use strict";
 
 module.exports = {
@@ -71,31 +9,34 @@ module.exports = {
         primaryKey: true,
       },
       name: {
-        type: Sequelize.STRING,
+        type: Sequelize.STRING(255),
         allowNull: false,
       },
       email: {
-        type: Sequelize.STRING,
+        type: Sequelize.STRING(100),
         allowNull: false,
         unique: true,
       },
       password: {
-        type: Sequelize.STRING,
+        type: Sequelize.STRING(255),
         allowNull: false,
       },
       role: {
-        type: Sequelize.ENUM("admin", "teacher", "student"),
+        type: Sequelize.ENUM("student", "teacher", "admin"),
         allowNull: false,
-        defaultValue: "student",
       },
       subject: {
-        type: Sequelize.STRING,
+        type: Sequelize.STRING(255),
         allowNull: true,
       },
       approval_status: {
         type: Sequelize.ENUM("pending", "approved", "rejected"),
         allowNull: false,
-        defaultValue: "pending",
+        defaultValue: "approved",
+      },
+      last_login: {
+        type: Sequelize.DATE,
+        allowNull: true,
       },
       created_at: {
         type: Sequelize.DATE,

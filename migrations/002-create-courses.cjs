@@ -1,38 +1,39 @@
+
 "use strict";
 
 module.exports = {
   up: async (queryInterface, Sequelize) => {
-    await queryInterface.createTable("lesson_completions", {
+    await queryInterface.createTable("courses", {
       id: {
         type: Sequelize.INTEGER,
-        primaryKey: true,
         autoIncrement: true,
+        primaryKey: true,
+      },
+      title: {
+        type: Sequelize.STRING,
         allowNull: false,
       },
-      user_id: {
-        type: Sequelize.INTEGER,
+      slug: {
+        type: Sequelize.STRING,
         allowNull: false,
+        unique: true,
+      },
+      description: {
+        type: Sequelize.TEXT,
+      },
+      teacher_id: {
+        type: Sequelize.INTEGER,
         references: {
           model: "users",
           key: "id",
         },
-        onDelete: "CASCADE",
+        onDelete: "SET NULL",
+        onUpdate: "CASCADE",
       },
-      lesson_id: {
-        type: Sequelize.INTEGER,
+      price: {
+        type: Sequelize.DECIMAL(10, 2),
         allowNull: false,
-        references: {
-          model: "lessons",
-          key: "id",
-        },
-        onDelete: "CASCADE",
       },
-      completed_at: {
-        type: Sequelize.DATE,
-        allowNull: false,
-        defaultValue: Sequelize.NOW,
-      },
-      // Optional: timestamps
       created_at: {
         type: Sequelize.DATE,
         allowNull: false,
@@ -46,7 +47,7 @@ module.exports = {
     });
   },
 
-  down: async (queryInterface, Sequelize) => {
-    await queryInterface.dropTable("lesson_completions");
+  down: async (queryInterface) => {
+    await queryInterface.dropTable("courses");
   },
 };

@@ -1,34 +1,50 @@
-// models/lessoncompletion.js
-
-const { Model, DataTypes } = require("sequelize");
-
-module.exports = (sequelize) => {
-  class LessonCompletion extends Model {}
-
-  LessonCompletion.init(
+// models/LessonCompletion.js
+export default (sequelize, DataTypes) => {
+  const LessonCompletion = sequelize.define(
+    "LessonCompletion",
     {
-      userId: {
+      id: {
+        type: DataTypes.INTEGER,
+        primaryKey: true,
+        autoIncrement: true,
+        allowNull: false,
+      },
+      user_id: {
         type: DataTypes.INTEGER,
         allowNull: false,
-        primaryKey: true,
       },
-      lessonId: {
+      lesson_id: {
         type: DataTypes.INTEGER,
         allowNull: false,
-        primaryKey: true,
       },
-      completedAt: {
+      completed_at: {
         type: DataTypes.DATE,
+        allowNull: false,
         defaultValue: DataTypes.NOW,
       },
     },
     {
-      sequelize,
-      modelName: "LessonCompletion",
-      tableName: "LessonCompletions",
-      timestamps: false,
+      tableName: "lesson_completions",
+      underscored: true,
+      timestamps: true, // adds created_at + updated_at
     }
   );
+
+  LessonCompletion.associate = (models) => {
+    // Each completion belongs to one user
+    LessonCompletion.belongsTo(models.User, {
+      foreignKey: "user_id",
+      as: "user",
+      onDelete: "CASCADE",
+    });
+
+    // Each completion belongs to one lesson
+    LessonCompletion.belongsTo(models.Lesson, {
+      foreignKey: "lesson_id",
+      as: "lesson",
+      onDelete: "CASCADE",
+    });
+  };
 
   return LessonCompletion;
 };
