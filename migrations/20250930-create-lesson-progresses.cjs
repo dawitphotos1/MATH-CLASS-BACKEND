@@ -1,39 +1,3 @@
-// export async function up(queryInterface, Sequelize) {
-//   await queryInterface.createTable("lesson_progresses", {
-//     id: {
-//       type: Sequelize.INTEGER,
-//       autoIncrement: true,
-//       primaryKey: true,
-//     },
-//     user_id: {
-//       type: Sequelize.INTEGER,
-//       allowNull: false,
-//       references: { model: "users", key: "id" },
-//       onDelete: "CASCADE",
-//     },
-//     lesson_id: {
-//       type: Sequelize.INTEGER,
-//       allowNull: false,
-//       references: { model: "lessons", key: "id" },
-//       onDelete: "CASCADE",
-//     },
-//     progress: {
-//       type: Sequelize.FLOAT,
-//       defaultValue: 0,
-//     },
-//     last_viewed_at: {
-//       type: Sequelize.DATE,
-//       defaultValue: Sequelize.literal("CURRENT_TIMESTAMP"),
-//     },
-//   });
-// }
-
-// export async function down(queryInterface) {
-//   await queryInterface.dropTable("lesson_progresses");
-// }
-
-
-
 
 "use strict";
 
