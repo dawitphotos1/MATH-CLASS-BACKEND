@@ -45,16 +45,27 @@
 
 
 
+
+
 // models/LessonView.js
 export default (sequelize, DataTypes) => {
   const LessonView = sequelize.define(
     "LessonView",
     {
-      user_id: { type: DataTypes.INTEGER, allowNull: false },
-      lesson_id: { type: DataTypes.INTEGER, allowNull: false },
+      user_id: {
+        type: DataTypes.INTEGER,
+        allowNull: false,
+        field: "user_id",
+      },
+      lesson_id: {
+        type: DataTypes.INTEGER,
+        allowNull: false,
+        field: "lesson_id",
+      },
       viewed_at: {
         type: DataTypes.DATE,
         allowNull: false,
+        field: "viewed_at",
         defaultValue: DataTypes.NOW,
       },
     },
@@ -62,12 +73,6 @@ export default (sequelize, DataTypes) => {
       tableName: "lesson_views",
       underscored: true,
       timestamps: false,
-      indexes: [
-        {
-          unique: true,
-          fields: ["user_id", "lesson_id"],
-        },
-      ],
     }
   );
 
@@ -76,7 +81,6 @@ export default (sequelize, DataTypes) => {
       foreignKey: "user_id",
       onDelete: "CASCADE",
     });
-
     LessonView.belongsTo(models.Lesson, {
       foreignKey: "lesson_id",
       onDelete: "CASCADE",

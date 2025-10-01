@@ -40,6 +40,7 @@
 
 
 
+
 // models/LessonProgress.js
 export default (sequelize, DataTypes) => {
   const LessonProgress = sequelize.define(
@@ -48,19 +49,21 @@ export default (sequelize, DataTypes) => {
       user_id: {
         type: DataTypes.INTEGER,
         allowNull: false,
-        primaryKey: true,
+        field: "user_id",
       },
       lesson_id: {
         type: DataTypes.INTEGER,
         allowNull: false,
-        primaryKey: true,
+        field: "lesson_id",
       },
       progress: {
-        type: DataTypes.FLOAT, // percentage complete
+        type: DataTypes.FLOAT,
         defaultValue: 0,
       },
       last_viewed_at: {
         type: DataTypes.DATE,
+        allowNull: false,
+        field: "last_viewed_at",
         defaultValue: DataTypes.NOW,
       },
     },
