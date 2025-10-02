@@ -11,7 +11,7 @@ module.exports = {
         slug: "algebra-1",
         description: "Introduction to Algebra",
         teacher_id: 2,
-        price: 200.0,
+        price: 1250.0,
         created_at: new Date(),
         updated_at: new Date(),
       },
