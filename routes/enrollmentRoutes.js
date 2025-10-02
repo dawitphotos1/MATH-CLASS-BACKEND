@@ -1,32 +1,73 @@
 
-// module.exports = exports;
+// // module.exports = exports;
 
+// import express from "express";
+// import {
+//   createEnrollment,
+//   getMyEnrollments,
+//   getMyCourses,
+//   checkEnrollment,
+//   getPendingEnrollments,
+//   getApprovedEnrollments,
+//   approveEnrollment,
+//   rejectEnrollment,
+// } from "../controllers/enrollmentController.js";
+
+// import { authenticateToken } from "../middleware/authMiddleware.js";
+
+// const router = express.Router();
+
+// // Student routes
+// router.post("/request", authenticateToken, createEnrollment);
+// router.get("/my-enrollments", authenticateToken, getMyEnrollments);
+// router.get("/my-courses", authenticateToken, getMyCourses);
+// router.get("/status/:courseId", authenticateToken, checkEnrollment);
+
+// // Admin / teacher routes
+// router.get("/pending", authenticateToken, getPendingEnrollments);
+// router.get("/approved", authenticateToken, getApprovedEnrollments);
+// router.patch("/:id/approve", authenticateToken, approveEnrollment);
+// router.delete("/:id/reject", authenticateToken, rejectEnrollment);
+
+// export default router;
+
+
+
+
+// routes/enrollmentRoutes.js
 import express from "express";
+import { authenticateToken } from "../middleware/authMiddleware.js";
 import {
   createEnrollment,
-  getMyEnrollments,
-  getMyCourses,
-  checkEnrollment,
-  getPendingEnrollments,
-  getApprovedEnrollments,
+  confirmEnrollmentAfterPayment,
+  getEnrollments,
   approveEnrollment,
   rejectEnrollment,
+  checkEnrollment,
+  getMyEnrollments,
+  getMyCourses,
+  getPendingEnrollments,
+  getApprovedEnrollments,
 } from "../controllers/enrollmentController.js";
-
-import { authenticateToken } from "../middleware/authMiddleware.js";
 
 const router = express.Router();
 
-// Student routes
-router.post("/request", authenticateToken, createEnrollment);
+// Manual enrollment request (pending approval)
+router.post("/", authenticateToken, createEnrollment);
+
+// After Stripe payment success → auto-approved
+router.post("/confirm", authenticateToken, confirmEnrollmentAfterPayment);
+
+// Other enrollment routes
+router.get("/", authenticateToken, getEnrollments);
 router.get("/my-enrollments", authenticateToken, getMyEnrollments);
 router.get("/my-courses", authenticateToken, getMyCourses);
-router.get("/status/:courseId", authenticateToken, checkEnrollment);
-
-// Admin / teacher routes
 router.get("/pending", authenticateToken, getPendingEnrollments);
 router.get("/approved", authenticateToken, getApprovedEnrollments);
-router.patch("/:id/approve", authenticateToken, approveEnrollment);
-router.delete("/:id/reject", authenticateToken, rejectEnrollment);
+router.get("/check/:courseId", authenticateToken, checkEnrollment);
+
+// Admin/teacher actions
+router.put("/:id/approve", authenticateToken, approveEnrollment);
+router.put("/:id/reject", authenticateToken, rejectEnrollment);
 
 export default router;
