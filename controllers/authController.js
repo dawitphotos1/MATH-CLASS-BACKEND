@@ -181,6 +181,7 @@
 
 
 
+
 // controllers/authController.js
 import jwt from "jsonwebtoken";
 import bcrypt from "bcryptjs";
@@ -208,11 +209,11 @@ const cookieOptions = {
 };
 
 // =========================
-// 🔹 Register (Students only)
+// 🔹 Register
 // =========================
 export const register = async (req, res) => {
   try {
-    const { name, email, password, subject } = req.body; // role removed
+    const { name, email, password, role, subject } = req.body;
 
     if (!name || !email || !password) {
       return res.status(400).json({
@@ -233,19 +234,34 @@ export const register = async (req, res) => {
 
     const hashedPassword = await bcrypt.hash(password, 10);
 
+    // ✅ Decide approval logic based on role
+    let finalRole = role || "student"; // default student if not provided
+    let approvalStatus =
+      finalRole === "student" ? "pending" : "approved";
+
     const user = await User.create({
       name,
       email: email.toLowerCase(),
       password: hashedPassword,
-      role: "student",              // ✅ force student
+      role: finalRole,
       subject: subject || null,
-      approval_status: "pending",   // ✅ always pending
+      approval_status: approvalStatus,
     });
 
-    // Students never auto-login — must be approved first
+    let token = null;
+    if (user.approval_status === "approved") {
+      // Auto-login for admin/teacher
+      token = generateToken(user);
+      res.cookie("token", token, cookieOptions);
+    }
+
     return res.status(201).json({
       success: true,
-      message: "Registration successful. Awaiting admin approval.",
+      message:
+        user.approval_status === "approved"
+          ? "Registration successful"
+          : "Registration pending approval by admin",
+      token,
       user: {
         id: user.id,
         name: user.name,
