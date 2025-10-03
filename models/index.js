@@ -11,8 +11,8 @@ import EnrollmentModel from "./Enrollment.js";
 import UserCourseAccessModel from "./UserCourseAccess.js";
 import TeacherModel from "./Teacher.js";
 import AttachmentModel from "./attachment.js";
-import LessonCompletionModel from "./LessonCompletion.js";
-import LessonProgressModel from "./LessonProgress.js";
+import LessonCompletionModel from "./lessoncompletion.js";
+import LessonProgressModel from "./lessonProgress.js";
 import LessonViewModel from "./LessonView.js";
 
 // Initialize models
