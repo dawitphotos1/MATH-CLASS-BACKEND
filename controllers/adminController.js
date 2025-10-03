@@ -15,7 +15,14 @@ export const getStudentsByStatus = async (req, res) => {
 
     const students = await User.findAll({
       where: { role: "student", approval_status: status },
-      attributes: ["id", "name", "email", "subject", "approval_status", "updatedAt"],
+      attributes: [
+        "id",
+        "name",
+        "email",
+        "subject",
+        "approval_status",
+        "updatedAt",
+      ],
     });
 
     return res.json({ students });
