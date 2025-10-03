@@ -10,7 +10,7 @@ import LessonModel from "./Lesson.js";
 import EnrollmentModel from "./Enrollment.js";
 import UserCourseAccessModel from "./UserCourseAccess.js";
 import TeacherModel from "./Teacher.js";
-import AttachmentModel from "./Attachment.js";
+import AttachmentModel from "./attachment.js";
 import LessonCompletionModel from "./LessonCompletion.js";
 import LessonProgressModel from "./LessonProgress.js";
 import LessonViewModel from "./LessonView.js";
