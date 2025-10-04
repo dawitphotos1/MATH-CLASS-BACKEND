@@ -40,7 +40,6 @@
 
 
 
-
 // routes/courses.js
 import express from "express";
 import {
@@ -49,7 +48,7 @@ import {
   getPublicCourseBySlug,
   getLessonsByCourse,
   deleteCourse,
-  getCourseById, // ✅ Add this import
+  getCourseById, // ✅ NEW: Import the new function
 } from "../controllers/courseController.js";
 import authenticateToken from "../middleware/authenticateToken.js";
 import checkTeacherOrAdmin from "../middleware/checkTeacherOrAdmin.js";
@@ -66,7 +65,7 @@ router.get("/", getCourses);
 // View a specific course by slug (public)
 router.get("/:slug", getPublicCourseBySlug);
 
-// ✅ NEW: Get course by ID (public)
+// ✅ NEW: Get course by ID (public) - FIXES THE ISSUE
 router.get("/id/:id", getCourseById);
 
 // View lessons by course (public)
