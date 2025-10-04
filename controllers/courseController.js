@@ -120,20 +120,46 @@
 
 
 
-
 // controllers/courseController.js
 import db from "../models/index.js";
-
 const { Course, Lesson, User } = db;
+
+// ✅ NEW: Get course by ID
+export const getCourseById = async (req, res) => {
+  try {
+    const { id } = req.params;
+    
+    console.log("🔍 Fetching course by ID:", id); // Debug log
+
+    const course = await Course.findByPk(id, {
+      include: [
+        {
+          model: User,
+          as: "teacher",
+          attributes: ["id", "name", "email"],
+        },
+      ],
+    });
+
+    if (!course) {
+      console.log("❌ Course not found for ID:", id);
+      return res.status(404).json({ message: "Course not found" });
+    }
+
+    console.log("✅ Course found:", course.title);
+    res.json(course);
+  } catch (error) {
+    console.error("❌ Error fetching course by ID:", error);
+    res.status(500).json({ message: "Failed to fetch course" });
+  }
+};
 
 // Create a new course
 export const createCourse = async (req, res) => {
   try {
     const { title, slug, description, teacher_id, price } = req.body;
-
     // Force teacher_id from logged-in teacher
     const teacherId = req.user?.id || teacher_id;
-
     const course = await Course.create({
       title,
       slug,
@@ -141,7 +167,6 @@ export const createCourse = async (req, res) => {
       teacher_id: teacherId,
       price,
     });
-
     res.status(201).json(course);
   } catch (error) {
     console.error("Error creating course:", error);
@@ -173,7 +198,6 @@ export const getCourses = async (req, res) => {
 export const getPublicCourseBySlug = async (req, res) => {
   try {
     const { slug } = req.params;
-
     const course = await Course.findOne({
       where: { slug },
       include: [
@@ -189,11 +213,9 @@ export const getPublicCourseBySlug = async (req, res) => {
         },
       ],
     });
-
     if (!course) {
       return res.status(404).json({ message: "Course not found" });
     }
-
     res.json(course);
   } catch (error) {
     console.error("Error fetching course by slug:", error);
@@ -221,46 +243,16 @@ export const deleteCourse = async (req, res) => {
   try {
     const { id } = req.params;
     const course = await Course.findByPk(id);
-
     if (!course) {
       return res.status(404).json({ message: "Course not found" });
     }
-
     if (req.user.role !== "admin" && course.teacher_id !== req.user.id) {
       return res.status(403).json({ message: "Not authorized to delete this course" });
     }
-
     await course.destroy(); // ✅ cascades to lessons + attachments
-
     res.json({ message: "Course and related data deleted successfully" });
   } catch (error) {
     console.error("Error deleting course:", error);
     res.status(500).json({ message: "Failed to delete course" });
-  }
-};
-
-// ✅ Get a course by numeric ID (used by Payment.jsx)
-export const getCourseById = async (req, res) => {
-  try {
-    const { id } = req.params;
-
-    const course = await Course.findByPk(id, {
-      include: [
-        {
-          model: User,
-          as: "teacher",
-          attributes: ["id", "name", "email"],
-        },
-      ],
-    });
-
-    if (!course) {
-      return res.status(404).json({ message: "Course not found" });
-    }
-
-    res.json(course);
-  } catch (error) {
-    console.error("Error fetching course by ID:", error);
-    res.status(500).json({ message: "Failed to fetch course" });
   }
 };
