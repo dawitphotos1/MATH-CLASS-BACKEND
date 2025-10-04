@@ -30,6 +30,10 @@ router.get("/pending", authenticateToken, getPendingEnrollments);
 router.get("/approved", authenticateToken, getApprovedEnrollments);
 router.get("/check/:courseId", authenticateToken, checkEnrollment);
 
+// Add this route
+router.get('/status/:courseId', authenticateToken, checkEnrollmentStatus);
+
+
 // Admin/teacher actions
 router.put("/:id/approve", authenticateToken, approveEnrollment);
 router.put("/:id/reject", authenticateToken, rejectEnrollment);
