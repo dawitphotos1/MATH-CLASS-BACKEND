@@ -200,20 +200,22 @@ export const getMyEnrollments = async (req, res) => {
 // Get my approved courses
 // ========================
 // In controllers/enrollmentController.js - Update this function:
+// In the getMyCourses function - replace it with this:
+
 export const getMyCourses = async (req, res) => {
   try {
     const userId = req.user.id;
     
     const enrollments = await Enrollment.findAll({
-      where: { 
-        studentId: userId, 
-        approval_status: "approved" 
+      where: {
+        studentId: userId,
+        approval_status: "approved"
       },
       include: [
-        { 
-          model: Course, 
-          as: "course", 
-          attributes: ["id", "title", "slug", "description", "price"] 
+        {
+          model: Course,
+          as: "course",
+          attributes: ["id", "title", "slug", "description", "price", "teacher_id"] // Explicit attributes
         }
       ],
       order: [["createdAt", "DESC"]],
@@ -221,6 +223,7 @@ export const getMyCourses = async (req, res) => {
 
     const courses = enrollments.map((enr) => enr.course);
     res.json({ courses });
+
   } catch (err) {
     console.error("❌ getMyCourses error:", err);
     res.status(500).json({ error: "Failed to fetch courses" });
