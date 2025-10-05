@@ -123,8 +123,6 @@
 
 
 
-
-// server.js
 import dotenv from "dotenv";
 dotenv.config();
 
@@ -159,17 +157,31 @@ app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
 // ========== CORS ==========
-const allowedOrigins = ["http://localhost:3000", process.env.FRONTEND_URL];
+const allowedOrigins = [
+  "http://localhost:3000",
+  "https://math-class-platform.netlify.app",
+  "https://leafy-semolina-fc0934.netlify.app",
+  "https://mathe-class-website-backend-1.onrender.com",
+];
 
 app.use(
   cors({
     origin: (origin, callback) => {
       console.log("🌍 Incoming Origin:", origin);
-      if (!origin || allowedOrigins.includes(origin)) {
+
+      // Allow requests with no origin (like mobile apps or curl requests)
+      if (!origin) return callback(null, true);
+
+      if (allowedOrigins.includes(origin)) {
         callback(null, true);
       } else {
-        console.warn("🚫 Blocked by CORS, origin:", origin);
-        callback(new Error("Not allowed by CORS"));
+        // Allow all Netlify subdomains for preview deployments
+        if (origin.includes(".netlify.app")) {
+          callback(null, true);
+        } else {
+          console.warn("🚫 Blocked by CORS, origin:", origin);
+          callback(new Error("Not allowed by CORS"));
+        }
       }
     },
     credentials: true,
@@ -221,7 +233,13 @@ app.use((req, res) => {
 app.use((err, req, res, next) => {
   console.error("❌ Global Error Handler:", err.stack || err.message);
   const status = err.statusCode || 500;
-  res.status(status).json({ success: false, error: err.message || "Server error" });
+  res.status(status).json({
+    success: false,
+    error:
+      process.env.NODE_ENV === "production"
+        ? "Internal server error"
+        : err.message,
+  });
 });
 
 // ========== Start Server ==========
@@ -241,7 +259,9 @@ const PORT = process.env.PORT || 5000;
     console.log("✅ DB Synced");
 
     if (shouldAlter) {
-      console.warn("⚠️ ALTER_DB=true detected — remember to set it to false after deployment!");
+      console.warn(
+        "⚠️ ALTER_DB=true detected — remember to set it to false after deployment!"
+      );
     }
 
     app.listen(PORT, "0.0.0.0", () => {
@@ -252,5 +272,6 @@ const PORT = process.env.PORT || 5000;
     console.table(listEndpoints(app));
   } catch (err) {
     console.error("❌ Startup Error:", err.message);
+    process.exit(1);
   }
 })();
