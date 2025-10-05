@@ -1,4 +1,3 @@
-
 import express from "express";
 import Stripe from "stripe";
 import db from "../models/index.js";
@@ -96,7 +95,6 @@ router.post("/create-checkout-session", authenticateToken, async (req, res) => {
     });
   }
 });
-
 // ✅ Get course info for payment page (public route) - FIXED
 router.get("/:courseId", async (req, res) => {
   try {
@@ -115,32 +113,25 @@ router.get("/:courseId", async (req, res) => {
       });
     }
 
-    console.log(
-      "✅ Course found for payment:",
-      course.title,
-      "Price:",
-      course.price
-    );
+    console.log("✅ Course found for payment:", course.title, "Price:", course.price);
 
+    // ✅ Make sure price is included in response
     res.json({
       success: true,
       course: {
         id: course.id,
         title: course.title,
         description: course.description,
-        price: course.price, // ✅ This should now be included
+        price: course.price, // ✅ This was missing in production!
         slug: course.slug,
       },
     });
   } catch (err) {
     console.error("❌ Error fetching course for payment:", err);
-    console.error("❌ Error details:", err.message);
     res.status(500).json({
       success: false,
       error: "Failed to load course information",
-      details: process.env.NODE_ENV === "development" ? err.message : undefined,
     });
   }
 });
-
 export default router;
