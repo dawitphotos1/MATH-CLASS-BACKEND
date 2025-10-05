@@ -110,12 +110,15 @@
 // module.exports = router;
 
 
+
 // routes/payments.js
-const express = require("express");
+import express from "express";
+import Stripe from "stripe";
+import { Course, UserCourseAccess } from "../models/index.js";
+import authMiddleware from "../middleware/authMiddleware.js";
+
 const router = express.Router();
-const stripe = require("stripe")(process.env.STRIPE_SECRET_KEY);
-const { Course, UserCourseAccess } = require("../models");
-const authMiddleware = require("../middleware/authMiddleware");
+const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
 
 // ✅ Create Stripe Checkout Session (REQUIRES AUTH)
 router.post("/create-checkout-session", authMiddleware, async (req, res) => {
@@ -202,15 +205,14 @@ router.get("/:courseId", async (req, res) => {
       return res.status(404).json({ error: "Course not found" });
     }
 
-    // Return course info for payment page
     res.json({
       course: {
         id: course.id,
         title: course.title,
         description: course.description,
         price: course.price,
-        slug: course.slug
-      }
+        slug: course.slug,
+      },
     });
   } catch (err) {
     console.error("Error fetching course for payment:", err);
@@ -218,4 +220,4 @@ router.get("/:courseId", async (req, res) => {
   }
 });
 
-module.exports = router;
+export default router;
