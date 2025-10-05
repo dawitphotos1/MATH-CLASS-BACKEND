@@ -121,7 +121,6 @@
 
 
 
-
 // server.js
 import dotenv from "dotenv";
 dotenv.config();
@@ -140,7 +139,7 @@ import adminRoutes from "./routes/adminRoutes.js";
 import courseRoutes from "./routes/courses.js";
 import lessonRoutes from "./routes/lessonRoutes.js";
 import enrollmentRoutes from "./routes/enrollmentRoutes.js";
-import paymentRoutes from "./routes/payments.js"; // ✅ ADD THIS LINE
+import paymentRoutes from "./routes/payments.js"; // ✅ ADDED PAYMENT ROUTES
 
 const app = express();
 
@@ -200,7 +199,7 @@ app.use("/api/v1/admin", adminRoutes);
 app.use("/api/v1/courses", courseRoutes);
 app.use("/api/v1/lessons", lessonRoutes);
 app.use("/api/v1/enrollments", enrollmentRoutes);
-app.use("/api/v1/payments", paymentRoutes); // ✅ ADD THIS LINE
+app.use("/api/v1/payments", paymentRoutes); // ✅ ADDED PAYMENT ROUTES
 
 // Health check
 app.get("/api/v1/health", async (req, res) => {

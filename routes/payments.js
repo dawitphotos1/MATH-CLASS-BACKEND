@@ -110,15 +110,12 @@
 // module.exports = router;
 
 
-
-// routes/payments.js (ESM version)
-import express from 'express';
-import stripeModule from 'stripe';
-const stripe = stripeModule(process.env.STRIPE_SECRET_KEY);
-import { Course, UserCourseAccess, User } from '../models/index.js';
-import authMiddleware from '../middleware/authMiddleware.js';
-
+// routes/payments.js
+const express = require("express");
 const router = express.Router();
+const stripe = require("stripe")(process.env.STRIPE_SECRET_KEY);
+const { Course, UserCourseAccess } = require("../models");
+const authMiddleware = require("../middleware/authMiddleware");
 
 // ✅ Create Stripe Checkout Session (REQUIRES AUTH)
 router.post("/create-checkout-session", authMiddleware, async (req, res) => {
@@ -137,6 +134,7 @@ router.post("/create-checkout-session", authMiddleware, async (req, res) => {
       return res.status(404).json({ error: "Course not found" });
     }
 
+    // Check existing enrollment
     const existingAccess = await UserCourseAccess.findOne({
       where: { user_id: user.id, course_id: courseId },
     });
@@ -194,7 +192,7 @@ router.post("/create-checkout-session", authMiddleware, async (req, res) => {
   }
 });
 
-// ✅ NEW: Direct payment page route (doesn't require auth initially)
+// ✅ Get course info for payment page (public route)
 router.get("/:courseId", async (req, res) => {
   try {
     const { courseId } = req.params;
@@ -220,4 +218,4 @@ router.get("/:courseId", async (req, res) => {
   }
 });
 
-export default router;
+module.exports = router;
