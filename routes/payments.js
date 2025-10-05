@@ -95,15 +95,17 @@ router.post("/create-checkout-session", authenticateToken, async (req, res) => {
     });
   }
 });
-// ✅ Get course info for payment page (public route) - FIXED
+// In routes/payments.js - Add detailed logging
 router.get("/:courseId", async (req, res) => {
   try {
     const { courseId } = req.params;
-    console.log("🔍 Fetching course for payment page, ID:", courseId);
+    console.log("🔍 DEBUG: Fetching course for payment page, ID:", courseId);
 
     const course = await Course.findByPk(courseId, {
-      attributes: ["id", "title", "description", "price", "slug"], // ✅ Make sure price is included
+      attributes: ["id", "title", "description", "price", "slug"],
     });
+
+    console.log("🔍 DEBUG: Raw course data from DB:", JSON.stringify(course));
 
     if (!course) {
       console.log("❌ Course not found for payment page:", courseId);
@@ -115,17 +117,20 @@ router.get("/:courseId", async (req, res) => {
 
     console.log("✅ Course found for payment:", course.title, "Price:", course.price);
 
-    // ✅ Make sure price is included in response
-    res.json({
+    const response = {
       success: true,
       course: {
         id: course.id,
         title: course.title,
         description: course.description,
-        price: course.price, // ✅ This was missing in production!
+        price: course.price,
         slug: course.slug,
       },
-    });
+    };
+
+    console.log("🔍 DEBUG: Final response being sent:", JSON.stringify(response));
+    
+    res.json(response);
   } catch (err) {
     console.error("❌ Error fetching course for payment:", err);
     res.status(500).json({
