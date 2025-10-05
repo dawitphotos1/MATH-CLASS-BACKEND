@@ -23,6 +23,7 @@
 //       return res.status(404).json({ error: "Course not found" });
 //     }
 
+//     // Check existing enrollment
 //     const existingAccess = await UserCourseAccess.findOne({
 //       where: { user_id: user.id, course_id: courseId },
 //     });
@@ -84,7 +85,7 @@
 // router.get("/:courseId", async (req, res) => {
 //   try {
 //     const { courseId } = req.params;
-    
+
 //     const course = await Course.findByPk(courseId);
 //     if (!course) {
 //       return res.status(404).json({ error: "Course not found" });
@@ -112,13 +113,14 @@
 
 
 
-
 // routes/payments.js
-const express = require("express");
+import express from "express";
+import Stripe from "stripe";
+import { Course, UserCourseAccess, User } from "../models/index.js";
+import authMiddleware from "../middleware/authMiddleware.js";
+
+const stripe = Stripe(process.env.STRIPE_SECRET_KEY);
 const router = express.Router();
-const stripe = require("stripe")(process.env.STRIPE_SECRET_KEY);
-const { Course, UserCourseAccess, User } = require("../models");
-const authMiddleware = require("../middleware/authMiddleware");
 
 // ✅ Create Stripe Checkout Session (REQUIRES AUTH)
 router.post("/create-checkout-session", authMiddleware, async (req, res) => {
@@ -137,7 +139,6 @@ router.post("/create-checkout-session", authMiddleware, async (req, res) => {
       return res.status(404).json({ error: "Course not found" });
     }
 
-    // Check existing enrollment
     const existingAccess = await UserCourseAccess.findOne({
       where: { user_id: user.id, course_id: courseId },
     });
@@ -153,7 +154,6 @@ router.post("/create-checkout-session", authMiddleware, async (req, res) => {
       return res.status(400).json({ error: "Invalid course price" });
     }
 
-    // ✅ Create Stripe checkout session
     const session = await stripe.checkout.sessions.create({
       payment_method_types: ["card"],
       line_items: [
@@ -164,7 +164,7 @@ router.post("/create-checkout-session", authMiddleware, async (req, res) => {
               name: course.title,
               description: course.description || "Learn mathematics with expert guidance",
             },
-            unit_amount: Math.round(price * 100), // Convert to cents
+            unit_amount: Math.round(price * 100),
           },
           quantity: 1,
         },
@@ -178,7 +178,6 @@ router.post("/create-checkout-session", authMiddleware, async (req, res) => {
       },
     });
 
-    // Create pending enrollment
     await UserCourseAccess.create({
       user_id: user.id,
       course_id: courseId,
@@ -195,7 +194,7 @@ router.post("/create-checkout-session", authMiddleware, async (req, res) => {
   }
 });
 
-// ✅ NEW: Direct payment page route (doesn't require auth initially)
+// ✅ GET route for payment page
 router.get("/:courseId", async (req, res) => {
   try {
     const { courseId } = req.params;
@@ -205,15 +204,14 @@ router.get("/:courseId", async (req, res) => {
       return res.status(404).json({ error: "Course not found" });
     }
 
-    // Return course info for payment page
     res.json({
       course: {
         id: course.id,
         title: course.title,
         description: course.description,
         price: course.price,
-        slug: course.slug
-      }
+        slug: course.slug,
+      },
     });
   } catch (err) {
     console.error("Error fetching course for payment:", err);
@@ -221,4 +219,4 @@ router.get("/:courseId", async (req, res) => {
   }
 });
 
-module.exports = router;
+export default router;
