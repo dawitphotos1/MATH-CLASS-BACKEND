@@ -111,15 +111,13 @@
 
 
 
+// routes/payments.js (ESM version)
+import express from 'express';
+import stripeModule from 'stripe';
+const stripe = stripeModule(process.env.STRIPE_SECRET_KEY);
+import { Course, UserCourseAccess, User } from '../models/index.js';
+import authMiddleware from '../middleware/authMiddleware.js';
 
-
-// routes/payments.js
-import express from "express";
-import Stripe from "stripe";
-import { Course, UserCourseAccess, User } from "../models/index.js";
-import authMiddleware from "../middleware/authMiddleware.js";
-
-const stripe = Stripe(process.env.STRIPE_SECRET_KEY);
 const router = express.Router();
 
 // ✅ Create Stripe Checkout Session (REQUIRES AUTH)
@@ -154,6 +152,7 @@ router.post("/create-checkout-session", authMiddleware, async (req, res) => {
       return res.status(400).json({ error: "Invalid course price" });
     }
 
+    // ✅ Create Stripe checkout session
     const session = await stripe.checkout.sessions.create({
       payment_method_types: ["card"],
       line_items: [
@@ -164,7 +163,7 @@ router.post("/create-checkout-session", authMiddleware, async (req, res) => {
               name: course.title,
               description: course.description || "Learn mathematics with expert guidance",
             },
-            unit_amount: Math.round(price * 100),
+            unit_amount: Math.round(price * 100), // Convert to cents
           },
           quantity: 1,
         },
@@ -178,6 +177,7 @@ router.post("/create-checkout-session", authMiddleware, async (req, res) => {
       },
     });
 
+    // Create pending enrollment
     await UserCourseAccess.create({
       user_id: user.id,
       course_id: courseId,
@@ -194,7 +194,7 @@ router.post("/create-checkout-session", authMiddleware, async (req, res) => {
   }
 });
 
-// ✅ GET route for payment page
+// ✅ NEW: Direct payment page route (doesn't require auth initially)
 router.get("/:courseId", async (req, res) => {
   try {
     const { courseId } = req.params;
@@ -204,14 +204,15 @@ router.get("/:courseId", async (req, res) => {
       return res.status(404).json({ error: "Course not found" });
     }
 
+    // Return course info for payment page
     res.json({
       course: {
         id: course.id,
         title: course.title,
         description: course.description,
         price: course.price,
-        slug: course.slug,
-      },
+        slug: course.slug
+      }
     });
   } catch (err) {
     console.error("Error fetching course for payment:", err);
