@@ -196,7 +196,6 @@
 
 
 
-
 import express from "express";
 import Stripe from "stripe";
 import db from "../models/index.js";
@@ -322,6 +321,12 @@ router.post("/confirm", authenticateToken, async (req, res) => {
     let session;
     try {
       session = await stripe.checkout.sessions.retrieve(sessionId);
+      console.log(
+        "✅ Stripe session retrieved:",
+        session.id,
+        "Status:",
+        session.payment_status
+      );
     } catch (stripeError) {
       console.error("❌ Stripe session retrieval error:", stripeError);
       return res.status(400).json({
@@ -331,6 +336,7 @@ router.post("/confirm", authenticateToken, async (req, res) => {
     }
 
     if (session.payment_status !== "paid") {
+      console.log("❌ Payment not completed, status:", session.payment_status);
       return res.status(400).json({
         success: false,
         error: "Payment not completed",
@@ -341,12 +347,23 @@ router.post("/confirm", authenticateToken, async (req, res) => {
     const user = await User.findByPk(userId);
     const course = await Course.findByPk(courseId);
 
-    if (!user || !course) {
+    if (!user) {
+      console.error("❌ User not found:", userId);
       return res.status(404).json({
         success: false,
-        error: "User or course not found",
+        error: "User not found",
       });
     }
+
+    if (!course) {
+      console.error("❌ Course not found:", courseId);
+      return res.status(404).json({
+        success: false,
+        error: "Course not found",
+      });
+    }
+
+    console.log("✅ User and course found:", user.email, course.title);
 
     // Check if enrollment already exists in UserCourseAccess
     const existingAccess = await UserCourseAccess.findOne({
@@ -426,6 +443,8 @@ router.post("/confirm", authenticateToken, async (req, res) => {
       // Don't fail the enrollment if email fails
     }
 
+    console.log("🎉 Payment confirmation completed successfully");
+
     res.json({
       success: true,
       message: "Payment confirmed and enrollment completed successfully",
@@ -433,6 +452,7 @@ router.post("/confirm", authenticateToken, async (req, res) => {
         courseTitle: course.title,
         coursePrice: course.price,
         enrollmentDate: new Date().toISOString(),
+        emailSent: true,
       },
     });
   } catch (error) {
@@ -440,6 +460,8 @@ router.post("/confirm", authenticateToken, async (req, res) => {
     res.status(500).json({
       success: false,
       error: "Failed to confirm payment and enrollment",
+      details:
+        process.env.NODE_ENV === "development" ? error.message : undefined,
     });
   }
 });
@@ -490,35 +512,13 @@ router.get("/:courseId", async (req, res) => {
   }
 });
 
-// ✅ Debug route to test database connection
-router.get("/debug/:courseId", async (req, res) => {
-  try {
-    const { courseId } = req.params;
-    console.log("🔍 DEBUG: Testing database connection for course:", courseId);
-
-    const course = await Course.findByPk(courseId);
-
-    if (!course) {
-      return res.status(404).json({
-        success: false,
-        error: "Course not found in debug route",
-      });
-    }
-
-    res.json({
-      success: true,
-      course: course,
-      message: "Direct database query successful",
-      price_type: typeof course.price,
-      raw_price: course.price,
-    });
-  } catch (err) {
-    console.error("Debug route error:", err);
-    res.status(500).json({
-      success: false,
-      error: err.message,
-    });
-  }
+// ✅ Health check for payments route
+router.get("/health/check", (req, res) => {
+  res.json({
+    success: true,
+    message: "Payments route is working",
+    timestamp: new Date().toISOString(),
+  });
 });
 
 export default router;

@@ -7,8 +7,8 @@
 // };
 
 
-
-module.exports = (user, course) => {
+// utils/emails/courseEnrollmentApproved.js
+export default (user, course) => {
   return {
     subject: `🎉 Enrollment Confirmed: ${course.title}`,
     html: `
@@ -70,19 +70,13 @@ module.exports = (user, course) => {
         <div class="content">
           <h2>Hello ${user.name},</h2>
           
-          <p>Great news! Your enrollment in <strong>${
-            course.title
-          }</strong> has been confirmed and your payment was processed successfully.</p>
+          <p>Great news! Your enrollment in <strong>${course.title}</strong> has been confirmed and your payment was processed successfully.</p>
           
           <div class="course-card">
             <h3>${course.title}</h3>
-            <p>${
-              course.description || "Learn mathematics with expert guidance"
-            }</p>
+            <p>${course.description || 'Learn mathematics with expert guidance'}</p>
             <p><strong>Enrollment Date:</strong> ${new Date().toLocaleDateString()}</p>
-            <p><strong>Amount Paid:</strong> $${parseFloat(
-              course.price
-            ).toFixed(2)}</p>
+            <p><strong>Amount Paid:</strong> $${parseFloat(course.price).toFixed(2)}</p>
           </div>
           
           <p>You now have full access to all course materials, including:</p>

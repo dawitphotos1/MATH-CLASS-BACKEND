@@ -1,32 +1,81 @@
+// // utils/sendEmail.js
+
+// const nodemailer = require("nodemailer");
+
+// const sendEmail = async ({ to, subject, text, html }) => {
+//   const transporter = nodemailer.createTransport({
+//     // Example config - replace with your SMTP provider (e.g. Gmail, Mailgun, etc.)
+//     service: "gmail",
+//     auth: {
+//       user: process.env.EMAIL_USER,
+//       pass: process.env.EMAIL_PASS,
+//     },
+//   });
+
+//   const mailOptions = {
+//     from: process.env.EMAIL_USER,
+//     to,
+//     subject,
+//     text,
+//     html,
+//   };
+
+//   try {
+//     const info = await transporter.sendMail(mailOptions);
+//     console.log("Email sent:", info.response);
+//   } catch (err) {
+//     console.error("Error sending email:", err.message);
+//     throw err;
+//   }
+// };
+
+// module.exports = sendEmail;
+
+
+
 // utils/sendEmail.js
+import nodemailer from "nodemailer";
 
-const nodemailer = require("nodemailer");
+const transporter = nodemailer.createTransport({
+  host: process.env.MAIL_HOST,
+  port: parseInt(process.env.MAIL_PORT, 10),
+  secure: true,
+  auth: {
+    user: process.env.MAIL_USER,
+    pass: process.env.MAIL_PASS,
+  },
+});
 
-const sendEmail = async ({ to, subject, text, html }) => {
-  const transporter = nodemailer.createTransport({
-    // Example config - replace with your SMTP provider (e.g. Gmail, Mailgun, etc.)
-    service: "gmail",
-    auth: {
-      user: process.env.EMAIL_USER,
-      pass: process.env.EMAIL_PASS,
-    },
-  });
-
-  const mailOptions = {
-    from: process.env.EMAIL_USER,
-    to,
-    subject,
-    text,
-    html,
-  };
+/**
+ * Sends an email and returns true if successful, false if failed.
+ * @param {string} to - Recipient email address.
+ * @param {string} subject - Email subject.
+ * @param {string} html - Email HTML content.
+ * @returns {Promise<boolean>}
+ */
+const sendEmail = async (to, subject, html) => {
+  if (!to || !subject || !html) {
+    console.warn("❌ Email send skipped: missing parameters", {
+      to,
+      subject,
+      html,
+    });
+    return false;
+  }
 
   try {
-    const info = await transporter.sendMail(mailOptions);
-    console.log("Email sent:", info.response);
-  } catch (err) {
-    console.error("Error sending email:", err.message);
-    throw err;
+    await transporter.sendMail({
+      from: process.env.EMAIL_FROM || process.env.MAIL_USER,
+      to,
+      subject,
+      html,
+    });
+    console.log(`📧 Email sent to ${to}`);
+    return true;
+  } catch (error) {
+    console.error("❌ Email sending failed (non-blocking):", error.message);
+    return false;
   }
 };
 
-module.exports = sendEmail;
+export default sendEmail;
