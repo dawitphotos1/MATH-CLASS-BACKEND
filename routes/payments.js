@@ -384,37 +384,34 @@
 
 // export default router;
 
-
-
-
+// routes/payments.js
 import express from "express";
 import Stripe from "stripe";
 import db from "../models/index.js";
 import { authenticateToken } from "../middleware/authMiddleware.js";
 import sendEmail from "../utils/sendEmail.js";
 import courseEnrollmentApproved from "../utils/emails/courseEnrollmentApproved.js";
-import { confirmPayment } from "../controllers/paymentController.js";
+import { confirmPayment } from "../controllers/paymentConfirmController.js";
 
 const router = express.Router();
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
+const { Course, UserCourseAccess, User } = db;
 
-const { Course, UserCourseAccess, Enrollment, User } = db;
-
-// ✅ Create Stripe Checkout Session (requires authentication)
+/* ============================================================
+   ✅ Create Stripe Checkout Session
+   ============================================================ */
 router.post("/create-checkout-session", authenticateToken, async (req, res) => {
   try {
     const { courseId } = req.body;
     const user = req.user;
-    console.log("🔄 Processing payment request:", {
-      courseId,
-      userId: user.id,
-    });
 
     if (!courseId) {
       return res.status(400).json({ error: "Course ID is required" });
     }
 
-    // Use raw SQL query to ensure we get the price (like previous working version)
+    console.log("💳 Starting checkout session for user:", user.id, "course:", courseId);
+
+    // Get course info (using raw query ensures we get all columns)
     const [results] = await db.sequelize.query(
       "SELECT id, title, description, price, slug FROM courses WHERE id = ?",
       { replacements: [courseId] }
@@ -426,11 +423,10 @@ router.post("/create-checkout-session", authenticateToken, async (req, res) => {
 
     const course = results[0];
 
-    // Check existing enrollment
+    // Check if already enrolled
     const existingAccess = await UserCourseAccess.findOne({
       where: { user_id: user.id, course_id: courseId },
     });
-
     if (existingAccess) {
       return res.status(400).json({ error: "Already enrolled in this course" });
     }
@@ -439,8 +435,6 @@ router.post("/create-checkout-session", authenticateToken, async (req, res) => {
     if (isNaN(price) || price <= 0) {
       return res.status(400).json({ error: "Invalid course price" });
     }
-
-    console.log("💳 Creating Stripe session for:", course.title);
 
     // ✅ Create Stripe Checkout Session
     const session = await stripe.checkout.sessions.create({
@@ -451,17 +445,16 @@ router.post("/create-checkout-session", authenticateToken, async (req, res) => {
             currency: "usd",
             product_data: {
               name: course.title,
-              description:
-                course.description || "Learn mathematics with expert guidance",
+              description: course.description || "Mathematics course enrollment",
             },
-            unit_amount: Math.round(price * 100), // Convert to cents
+            unit_amount: Math.round(price * 100), // convert to cents
           },
           quantity: 1,
         },
       ],
       mode: "payment",
       success_url: `${process.env.FRONTEND_URL}/payment-success?session_id={CHECKOUT_SESSION_ID}&courseId=${course.id}`,
-      cancel_url: `${process.env.FRONTEND_URL}/payment-cancel`,
+      cancel_url: `${process.env.FRONTEND_URL}/courses/${course.slug}`,
       metadata: {
         user_id: String(user.id),
         course_id: String(course.id),
@@ -472,36 +465,31 @@ router.post("/create-checkout-session", authenticateToken, async (req, res) => {
     // Record pending enrollment
     await UserCourseAccess.create({
       user_id: user.id,
-      course_id: courseId,
+      course_id: course.id,
       payment_status: "pending",
       approval_status: "pending",
-      created_at: new Date(),
-      updated_at: new Date(),
     });
 
-    console.log("✅ Payment session created successfully:", session.id);
+    console.log("✅ Stripe session created:", session.id);
 
-    res.status(200).json({
-      success: true,
-      sessionId: session.id,
-    });
+    res.json({ success: true, sessionId: session.id });
   } catch (err) {
     console.error("🔥 Error creating checkout session:", err.message);
-    res.status(500).json({
-      success: false,
-      error: `Failed to create checkout session: ${err.message}`,
-    });
+    res.status(500).json({ success: false, error: err.message });
   }
 });
 
-// ✅ Confirm payment and enrollment with email notification - USING CONTROLLER FUNCTION
+/* ============================================================
+   ✅ Confirm payment (via controller)
+   ============================================================ */
 router.post("/confirm", authenticateToken, confirmPayment);
 
-// ✅ Get course info for payment page (public route)
+/* ============================================================
+   ✅ Get course info for payment page (public)
+   ============================================================ */
 router.get("/:courseId", async (req, res) => {
   try {
     const { courseId } = req.params;
-    console.log("🔍 Fetching course for payment page, ID:", courseId);
 
     const [results] = await db.sequelize.query(
       "SELECT id, title, description, price, slug FROM courses WHERE id = ?",
@@ -509,22 +497,11 @@ router.get("/:courseId", async (req, res) => {
     );
 
     if (results.length === 0) {
-      console.log("❌ Course not found for payment page:", courseId);
-      return res.status(404).json({
-        success: false,
-        error: "Course not found",
-      });
+      return res.status(404).json({ success: false, error: "Course not found" });
     }
 
     const course = results[0];
-    console.log(
-      "✅ Course found for payment:",
-      course.title,
-      "Price:",
-      course.price
-    );
-
-    const response = {
+    res.json({
       success: true,
       course: {
         id: course.id,
@@ -533,64 +510,20 @@ router.get("/:courseId", async (req, res) => {
         price: parseFloat(course.price) || 0,
         slug: course.slug,
       },
-    };
-
-    console.log(
-      "🔍 DEBUG: Sending response with price:",
-      response.course.price
-    );
-    res.json(response);
+    });
   } catch (err) {
     console.error("❌ Error fetching course for payment:", err);
-    res.status(500).json({
-      success: false,
-      error: "Failed to load course information",
-    });
+    res.status(500).json({ success: false, error: "Failed to load course information" });
   }
 });
 
-// ✅ Debug route to test database connection
-router.get("/debug/:courseId", async (req, res) => {
-  try {
-    const { courseId } = req.params;
-    console.log("🔍 DEBUG: Testing database connection for course:", courseId);
-
-    const [results] = await db.sequelize.query(
-      "SELECT id, title, description, price, slug FROM courses WHERE id = ?",
-      { replacements: [courseId] }
-    );
-
-    console.log("🔍 DEBUG: Raw SQL results:", JSON.stringify(results));
-
-    if (results.length === 0) {
-      return res.status(404).json({
-        success: false,
-        error: "Course not found in debug route",
-      });
-    }
-
-    const course = results[0];
-    res.json({
-      success: true,
-      course: course,
-      message: "Direct database query successful",
-      price_type: typeof course.price,
-      raw_price: course.price,
-    });
-  } catch (err) {
-    console.error("Debug route error:", err);
-    res.status(500).json({
-      success: false,
-      error: err.message,
-    });
-  }
-});
-
-// ✅ Health check for payments route
+/* ============================================================
+   ✅ Health Check
+   ============================================================ */
 router.get("/health/check", (req, res) => {
   res.json({
     success: true,
-    message: "Payments route is working",
+    message: "Payments route operational",
     timestamp: new Date().toISOString(),
   });
 });
