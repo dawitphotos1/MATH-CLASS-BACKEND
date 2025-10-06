@@ -104,7 +104,6 @@
 
 
 
-
 // controllers/paymentController.js
 import stripePackage from "stripe";
 import db from "../models/index.js";
@@ -284,13 +283,13 @@ const confirmPayment = async (req, res) => {
       enrollmentAccess = existingAccess;
       console.log("✅ Updated existing enrollment access:", existingAccess.id);
     } else {
-      // Create new enrollment access - FIXED THE SYNTAX ERROR HERE
+      // Create new enrollment access
       enrollmentAccess = await UserCourseAccess.create({
         user_id: userId,
         course_id: courseId,
         payment_status: "paid",
         approval_status: "approved",
-        access_granted_at: new Date(), // CHANGED = to :
+        access_granted_at: new Date(),
       });
       console.log("✅ Created new enrollment access for user:", userId);
     }
