@@ -197,16 +197,17 @@
 
 
 
-
 import express from "express";
 import Stripe from "stripe";
 import db from "../models/index.js";
 import { authenticateToken } from "../middleware/authMiddleware.js";
+import sendEmail from "../utils/sendEmail.js";
+import courseEnrollmentApproved from "../utils/emails/courseEnrollmentApproved.js";
 
 const router = express.Router();
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
 
-const { Course, UserCourseAccess, Enrollment } = db;
+const { Course, UserCourseAccess, Enrollment, User } = db;
 
 // ✅ Create Stripe Checkout Session (requires authentication)
 router.post("/create-checkout-session", authenticateToken, async (req, res) => {
@@ -298,7 +299,7 @@ router.post("/create-checkout-session", authenticateToken, async (req, res) => {
   }
 });
 
-// ✅ NEW: Confirm payment and enrollment
+// ✅ Confirm payment and enrollment with email notification
 router.post("/confirm", authenticateToken, async (req, res) => {
   try {
     const { sessionId, courseId } = req.body;
@@ -318,7 +319,16 @@ router.post("/confirm", authenticateToken, async (req, res) => {
     }
 
     // Verify the Stripe session
-    const session = await stripe.checkout.sessions.retrieve(sessionId);
+    let session;
+    try {
+      session = await stripe.checkout.sessions.retrieve(sessionId);
+    } catch (stripeError) {
+      console.error("❌ Stripe session retrieval error:", stripeError);
+      return res.status(400).json({
+        success: false,
+        error: "Invalid payment session",
+      });
+    }
 
     if (session.payment_status !== "paid") {
       return res.status(400).json({
@@ -327,14 +337,14 @@ router.post("/confirm", authenticateToken, async (req, res) => {
       });
     }
 
-    // Verify session metadata matches
-    if (
-      session.metadata.user_id !== String(userId) ||
-      session.metadata.course_id !== String(courseId)
-    ) {
-      return res.status(400).json({
+    // Get user and course details for email
+    const user = await User.findByPk(userId);
+    const course = await Course.findByPk(courseId);
+
+    if (!user || !course) {
+      return res.status(404).json({
         success: false,
-        error: "Session verification failed",
+        error: "User or course not found",
       });
     }
 
@@ -346,17 +356,19 @@ router.post("/confirm", authenticateToken, async (req, res) => {
       },
     });
 
+    let enrollmentAccess;
     if (existingAccess) {
       // Update existing enrollment
       existingAccess.payment_status = "paid";
       existingAccess.approval_status = "approved";
       existingAccess.access_granted_at = new Date();
       await existingAccess.save();
+      enrollmentAccess = existingAccess;
 
       console.log("✅ Updated existing enrollment access:", existingAccess.id);
     } else {
       // Create new enrollment access
-      await UserCourseAccess.create({
+      enrollmentAccess = await UserCourseAccess.create({
         user_id: userId,
         course_id: courseId,
         payment_status: "paid",
@@ -391,9 +403,37 @@ router.post("/confirm", authenticateToken, async (req, res) => {
       console.log("✅ Created new enrollment record for user:", userId);
     }
 
+    // ✅ SEND CONFIRMATION EMAIL
+    try {
+      console.log("📧 Sending enrollment confirmation email to:", user.email);
+
+      // Use the courseEnrollmentApproved email template
+      const emailTemplate = courseEnrollmentApproved(user, course);
+
+      const emailSent = await sendEmail(
+        user.email,
+        emailTemplate.subject,
+        emailTemplate.html
+      );
+
+      if (emailSent) {
+        console.log("✅ Enrollment confirmation email sent successfully");
+      } else {
+        console.warn("⚠️ Email sending failed, but enrollment was successful");
+      }
+    } catch (emailError) {
+      console.error("❌ Email sending error (non-blocking):", emailError);
+      // Don't fail the enrollment if email fails
+    }
+
     res.json({
       success: true,
       message: "Payment confirmed and enrollment completed successfully",
+      enrollment: {
+        courseTitle: course.title,
+        coursePrice: course.price,
+        enrollmentDate: new Date().toISOString(),
+      },
     });
   } catch (error) {
     console.error("❌ Payment confirmation error:", error);
@@ -410,13 +450,11 @@ router.get("/:courseId", async (req, res) => {
     const { courseId } = req.params;
     console.log("🔍 Fetching course for payment page, ID:", courseId);
 
-    // Use raw SQL query to ensure we get the price
-    const [results] = await db.sequelize.query(
-      "SELECT id, title, description, price, slug FROM courses WHERE id = ?",
-      { replacements: [courseId] }
-    );
+    const course = await Course.findByPk(courseId, {
+      attributes: ["id", "title", "description", "price", "slug"],
+    });
 
-    if (results.length === 0) {
+    if (!course) {
       console.log("❌ Course not found for payment page:", courseId);
       return res.status(404).json({
         success: false,
@@ -424,7 +462,6 @@ router.get("/:courseId", async (req, res) => {
       });
     }
 
-    const course = results[0];
     console.log(
       "✅ Course found for payment:",
       course.title,
@@ -432,7 +469,6 @@ router.get("/:courseId", async (req, res) => {
       course.price
     );
 
-    // Ensure price is properly formatted
     const response = {
       success: true,
       course: {
@@ -460,22 +496,15 @@ router.get("/debug/:courseId", async (req, res) => {
     const { courseId } = req.params;
     console.log("🔍 DEBUG: Testing database connection for course:", courseId);
 
-    // Test raw query
-    const [results] = await db.sequelize.query(
-      "SELECT id, title, description, price, slug FROM courses WHERE id = ?",
-      { replacements: [courseId] }
-    );
+    const course = await Course.findByPk(courseId);
 
-    console.log("🔍 DEBUG: Raw SQL results:", JSON.stringify(results));
-
-    if (results.length === 0) {
+    if (!course) {
       return res.status(404).json({
         success: false,
         error: "Course not found in debug route",
       });
     }
 
-    const course = results[0];
     res.json({
       success: true,
       course: course,
