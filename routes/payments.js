@@ -387,14 +387,13 @@
 
 
 
-
 import express from "express";
 import Stripe from "stripe";
 import db from "../models/index.js";
 import { authenticateToken } from "../middleware/authMiddleware.js";
 import sendEmail from "../utils/sendEmail.js";
 import courseEnrollmentApproved from "../utils/emails/courseEnrollmentApproved.js";
-import { confirmPayment } from "../controllers/paymentController.js"; // ✅ Import the controller function
+import { confirmPayment } from "../controllers/paymentController.js";
 
 const router = express.Router();
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
@@ -496,15 +495,14 @@ router.post("/create-checkout-session", authenticateToken, async (req, res) => {
 });
 
 // ✅ Confirm payment and enrollment with email notification - USING CONTROLLER FUNCTION
-router.post("/confirm", authenticateToken, confirmPayment); // ✅ Simple one-line using the imported function
+router.post("/confirm", authenticateToken, confirmPayment);
 
-// ✅ Get course info for payment page (public route) - USING RAW SQL LIKE PREVIOUS WORKING VERSION
+// ✅ Get course info for payment page (public route)
 router.get("/:courseId", async (req, res) => {
   try {
     const { courseId } = req.params;
     console.log("🔍 Fetching course for payment page, ID:", courseId);
 
-    // Use raw SQL query to ensure we get the price (like previous working version)
     const [results] = await db.sequelize.query(
       "SELECT id, title, description, price, slug FROM courses WHERE id = ?",
       { replacements: [courseId] }
@@ -526,14 +524,13 @@ router.get("/:courseId", async (req, res) => {
       course.price
     );
 
-    // Ensure price is properly formatted
     const response = {
       success: true,
       course: {
         id: course.id,
         title: course.title,
         description: course.description,
-        price: parseFloat(course.price) || 0, // Convert to number
+        price: parseFloat(course.price) || 0,
         slug: course.slug,
       },
     };
@@ -542,7 +539,6 @@ router.get("/:courseId", async (req, res) => {
       "🔍 DEBUG: Sending response with price:",
       response.course.price
     );
-
     res.json(response);
   } catch (err) {
     console.error("❌ Error fetching course for payment:", err);
@@ -559,7 +555,6 @@ router.get("/debug/:courseId", async (req, res) => {
     const { courseId } = req.params;
     console.log("🔍 DEBUG: Testing database connection for course:", courseId);
 
-    // Test raw query
     const [results] = await db.sequelize.query(
       "SELECT id, title, description, price, slug FROM courses WHERE id = ?",
       { replacements: [courseId] }

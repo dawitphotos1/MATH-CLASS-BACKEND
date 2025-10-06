@@ -103,9 +103,6 @@
 // export default createCheckoutSession;
 
 
-
-
-
 // controllers/paymentController.js
 import stripePackage from "stripe";
 import db from "../models/index.js";
@@ -176,7 +173,7 @@ const createCheckoutSession = async (req, res) => {
         user_id: String(user.id),
         course_id: String(course.id),
       },
-      customer_email: user.email, // Pre-fill email for better UX
+      customer_email: user.email,
     });
 
     console.log("✅ Stripe session created:", session.id);
@@ -206,7 +203,7 @@ const createCheckoutSession = async (req, res) => {
 };
 
 // ✅ Confirm payment after successful checkout
-export const confirmPayment = async (req, res) => {
+const confirmPayment = async (req, res) => {
   try {
     const { sessionId, courseId } = req.body;
     const userId = req.user.id;
@@ -291,7 +288,7 @@ export const confirmPayment = async (req, res) => {
         course_id: courseId,
         payment_status: "paid",
         approval_status: "approved",
-        access_granted_at: new Date(),
+        access_granted_at = new Date(),
       });
       console.log("✅ Created new enrollment access for user:", userId);
     }
@@ -359,9 +356,6 @@ export const confirmPayment = async (req, res) => {
     });
   }
 };
-
-// ✅ Wrap with authentication middleware
-export const createCheckoutSessionWithAuth = [authenticateToken, createCheckoutSession];
 
 // ✅ Export functions
 export { createCheckoutSession, confirmPayment };
