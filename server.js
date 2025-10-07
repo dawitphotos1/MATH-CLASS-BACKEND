@@ -151,7 +151,6 @@
 
 
 
-
 import dotenv from "dotenv";
 dotenv.config();
 
@@ -211,7 +210,11 @@ app.use(
 
       console.log("🌍 Incoming Origin:", origin);
 
-      if (allowedOrigins.includes(origin) || origin.includes(".netlify.app")) {
+      if (
+        allowedOrigins.includes(origin) ||
+        origin.includes(".netlify.app") ||
+        origin.includes("localhost")
+      ) {
         callback(null, true);
       } else {
         console.warn("🚫 Blocked by CORS:", origin);
@@ -252,6 +255,55 @@ if (process.env.NODE_ENV === "production") {
 } else {
   console.log("⚡ Rate limiting disabled (development)");
 }
+
+// ========================================================
+// 🐛 DEBUG ROUTES - Temporary for testing
+// ========================================================
+
+// Simple CORS test
+app.get("/api/v1/debug-cors", (req, res) => {
+  console.log("🔧 Debug CORS endpoint hit");
+  res.json({
+    message: "CORS is working!",
+    timestamp: new Date().toISOString(),
+    origin: req.headers.origin,
+  });
+});
+
+// Test payment endpoint without auth
+app.get("/api/v1/debug-payment-test", (req, res) => {
+  console.log("🔧 Debug payment test endpoint hit");
+  res.json({
+    success: true,
+    message: "Payment endpoint is accessible",
+    sessionId: req.query.sessionId,
+    courseId: req.query.courseId,
+    timestamp: new Date().toISOString(),
+  });
+});
+
+// Test payment endpoint WITH auth (like the real one)
+app.post("/api/v1/debug-payment-auth-test", (req, res) => {
+  console.log("🔧 Debug payment auth test endpoint hit");
+
+  // Check for authentication
+  const token =
+    req.headers.authorization?.replace("Bearer ", "") || req.cookies?.token;
+
+  if (!token) {
+    return res.status(401).json({
+      success: false,
+      error: "No authentication token provided",
+    });
+  }
+
+  res.json({
+    success: true,
+    message: "Payment endpoint with auth is working",
+    hasAuth: true,
+    timestamp: new Date().toISOString(),
+  });
+});
 
 // ========================================================
 // 🧾 Request Logger
