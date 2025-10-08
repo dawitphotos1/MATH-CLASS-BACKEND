@@ -151,6 +151,9 @@
 
 
 
+
+
+// server.js
 import dotenv from "dotenv";
 dotenv.config();
 
@@ -178,7 +181,6 @@ app.set("trust proxy", 1);
 console.log("🚀 DATABASE_URL set?", !!process.env.DATABASE_URL);
 console.log("🚀 JWT_SECRET set?", !!process.env.JWT_SECRET);
 console.log("🌍 FRONTEND_URL:", process.env.FRONTEND_URL);
-console.log("🔧 NODE_ENV:", process.env.NODE_ENV);
 
 // ========================================================
 // 🧩 Stripe Webhook — must come *before* express.json()
@@ -205,16 +207,8 @@ const allowedOrigins = [
 app.use(
   cors({
     origin: function (origin, callback) {
-      // Allow requests with no origin (like mobile apps or curl requests)
-      if (!origin) return callback(null, true);
-
       console.log("🌍 Incoming Origin:", origin);
-
-      if (
-        allowedOrigins.includes(origin) ||
-        origin.includes(".netlify.app") ||
-        origin.includes("localhost")
-      ) {
+      if (!origin || allowedOrigins.includes(origin) || origin.includes(".netlify.app")) {
         callback(null, true);
       } else {
         console.warn("🚫 Blocked by CORS:", origin);
@@ -222,24 +216,17 @@ app.use(
       }
     },
     credentials: true,
-    methods: ["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"],
-    allowedHeaders: [
-      "Content-Type",
-      "Authorization",
-      "Cookie",
-      "X-Requested-With",
-    ],
   })
 );
 
-// Handle preflight requests
+// Allow preflight for all routes
 app.options("*", cors());
 
 // ========================================================
 // 🧩 JSON / URL-Encoded Middleware
 // ========================================================
-app.use(express.json({ limit: "10mb" }));
-app.use(express.urlencoded({ extended: true, limit: "10mb" }));
+app.use(express.json());
+app.use(express.urlencoded({ extended: true }));
 
 // ========================================================
 // ⚡ Rate Limiting
@@ -255,55 +242,6 @@ if (process.env.NODE_ENV === "production") {
 } else {
   console.log("⚡ Rate limiting disabled (development)");
 }
-
-// ========================================================
-// 🐛 DEBUG ROUTES - Temporary for testing
-// ========================================================
-
-// Simple CORS test
-app.get("/api/v1/debug-cors", (req, res) => {
-  console.log("🔧 Debug CORS endpoint hit");
-  res.json({
-    message: "CORS is working!",
-    timestamp: new Date().toISOString(),
-    origin: req.headers.origin,
-  });
-});
-
-// Test payment endpoint without auth
-app.get("/api/v1/debug-payment-test", (req, res) => {
-  console.log("🔧 Debug payment test endpoint hit");
-  res.json({
-    success: true,
-    message: "Payment endpoint is accessible",
-    sessionId: req.query.sessionId,
-    courseId: req.query.courseId,
-    timestamp: new Date().toISOString(),
-  });
-});
-
-// Test payment endpoint WITH auth (like the real one)
-app.post("/api/v1/debug-payment-auth-test", (req, res) => {
-  console.log("🔧 Debug payment auth test endpoint hit");
-
-  // Check for authentication
-  const token =
-    req.headers.authorization?.replace("Bearer ", "") || req.cookies?.token;
-
-  if (!token) {
-    return res.status(401).json({
-      success: false,
-      error: "No authentication token provided",
-    });
-  }
-
-  res.json({
-    success: true,
-    message: "Payment endpoint with auth is working",
-    hasAuth: true,
-    timestamp: new Date().toISOString(),
-  });
-});
 
 // ========================================================
 // 🧾 Request Logger
@@ -329,59 +267,29 @@ app.use("/api/v1/payments", paymentsRoutes);
 app.get("/api/v1/health", async (req, res) => {
   try {
     await sequelize.authenticate();
-    res.json({
-      status: "OK",
-      db: "connected",
-      timestamp: new Date().toISOString(),
-      environment: process.env.NODE_ENV,
-    });
+    res.json({ status: "OK", db: "connected" });
   } catch (err) {
     res.status(500).json({ status: "ERROR", error: err.message });
   }
-});
-
-// Test endpoint for payments
-app.get("/api/v1/payments/test", (req, res) => {
-  res.json({
-    success: true,
-    message: "Payments endpoint is working",
-    timestamp: new Date().toISOString(),
-  });
 });
 
 // ========================================================
 // 🚫 404 Handler
 // ========================================================
 app.use((req, res) => {
-  console.warn(`🔍 404 - Route not found: ${req.method} ${req.originalUrl}`);
-  res.status(404).json({
-    success: false,
-    error: "Endpoint not found",
-    path: req.originalUrl,
-  });
+  res.status(404).json({ success: false, error: "Not Found" });
 });
 
 // ========================================================
 // 🧱 Global Error Handler
 // ========================================================
 app.use((err, req, res, next) => {
-  console.error("❌ Global Error Handler:", err.message || err.stack);
-
+  console.error("❌ Global Error:", err.message || err.stack);
   const status = err.statusCode || 500;
-  const errorResponse = {
+  res.status(status).json({
     success: false,
-    error:
-      process.env.NODE_ENV === "production"
-        ? "Internal server error"
-        : err.message,
-  };
-
-  // Include stack trace in development
-  if (process.env.NODE_ENV !== "production") {
-    errorResponse.stack = err.stack;
-  }
-
-  res.status(status).json(errorResponse);
+    error: process.env.NODE_ENV === "production" ? "Internal server error" : err.message,
+  });
 });
 
 // ========================================================
@@ -401,15 +309,11 @@ const PORT = process.env.PORT || 5000;
     console.log("✅ DB Synced");
 
     if (shouldAlter) {
-      console.warn(
-        "⚠️ ALTER_DB=true detected — remember to set it to false after deployment!"
-      );
+      console.warn("⚠️ ALTER_DB=true detected — remember to set it to false after deployment!");
     }
 
     app.listen(PORT, "0.0.0.0", () => {
       console.log(`🚀 Server running on port ${PORT}`);
-      console.log(`🌍 Environment: ${process.env.NODE_ENV}`);
-      console.log(`🔗 Health check: http://localhost:${PORT}/api/v1/health`);
     });
 
     console.log("📋 Registered Endpoints:");
