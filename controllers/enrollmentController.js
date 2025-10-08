@@ -319,36 +319,34 @@
 
 
 
-
 // controllers/enrollmentController.js
 import db from "../models/index.js";
 
 const { Enrollment, User, Course } = db;
 
-// ========================
-// Create new enrollment request (manual, stays pending)
-// ========================
+/* ======================================================
+   Create new enrollment request (manual, stays pending)
+====================================================== */
 export const createEnrollment = async (req, res) => {
   try {
     const { courseId } = req.body;
-    const userId = req.user.id; // ✅ use consistent naming
+    const userId = req.user.id;
 
     if (!courseId) {
       return res.status(400).json({ error: "Course ID is required" });
     }
 
-    // Check if enrollment already exists
     const existingEnrollment = await Enrollment.findOne({
       where: { course_id: courseId, user_id: userId },
     });
 
     if (existingEnrollment) {
-      return res
-        .status(400)
-        .json({ error: "You have already requested enrollment for this course." });
+      return res.status(400).json({
+        success: false,
+        error: "You have already requested enrollment for this course.",
+      });
     }
 
-    // Default flow → stays pending (admin/teacher must approve)
     const newEnrollment = await Enrollment.create({
       course_id: courseId,
       user_id: userId,
@@ -362,9 +360,9 @@ export const createEnrollment = async (req, res) => {
   }
 };
 
-// ========================
-// Confirm enrollment after successful payment (auto-approved)
-// ========================
+/* ======================================================
+   Confirm enrollment after successful payment (auto-approved)
+====================================================== */
 export const confirmEnrollmentAfterPayment = async (req, res) => {
   try {
     const { courseId } = req.body;
@@ -374,7 +372,6 @@ export const confirmEnrollmentAfterPayment = async (req, res) => {
       return res.status(400).json({ error: "Course ID is required" });
     }
 
-    // Check if already enrolled
     const existingEnrollment = await Enrollment.findOne({
       where: { course_id: courseId, user_id: userId },
     });
@@ -387,11 +384,11 @@ export const confirmEnrollmentAfterPayment = async (req, res) => {
       });
     }
 
-    // ✅ Auto-approve since payment was confirmed
     const newEnrollment = await Enrollment.create({
       course_id: courseId,
       user_id: userId,
       approval_status: "approved",
+      payment_status: "paid",
     });
 
     res.status(201).json({ success: true, enrollment: newEnrollment });
@@ -401,9 +398,9 @@ export const confirmEnrollmentAfterPayment = async (req, res) => {
   }
 };
 
-// ========================
-// Get enrollments by status
-// ========================
+/* ======================================================
+   Get all enrollments by status (admin use)
+====================================================== */
 export const getEnrollments = async (req, res) => {
   try {
     const { status } = req.query;
@@ -418,20 +415,19 @@ export const getEnrollments = async (req, res) => {
       order: [["createdAt", "DESC"]],
     });
 
-    res.json({ enrollments });
+    res.json({ success: true, enrollments });
   } catch (err) {
     console.error("❌ getEnrollments error:", err);
     res.status(500).json({ error: "Server error" });
   }
 };
 
-// ========================
-// Approve enrollment (manual action)
-// ========================
+/* ======================================================
+   Approve enrollment (manual admin/teacher action)
+====================================================== */
 export const approveEnrollment = async (req, res) => {
   try {
     const { id } = req.params;
-
     const enrollment = await Enrollment.findByPk(id, {
       include: [
         { model: User, as: "student", attributes: ["id", "name", "email"] },
@@ -453,9 +449,9 @@ export const approveEnrollment = async (req, res) => {
   }
 };
 
-// ========================
-// Reject enrollment
-// ========================
+/* ======================================================
+   Reject enrollment
+====================================================== */
 export const rejectEnrollment = async (req, res) => {
   try {
     const { id } = req.params;
@@ -475,9 +471,9 @@ export const rejectEnrollment = async (req, res) => {
   }
 };
 
-// ========================
-// Check enrollment
-// ========================
+/* ======================================================
+   Check enrollment for current user and course
+====================================================== */
 export const checkEnrollment = async (req, res) => {
   try {
     const userId = req.user.id;
@@ -491,66 +487,99 @@ export const checkEnrollment = async (req, res) => {
       return res.status(404).json({ enrolled: false });
     }
 
-    res.json({ enrolled: true, approval_status: enrollment.approval_status });
+    res.json({
+      success: true,
+      enrolled: true,
+      approval_status: enrollment.approval_status,
+    });
   } catch (err) {
     console.error("❌ checkEnrollment error:", err);
     res.status(500).json({ error: "Server error" });
   }
 };
 
-// ========================
-// Get enrollments of logged-in user
-// ========================
+/* ======================================================
+   Get enrollments of logged-in user (includes course info)
+====================================================== */
 export const getMyEnrollments = async (req, res) => {
   try {
     const userId = req.user.id;
 
     const enrollments = await Enrollment.findAll({
       where: { user_id: userId },
-      include: [{ model: Course, as: "course", attributes: ["id", "title"] }],
+      include: [
+        {
+          model: Course,
+          as: "course",
+          attributes: ["id", "title", "slug", "price"],
+        },
+      ],
       order: [["createdAt", "DESC"]],
     });
 
-    res.json({ enrollments });
+    const formatted = enrollments.map((enr) => ({
+      id: enr.id,
+      approval_status: enr.approval_status,
+      payment_status: enr.payment_status,
+      enrolledAt: enr.createdAt,
+      course: enr.course,
+    }));
+
+    res.json({ success: true, enrollments: formatted });
   } catch (err) {
     console.error("❌ getMyEnrollments error:", err);
     res.status(500).json({ error: "Server error" });
   }
 };
 
-// ========================
-// Get my approved courses
-// ========================
+/* ======================================================
+   Get my courses (supports ?status=approved|pending)
+====================================================== */
 export const getMyCourses = async (req, res) => {
   try {
     const userId = req.user.id;
+    const { status } = req.query;
+
+    const whereClause = { user_id: userId };
+    if (status) whereClause.approval_status = status;
 
     const enrollments = await Enrollment.findAll({
-      where: {
-        user_id: userId,
-        approval_status: "approved",
-      },
+      where: whereClause,
       include: [
         {
           model: Course,
           as: "course",
-          attributes: ["id", "title", "slug", "description", "price", "teacher_id"],
+          attributes: [
+            "id",
+            "title",
+            "slug",
+            "description",
+            "price",
+            "teacher_id",
+          ],
         },
       ],
       order: [["createdAt", "DESC"]],
     });
 
-    const courses = enrollments.map((enr) => enr.course);
-    res.json({ courses });
+    const courses = enrollments
+      .filter((enr) => enr.course)
+      .map((enr) => ({
+        ...enr.course.toJSON(),
+        approval_status: enr.approval_status,
+        enrolledAt: enr.createdAt,
+      }));
+
+    res.json({ success: true, courses });
   } catch (err) {
     console.error("❌ getMyCourses error:", err);
     res.status(500).json({ error: "Failed to fetch courses" });
   }
 };
 
-// ========================
-// Get pending enrollments
-// ========================
+/* ======================================================
+   Get pending enrollments (admin use)
+====================================================== */
 export const getPendingEnrollments = async (req, res) => {
   try {
     const enrollments = await Enrollment.findAll({
@@ -562,16 +591,16 @@ export const getPendingEnrollments = async (req, res) => {
       order: [["createdAt", "DESC"]],
     });
 
-    res.json({ enrollments });
+    res.json({ success: true, enrollments });
   } catch (err) {
     console.error("❌ getPendingEnrollments error:", err);
     res.status(500).json({ error: "Server error" });
   }
 };
 
-// ========================
-// Get approved enrollments
-// ========================
+/* ======================================================
+   Get approved enrollments (admin use)
+====================================================== */
 export const getApprovedEnrollments = async (req, res) => {
   try {
     const enrollments = await Enrollment.findAll({
@@ -583,22 +612,21 @@ export const getApprovedEnrollments = async (req, res) => {
       order: [["createdAt", "DESC"]],
     });
 
-    res.json({ enrollments });
+    res.json({ success: true, enrollments });
   } catch (err) {
     console.error("❌ getApprovedEnrollments error:", err);
     res.status(500).json({ error: "Server error" });
   }
 };
 
-// ========================
-// Check enrollment eligibility and status
-// ========================
+/* ======================================================
+   Check enrollment eligibility and status
+====================================================== */
 export const checkEnrollmentEligibility = async (req, res) => {
   try {
     const userId = req.user.id;
     const { courseId } = req.params;
 
-    // Check if user is approved
     const user = await User.findByPk(userId);
     if (!user || user.approval_status !== "approved") {
       return res.json({
@@ -608,7 +636,6 @@ export const checkEnrollmentEligibility = async (req, res) => {
       });
     }
 
-    // Check if already enrolled
     const enrollment = await Enrollment.findOne({
       where: { user_id: userId, course_id: courseId },
     });
@@ -622,7 +649,6 @@ export const checkEnrollmentEligibility = async (req, res) => {
       });
     }
 
-    // Student is approved and not enrolled - can enroll
     return res.json({
       canEnroll: true,
       userApproved: true,
