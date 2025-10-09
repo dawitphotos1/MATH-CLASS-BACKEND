@@ -1,8 +1,6 @@
-
 // controllers/paymentController.js
 import stripePackage from "stripe";
 import db from "../models/index.js";
-import { authenticateToken } from "../middleware/authMiddleware.js";
 import sendEmail from "../utils/sendEmail.js";
 import courseEnrollmentApproved from "../utils/emails/courseEnrollmentApproved.js";
 
@@ -15,36 +13,23 @@ const createCheckoutSession = async (req, res) => {
     const { courseId } = req.body;
     const user = req.user;
 
-    console.log("🔄 Creating checkout session for:", { 
-      courseId, 
-      userId: user.id 
-    });
+    console.log("🔄 Creating checkout session:", { courseId, userId: user.id });
 
-    // Validate course exists
+    // Validate course
     const course = await Course.findByPk(courseId);
-    if (!course) {
-      console.error("❌ Course not found:", courseId);
-      return res.status(404).json({ error: "Course not found" });
-    }
+    if (!course) return res.status(404).json({ error: "Course not found" });
 
-    // Check for existing enrollment
-    const existingEnrollment = await UserCourseAccess.findOne({
+    // Check if already enrolled
+    const existing = await UserCourseAccess.findOne({
       where: { user_id: user.id, course_id: courseId },
     });
-
-    if (existingEnrollment) {
-      console.error("❌ User already enrolled:", { userId: user.id, courseId });
+    if (existing)
       return res.status(400).json({ error: "Already enrolled in this course" });
-    }
 
     // Validate price
     const price = parseFloat(course.price);
-    if (isNaN(price) || price <= 0) {
-      console.error("❌ Invalid course price:", course.price);
+    if (isNaN(price) || price <= 0)
       return res.status(400).json({ error: "Invalid course price" });
-    }
-
-    console.log("💳 Creating Stripe session for course:", course.title);
 
     // Create Stripe Checkout Session
     const session = await stripe.checkout.sessions.create({
@@ -53,11 +38,11 @@ const createCheckoutSession = async (req, res) => {
         {
           price_data: {
             currency: "usd",
-            product_data: { 
+            product_data: {
               name: course.title,
-              description: course.description || "Mathematics course"
+              description: course.description || "Mathematics course",
             },
-            unit_amount: Math.round(price * 100), // Convert to cents
+            unit_amount: Math.round(price * 100),
           },
           quantity: 1,
         },
@@ -72,9 +57,7 @@ const createCheckoutSession = async (req, res) => {
       customer_email: user.email,
     });
 
-    console.log("✅ Stripe session created:", session.id);
-
-    // Create pending enrollment record
+    // Create pending enrollment
     await UserCourseAccess.create({
       user_id: user.id,
       course_id: courseId,
@@ -82,156 +65,85 @@ const createCheckoutSession = async (req, res) => {
       approval_status: "pending",
     });
 
-    console.log("✅ Pending enrollment created for user:", user.id);
-
-    res.json({ 
-      success: true,
-      sessionId: session.id 
-    });
-
+    console.log("✅ Stripe session created:", session.id);
+    res.json({ success: true, sessionId: session.id });
   } catch (error) {
-    console.error("🔥 Create checkout session error:", error.message);
-    res.status(500).json({ 
+    console.error("🔥 Checkout session error:", error.message);
+    res.status(500).json({
       success: false,
-      error: "Failed to create checkout session" 
+      error: "Failed to create checkout session",
     });
   }
 };
 
-// ✅ Confirm payment after successful checkout
+// ✅ Confirm payment after checkout
 const confirmPayment = async (req, res) => {
   try {
-    const { sessionId, courseId } = req.body;
-    const userId = req.user.id;
+    // Support both snake_case and camelCase keys
+    const { sessionId, session_id, courseId, course_id } = req.body;
+    const sid = sessionId || session_id;
+    const cid = courseId || course_id;
+    const userId = req.user?.id;
 
-    console.log("🔄 Processing payment confirmation:", {
-      sessionId,
-      courseId,
-      userId,
-    });
+    console.log("🔄 Confirming payment:", { sid, cid, userId });
 
-    if (!sessionId || !courseId) {
+    if (!sid || !cid)
       return res.status(400).json({
         success: false,
         error: "Session ID and Course ID are required",
       });
-    }
 
-    // Verify the Stripe session
-    let session;
-    try {
-      session = await stripe.checkout.sessions.retrieve(sessionId);
-      console.log("✅ Stripe session retrieved:", session.id, "Status:", session.payment_status);
-    } catch (stripeError) {
-      console.error("❌ Stripe session retrieval error:", stripeError);
-      return res.status(400).json({
-        success: false,
-        error: "Invalid payment session",
-      });
-    }
+    // Retrieve session
+    const session = await stripe.checkout.sessions.retrieve(sid);
+    if (!session)
+      return res.status(400).json({ success: false, error: "Invalid session" });
 
-    if (session.payment_status !== "paid") {
-      console.log("❌ Payment not completed, status:", session.payment_status);
-      return res.status(400).json({
-        success: false,
-        error: "Payment not completed",
-      });
-    }
+    if (session.payment_status !== "paid")
+      return res.status(400).json({ success: false, error: "Payment not completed" });
 
-    // Get user and course details
+    // Validate user & course
     const user = await User.findByPk(userId);
-    const course = await Course.findByPk(courseId);
+    const course = await Course.findByPk(cid);
+    if (!user || !course)
+      return res.status(404).json({ success: false, error: "User or course not found" });
 
-    if (!user) {
-      console.error("❌ User not found:", userId);
-      return res.status(404).json({
-        success: false,
-        error: "User not found",
-      });
-    }
-
-    if (!course) {
-      console.error("❌ Course not found:", courseId);
-      return res.status(404).json({
-        success: false,
-        error: "Course not found",
-      });
-    }
-
-    console.log("✅ User and course found:", user.email, course.title);
-
-    // Check if enrollment already exists in UserCourseAccess
-    const existingAccess = await UserCourseAccess.findOne({
-      where: {
-        user_id: userId,
-        course_id: courseId,
-      },
-    });
-
-    let enrollmentAccess;
-    if (existingAccess) {
-      // Update existing enrollment
-      existingAccess.payment_status = "paid";
-      existingAccess.approval_status = "approved";
-      existingAccess.access_granted_at = new Date();
-      await existingAccess.save();
-      enrollmentAccess = existingAccess;
-      console.log("✅ Updated existing enrollment access:", existingAccess.id);
-    } else {
-      // Create new enrollment access
-      enrollmentAccess = await UserCourseAccess.create({
-        user_id: userId,
-        course_id: courseId,
+    // Create or update enrollment
+    const [access] = await UserCourseAccess.findOrCreate({
+      where: { user_id: userId, course_id: cid },
+      defaults: {
         payment_status: "paid",
         approval_status: "approved",
         access_granted_at: new Date(),
-      });
-      console.log("✅ Created new enrollment access for user:", userId);
-    }
-
-    // Also create/update Enrollment record for compatibility
-    const existingEnrollment = await Enrollment.findOne({
-      where: {
-        studentId: userId,
-        courseId: courseId,
       },
     });
 
-    if (existingEnrollment) {
-      existingEnrollment.approval_status = "approved";
-      await existingEnrollment.save();
-      console.log("✅ Updated existing enrollment record:", existingEnrollment.id);
-    } else {
-      await Enrollment.create({
-        studentId: userId,
-        courseId: courseId,
-        approval_status: "approved",
-      });
-      console.log("✅ Created new enrollment record for user:", userId);
+    if (access.payment_status !== "paid") {
+      access.payment_status = "paid";
+      access.approval_status = "approved";
+      access.access_granted_at = new Date();
+      await access.save();
     }
 
-    // ✅ SEND CONFIRMATION EMAIL
+    // Sync Enrollment table
+    const [enrollment] = await Enrollment.findOrCreate({
+      where: { studentId: userId, courseId: cid },
+      defaults: { approval_status: "approved" },
+    });
+    if (enrollment.approval_status !== "approved") {
+      enrollment.approval_status = "approved";
+      await enrollment.save();
+    }
+
+    // Send confirmation email (non-blocking)
     try {
-      console.log("📧 Sending enrollment confirmation email to:", user.email);
       const emailTemplate = courseEnrollmentApproved(user, course);
-      const emailSent = await sendEmail(
-        user.email,
-        emailTemplate.subject,
-        emailTemplate.html
-      );
-
-      if (emailSent) {
-        console.log("✅ Enrollment confirmation email sent successfully");
-      } else {
-        console.warn("⚠️ Email sending failed, but enrollment was successful");
-      }
-    } catch (emailError) {
-      console.error("❌ Email sending error (non-blocking):", emailError);
-      // Don't fail the enrollment if email fails
+      await sendEmail(user.email, emailTemplate.subject, emailTemplate.html);
+      console.log("📧 Enrollment email sent to:", user.email);
+    } catch (err) {
+      console.warn("⚠️ Email failed:", err.message);
     }
 
-    console.log("🎉 Payment confirmation completed successfully");
-
+    console.log("🎉 Payment confirmed successfully");
     res.json({
       success: true,
       message: "Payment confirmed and enrollment completed successfully",
@@ -239,10 +151,8 @@ const confirmPayment = async (req, res) => {
         courseTitle: course.title,
         coursePrice: course.price,
         enrollmentDate: new Date().toISOString(),
-        emailSent: true,
       },
     });
-
   } catch (error) {
     console.error("❌ Payment confirmation error:", error);
     res.status(500).json({
@@ -253,6 +163,4 @@ const confirmPayment = async (req, res) => {
   }
 };
 
-// ✅ Export functions
 export { createCheckoutSession, confirmPayment };
-export default createCheckoutSession;
