@@ -139,6 +139,9 @@
 // export default router;
 
 
+
+
+
 // routes/payments.js
 import express from "express";
 import Stripe from "stripe";
@@ -148,6 +151,16 @@ import authenticateToken from "../middleware/authenticateToken.js";
 const router = express.Router();
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
 const { Course, UserCourseAccess, Enrollment } = db;
+
+/* ============================================================
+   ✅ Browser Health Check for /webhook
+   ============================================================ */
+router.get("/webhook", (req, res) => {
+  res.json({
+    success: true,
+    message: "Stripe webhook endpoint is live. Use POST for real events.",
+  });
+});
 
 /* ============================================================
    ✅ Create Stripe Checkout Session
@@ -196,7 +209,6 @@ router.post("/create-checkout-session", authenticateToken, async (req, res) => {
       customer_email: user.email,
     });
 
-    // create pending record
     await UserCourseAccess.create({
       user_id: user.id,
       course_id: course.id,
@@ -212,7 +224,7 @@ router.post("/create-checkout-session", authenticateToken, async (req, res) => {
 });
 
 /* ============================================================
-   ✅ Get course info (frontend course detail)
+   ✅ Get course info (frontend)
    ============================================================ */
 router.get("/:courseId", async (req, res) => {
   try {
@@ -236,16 +248,6 @@ router.get("/:courseId", async (req, res) => {
     console.error("❌ Error fetching course:", err);
     res.status(500).json({ success: false, error: "Failed to load course information" });
   }
-});
-
-/* ============================================================
-   ✅ Browser Health Check for /webhook
-   ============================================================ */
-router.get("/webhook", (req, res) => {
-  res.json({
-    success: true,
-    message: "Stripe webhook endpoint is live. Use POST for real events.",
-  });
 });
 
 export default router;
