@@ -30,12 +30,12 @@ console.log("🌍 FRONTEND_URL:", process.env.FRONTEND_URL);
 /* ========================================================
    🧩 STRIPE WEBHOOK — must come BEFORE express.json()
    ======================================================== */
-// ⚠️ Mount the webhook route first so the raw body is preserved
-app.use(
-  "/api/v1/payments",
-  express.raw({ type: "application/json" }),
+app.post(
+  "/api/v1/payments/webhook",
+  express.raw({ type: "application/json" }), // raw body only for webhook
   stripeWebhook
 );
+
 
 /* ========================================================
    🧰 Security & Core Middleware
