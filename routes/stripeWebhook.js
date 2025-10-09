@@ -10,85 +10,102 @@ import courseEnrollmentApproved from "../utils/emails/courseEnrollmentApproved.j
 
 const router = express.Router();
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
-const { UserCourseAccess, User, Course } = db;
+const { UserCourseAccess, User, Course, Enrollment } = db;
 
 // ✅ Stripe Webhook Endpoint
 router.post(
-  "/stripe",
-  express.raw({ type: "application/json" }), // Stripe requires raw body
+  "/webhook",
+  express.raw({ type: "application/json" }), // Stripe needs raw body
   async (req, res) => {
     const sig = req.headers["stripe-signature"];
     const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET;
 
     let event;
     try {
-      event = stripe.webhooks.constructEvent(req.body, sig, webhookSecret);
+      // Use rawBody to verify signature
+      event = stripe.webhooks.constructEvent(req.rawBody || req.body, sig, webhookSecret);
     } catch (err) {
-      console.error("❌ Webhook signature verification failed:", err.message);
+      console.error("❌ Stripe signature verification failed:", err.message);
       return res.status(400).send(`Webhook Error: ${err.message}`);
     }
 
-    // ✅ Handle successful checkout
-    if (event.type === "checkout.session.completed") {
-      const session = event.data.object;
+    try {
+      if (event.type === "checkout.session.completed") {
+        const session = event.data.object;
 
-      if (session.payment_status === "paid") {
-        const { user_id, course_id } = session.metadata || {};
+        if (session.payment_status === "paid") {
+          const user_id = session.metadata?.user_id;
+          const course_id = session.metadata?.course_id;
 
-        try {
-          console.log("💰 Payment completed for user:", user_id, "course:", course_id);
+          console.log("💰 Webhook Payment completed:", { user_id, course_id });
 
-          // Find or create course access record
-          let record = await UserCourseAccess.findOne({
-            where: { user_id, course_id },
-            include: [
-              { model: User, as: "user" },
-              { model: Course, as: "course" },
-            ],
-          });
-
-          if (!record) {
-            record = await UserCourseAccess.create({
-              user_id,
-              course_id,
-              payment_status: "paid",
-              approval_status: "approved",
-              created_at: new Date(),
-              updated_at: new Date(),
-            });
-          } else {
-            record.payment_status = "paid";
-            record.approval_status = "approved";
-            await record.save();
+          if (!user_id || !course_id) {
+            console.warn("⚠️ Missing metadata in session:", session.id);
+            return res.status(200).json({ received: true });
           }
 
-          // ✅ Log webhook event
-          const logPath = path.join(process.cwd(), "logs", "enrollments.log");
-          fs.mkdirSync(path.dirname(logPath), { recursive: true });
-          const logMsg = `[WEBHOOK] ${new Date().toISOString()} - ${
-            record.user?.email || "unknown"
-          } paid for "${record.course?.title || course_id}"\n`;
+          // Ensure User and Course exist
+          const user = await User.findByPk(user_id);
+          const course = await Course.findByPk(course_id);
+          if (!user || !course) {
+            console.warn("⚠️ Missing user or course for webhook:", { user_id, course_id });
+            return res.status(200).json({ received: true });
+          }
+
+          // Find or create UserCourseAccess
+          const [access] = await UserCourseAccess.findOrCreate({
+            where: { user_id, course_id },
+            defaults: {
+              payment_status: "paid",
+              approval_status: "approved",
+              access_granted_at: new Date(),
+            },
+          });
+
+          if (access.payment_status !== "paid") {
+            access.payment_status = "paid";
+            access.approval_status = "approved";
+            access.access_granted_at = new Date();
+            await access.save();
+          }
+
+          // Sync with Enrollment table
+          const [enrollment] = await Enrollment.findOrCreate({
+            where: { studentId: user_id, courseId: course_id },
+            defaults: { approval_status: "approved" },
+          });
+          if (enrollment.approval_status !== "approved") {
+            enrollment.approval_status = "approved";
+            await enrollment.save();
+          }
+
+          // ✅ Log the event for debugging
+          const logDir = path.join(process.cwd(), "logs");
+          fs.mkdirSync(logDir, { recursive: true });
+          const logPath = path.join(logDir, "enrollments.log");
+          const logMsg = `[WEBHOOK] ${new Date().toISOString()} - ${user.email} enrolled in "${course.title}"\n`;
           fs.appendFileSync(logPath, logMsg);
 
           // ✅ Send email confirmation
-          if (record.user?.email && record.course?.title) {
-            const emailHTML = courseEnrollmentApproved(record.user.name, record.course.title);
-            await sendEmail({
-              to: record.user.email,
-              subject: `✅ Enrollment Confirmed - ${record.course.title}`,
-              html: emailHTML,
-            });
-            console.log("📧 Confirmation email sent to:", record.user.email);
+          try {
+            const emailTemplate = courseEnrollmentApproved(user, course);
+            await sendEmail(user.email, emailTemplate.subject, emailTemplate.html);
+            console.log("📧 Enrollment confirmation email sent to:", user.email);
+          } catch (emailError) {
+            console.warn("⚠️ Email send error (non-blocking):", emailError.message);
           }
 
-          console.log("✅ Payment auto-confirmed for user:", user_id);
-        } catch (err) {
-          console.error("❌ Error processing webhook:", err);
+          console.log("✅ Webhook enrollment confirmed for user:", user.email);
         }
+      } else {
+        console.log(`ℹ️ Unhandled Stripe event: ${event.type}`);
       }
-    }
 
-    res.json({ received: true });
+      res.json({ received: true });
+    } catch (err) {
+      console.error("🔥 Webhook processing error:", err);
+      res.status(500).send("Internal Server Error");
+    }
   }
 );
 

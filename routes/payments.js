@@ -4,18 +4,20 @@ import express from "express";
 import Stripe from "stripe";
 import db from "../models/index.js";
 import authenticateToken from "../middleware/authenticateToken.js";
+import sendEmail from "../utils/sendEmail.js";
+import courseEnrollmentApproved from "../utils/emails/courseEnrollmentApproved.js";
 
 const router = express.Router();
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
-const { Course, UserCourseAccess, Enrollment } = db;
+const { Course, UserCourseAccess, Enrollment, User } = db;
 
 /* ============================================================
-   ✅ Browser Health Check for /webhook
+   ✅ Stripe Webhook Health Check
    ============================================================ */
 router.get("/webhook", (req, res) => {
   res.json({
     success: true,
-    message: "Stripe webhook endpoint is live. Use POST for real events.",
+    message: "Stripe webhook endpoint is live (POST for real events)",
   });
 });
 
@@ -27,27 +29,26 @@ router.post("/create-checkout-session", authenticateToken, async (req, res) => {
     const { courseId } = req.body;
     const user = req.user;
 
-    if (!courseId)
-      return res.status(400).json({ error: "Course ID is required" });
+    if (!courseId) {
+      return res.status(400).json({ success: false, error: "Course ID is required" });
+    }
 
-    const course = await Course.findByPk(courseId, {
-      attributes: ["id", "title", "description", "price", "slug"],
-    });
-
-    if (!course) return res.status(404).json({ error: "Course not found" });
+    const course = await Course.findByPk(courseId);
+    if (!course) {
+      return res.status(404).json({ success: false, error: "Course not found" });
+    }
 
     const existingAccess = await UserCourseAccess.findOne({
       where: { user_id: user.id, course_id: courseId },
     });
-
-    if (existingAccess)
-      return res
-        .status(400)
-        .json({ error: "You are already enrolled in this course" });
+    if (existingAccess) {
+      return res.status(400).json({ success: false, error: "Already enrolled in this course" });
+    }
 
     const price = parseFloat(course.price);
-    if (isNaN(price) || price <= 0)
-      return res.status(400).json({ error: "Invalid course price" });
+    if (isNaN(price) || price <= 0) {
+      return res.status(400).json({ success: false, error: "Invalid course price" });
+    }
 
     const session = await stripe.checkout.sessions.create({
       payment_method_types: ["card"],
@@ -57,7 +58,7 @@ router.post("/create-checkout-session", authenticateToken, async (req, res) => {
             currency: "usd",
             product_data: {
               name: course.title,
-              description: course.description || "",
+              description: course.description || "Mathematics course",
             },
             unit_amount: Math.round(price * 100),
           },
@@ -81,7 +82,7 @@ router.post("/create-checkout-session", authenticateToken, async (req, res) => {
       approval_status: "pending",
     });
 
-    res.json({ success: true, sessionId: session.id, url: session.url });
+    res.json({ success: true, sessionId: session.id });
   } catch (err) {
     console.error("🔥 Stripe checkout error:", err);
     res.status(500).json({ success: false, error: err.message });
@@ -89,18 +90,12 @@ router.post("/create-checkout-session", authenticateToken, async (req, res) => {
 });
 
 /* ============================================================
-   ✅ Confirm Payment Endpoint
+   ✅ Confirm Payment (fallback if webhook fails)
    ============================================================ */
 router.post("/confirm", authenticateToken, async (req, res) => {
   try {
     const { sessionId, courseId } = req.body;
     const userId = req.user.id;
-
-    console.log("🔐 Payment confirmation request:", {
-      sessionId,
-      courseId,
-      userId,
-    });
 
     if (!sessionId || !courseId) {
       return res.status(400).json({
@@ -109,18 +104,14 @@ router.post("/confirm", authenticateToken, async (req, res) => {
       });
     }
 
-    // Verify the Stripe session
     let session;
     try {
-      session = await stripe.checkout.sessions.retrieve(sessionId, {
-        expand: ["payment_intent"],
-      });
-      console.log("✅ Stripe session status:", session.payment_status);
+      session = await stripe.checkout.sessions.retrieve(sessionId);
     } catch (stripeError) {
       console.error("❌ Stripe session retrieval error:", stripeError);
       return res.status(400).json({
         success: false,
-        error: "Invalid payment session",
+        error: "Invalid Stripe session",
       });
     }
 
@@ -131,19 +122,13 @@ router.post("/confirm", authenticateToken, async (req, res) => {
       });
     }
 
-    // Get user and course
     const user = await User.findByPk(userId);
     const course = await Course.findByPk(courseId);
-
     if (!user || !course) {
-      return res.status(404).json({
-        success: false,
-        error: "User or course not found",
-      });
+      return res.status(404).json({ success: false, error: "User or course not found" });
     }
 
-    // Update UserCourseAccess
-    const [enrollmentAccess] = await UserCourseAccess.findOrCreate({
+    const [access] = await UserCourseAccess.findOrCreate({
       where: { user_id: userId, course_id: courseId },
       defaults: {
         payment_status: "paid",
@@ -151,47 +136,42 @@ router.post("/confirm", authenticateToken, async (req, res) => {
         access_granted_at: new Date(),
       },
     });
-
-    if (!enrollmentAccess.isNewRecord) {
-      enrollmentAccess.payment_status = "paid";
-      enrollmentAccess.approval_status = "approved";
-      enrollmentAccess.access_granted_at = new Date();
-      await enrollmentAccess.save();
+    if (!access.isNewRecord) {
+      access.payment_status = "paid";
+      access.approval_status = "approved";
+      access.access_granted_at = new Date();
+      await access.save();
     }
 
-    // Update Enrollment table
     const [enrollment] = await Enrollment.findOrCreate({
-      where: { user_id: userId, course_id: courseId },
+      where: { studentId: userId, courseId: courseId },
       defaults: { approval_status: "approved" },
     });
-
     if (!enrollment.isNewRecord) {
       enrollment.approval_status = "approved";
       await enrollment.save();
     }
 
-    // Send confirmation email
     try {
       const emailTemplate = courseEnrollmentApproved(user, course);
       await sendEmail(user.email, emailTemplate.subject, emailTemplate.html);
-      console.log("✅ Confirmation email sent to:", user.email);
+      console.log("📧 Confirmation email sent:", user.email);
     } catch (emailError) {
-      console.warn("⚠️ Email sending failed:", emailError.message);
+      console.warn("⚠️ Email failed:", emailError.message);
     }
 
-    console.log("🎉 Payment confirmation completed for user:", userId);
-
-    return res.json({
+    res.json({
       success: true,
-      message: "Payment confirmed and enrollment completed successfully",
+      message: "Payment confirmed and enrollment successful",
       enrollment: {
         courseTitle: course.title,
+        price: course.price,
         enrollmentDate: new Date().toISOString(),
       },
     });
   } catch (error) {
     console.error("❌ Payment confirmation error:", error);
-    return res.status(500).json({
+    res.status(500).json({
       success: false,
       error: "Failed to confirm payment",
       details:
@@ -200,111 +180,30 @@ router.post("/confirm", authenticateToken, async (req, res) => {
   }
 });
 
-
 /* ============================================================
-   ✅ DEBUG: Test payment confirmation
-   ============================================================ */
-router.post("/debug-confirm", authenticateToken, async (req, res) => {
-  try {
-    const { sessionId, courseId } = req.body;
-    const userId = req.user.id;
-
-    console.log("🔍 DEBUG CONFIRMATION:", { sessionId, courseId, userId });
-
-    if (!sessionId || !courseId) {
-      return res.status(400).json({
-        success: false,
-        error: "Missing sessionId or courseId",
-      });
-    }
-
-    // Test Stripe connection
-    let session;
-    try {
-      session = await stripe.checkout.sessions.retrieve(sessionId);
-      console.log("✅ Stripe session:", {
-        id: session.id,
-        payment_status: session.payment_status,
-        status: session.status
-      });
-    } catch (stripeError) {
-      console.error("❌ Stripe error:", stripeError);
-      return res.status(400).json({
-        success: false,
-        error: "Stripe error: " + stripeError.message,
-      });
-    }
-
-    // Test database connection
-    try {
-      const user = await User.findByPk(userId);
-      const course = await Course.findByPk(courseId);
-      
-      if (!user) throw new Error("User not found");
-      if (!course) throw new Error("Course not found");
-
-      console.log("✅ Database check:", {
-        user: user.email,
-        course: course.title
-      });
-
-    } catch (dbError) {
-      console.error("❌ Database error:", dbError);
-      return res.status(400).json({
-        success: false,
-        error: "Database error: " + dbError.message,
-      });
-    }
-
-    res.json({
-      success: true,
-      message: "Debug check passed",
-      session: {
-        id: session.id,
-        payment_status: session.payment_status
-      },
-      user: { id: userId },
-      course: { id: courseId }
-    });
-
-  } catch (error) {
-    console.error("❌ Debug confirmation error:", error);
-    res.status(500).json({
-      success: false,
-      error: "Debug failed: " + error.message,
-    });
-  }
-});
-/* ============================================================
-   ✅ Get course info (frontend)
+   ✅ Course Info (frontend fetch)
    ============================================================ */
 router.get("/:courseId", async (req, res) => {
   try {
-    const { courseId } = req.params;
-    const course = await Course.findByPk(courseId, {
+    const course = await Course.findByPk(req.params.courseId, {
       attributes: ["id", "title", "description", "price", "slug"],
     });
-
-    if (!course)
-      return res
-        .status(404)
-        .json({ success: false, error: "Course not found" });
-
+    if (!course) {
+      return res.status(404).json({ success: false, error: "Course not found" });
+    }
     res.json({
       success: true,
       course: {
         id: course.id,
         title: course.title,
         description: course.description,
-        price: parseFloat(course.price) || 0,
+        price: parseFloat(course.price),
         slug: course.slug,
       },
     });
   } catch (err) {
-    console.error("❌ Error fetching course:", err);
-    res
-      .status(500)
-      .json({ success: false, error: "Failed to load course information" });
+    console.error("❌ Course fetch error:", err);
+    res.status(500).json({ success: false, error: "Failed to fetch course" });
   }
 });
 

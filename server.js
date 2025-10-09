@@ -17,7 +17,7 @@ import courseRoutes from "./routes/courses.js";
 import lessonRoutes from "./routes/lessonRoutes.js";
 import enrollmentRoutes from "./routes/enrollmentRoutes.js";
 import paymentsRoutes from "./routes/payments.js";
-import stripeWebhook from "./routes/stripeWebhook.js"; // ✅ added
+import stripeWebhook from "./routes/stripeWebhook.js";
 
 const app = express();
 app.set("trust proxy", 1);
@@ -30,9 +30,10 @@ console.log("🌍 FRONTEND_URL:", process.env.FRONTEND_URL);
 /* ========================================================
    🧩 STRIPE WEBHOOK — must come BEFORE express.json()
    ======================================================== */
+// ⚠️ Mount the webhook route first so the raw body is preserved
 app.use(
-  "/api/v1/payments/webhook",
-  express.raw({ type: "application/json" }), // raw body for signature verification
+  "/api/v1/payments",
+  express.raw({ type: "application/json" }),
   stripeWebhook
 );
 
@@ -43,7 +44,7 @@ app.use(helmet());
 app.use(cookieParser());
 
 /* ========================================================
-   🧩 CORS Setup (localhost + Netlify + Render)
+   🧩 CORS Setup
    ======================================================== */
 const allowedOrigins = [
   "http://localhost:3000",
@@ -55,7 +56,7 @@ const allowedOrigins = [
 
 app.use(
   cors({
-    origin: function (origin, callback) {
+    origin(origin, callback) {
       console.log("🌍 Incoming Origin:", origin);
       if (!origin || allowedOrigins.includes(origin) || origin.includes(".netlify.app")) {
         callback(null, true);
@@ -68,8 +69,7 @@ app.use(
   })
 );
 
-// Allow preflight requests
-app.options("*", cors());
+app.options("*", cors()); // Allow preflight
 
 /* ========================================================
    🧩 JSON / URL Encoded Middleware
@@ -108,7 +108,7 @@ app.use("/api/v1/admin", adminRoutes);
 app.use("/api/v1/courses", courseRoutes);
 app.use("/api/v1/lessons", lessonRoutes);
 app.use("/api/v1/enrollments", enrollmentRoutes);
-app.use("/api/v1/payments", paymentsRoutes); // ✅ normal payments routes
+app.use("/api/v1/payments", paymentsRoutes);
 
 /* ========================================================
    💓 Health Check

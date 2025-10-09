@@ -99,13 +99,17 @@ const confirmPayment = async (req, res) => {
       return res.status(400).json({ success: false, error: "Invalid session" });
 
     if (session.payment_status !== "paid")
-      return res.status(400).json({ success: false, error: "Payment not completed" });
+      return res
+        .status(400)
+        .json({ success: false, error: "Payment not completed" });
 
     // Validate user & course
     const user = await User.findByPk(userId);
     const course = await Course.findByPk(cid);
     if (!user || !course)
-      return res.status(404).json({ success: false, error: "User or course not found" });
+      return res
+        .status(404)
+        .json({ success: false, error: "User or course not found" });
 
     // Create or update enrollment
     const [access] = await UserCourseAccess.findOrCreate({
@@ -158,7 +162,8 @@ const confirmPayment = async (req, res) => {
     res.status(500).json({
       success: false,
       error: "Failed to confirm payment and enrollment",
-      details: process.env.NODE_ENV === "development" ? error.message : undefined,
+      details:
+        process.env.NODE_ENV === "development" ? error.message : undefined,
     });
   }
 };
