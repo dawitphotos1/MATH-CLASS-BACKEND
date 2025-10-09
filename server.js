@@ -193,6 +193,7 @@ import courseRoutes from "./routes/courses.js";
 import lessonRoutes from "./routes/lessonRoutes.js";
 import enrollmentRoutes from "./routes/enrollmentRoutes.js";
 import paymentsRoutes from "./routes/payments.js";
+import stripeWebhook from "./routes/stripeWebhook.js"; // ✅ added
 
 const app = express();
 app.set("trust proxy", 1);
@@ -205,9 +206,11 @@ console.log("🌍 FRONTEND_URL:", process.env.FRONTEND_URL);
 /* ========================================================
    🧩 STRIPE WEBHOOK — must come BEFORE express.json()
    ======================================================== */
-// The webhook route inside paymentsRoutes needs the raw body, so we mount it before JSON parsing.
-import paymentsRouter from "./routes/payments.js";
-app.use("/api/v1/payments/webhook", paymentsRouter);
+app.use(
+  "/api/v1/payments/webhook",
+  express.raw({ type: "application/json" }), // raw body for signature verification
+  stripeWebhook
+);
 
 /* ========================================================
    🧰 Security & Core Middleware
@@ -241,7 +244,7 @@ app.use(
   })
 );
 
-// Allow preflight requests for all routes
+// Allow preflight requests
 app.options("*", cors());
 
 /* ========================================================
@@ -255,7 +258,7 @@ app.use(express.urlencoded({ extended: true }));
    ======================================================== */
 if (process.env.NODE_ENV === "production") {
   const limiter = rateLimit({
-    windowMs: 15 * 60 * 1000, // 15 min
+    windowMs: 15 * 60 * 1000,
     max: 500,
     message: { success: false, error: "Too many requests" },
   });
@@ -281,7 +284,7 @@ app.use("/api/v1/admin", adminRoutes);
 app.use("/api/v1/courses", courseRoutes);
 app.use("/api/v1/lessons", lessonRoutes);
 app.use("/api/v1/enrollments", enrollmentRoutes);
-app.use("/api/v1/payments", paymentsRoutes);
+app.use("/api/v1/payments", paymentsRoutes); // ✅ normal payments routes
 
 /* ========================================================
    💓 Health Check

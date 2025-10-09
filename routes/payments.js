@@ -139,7 +139,6 @@
 // export default router;
 
 
-
 // routes/payments.js
 import express from "express";
 import Stripe from "stripe";
@@ -148,7 +147,6 @@ import authenticateToken from "../middleware/authenticateToken.js";
 
 const router = express.Router();
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
-
 const { Course, UserCourseAccess, Enrollment } = db;
 
 /* ============================================================
@@ -159,34 +157,22 @@ router.post("/create-checkout-session", authenticateToken, async (req, res) => {
     const { courseId } = req.body;
     const user = req.user;
 
-    if (!courseId) {
-      return res.status(400).json({ error: "Course ID is required" });
-    }
-
-    console.log(`💳 Checkout session for user ${user.id}, course ${courseId}`);
+    if (!courseId) return res.status(400).json({ error: "Course ID is required" });
 
     const course = await Course.findByPk(courseId, {
       attributes: ["id", "title", "description", "price", "slug"],
     });
+    if (!course) return res.status(404).json({ error: "Course not found" });
 
-    if (!course) {
-      return res.status(404).json({ error: "Course not found" });
-    }
-
-    // Prevent duplicate access
     const existingAccess = await UserCourseAccess.findOne({
       where: { user_id: user.id, course_id: courseId },
     });
-    if (existingAccess) {
-      return res
-        .status(400)
-        .json({ error: "You are already enrolled in this course" });
-    }
+    if (existingAccess)
+      return res.status(400).json({ error: "You are already enrolled in this course" });
 
     const price = parseFloat(course.price);
-    if (isNaN(price) || price <= 0) {
+    if (isNaN(price) || price <= 0)
       return res.status(400).json({ error: "Invalid course price" });
-    }
 
     const session = await stripe.checkout.sessions.create({
       payment_method_types: ["card"],
@@ -194,10 +180,7 @@ router.post("/create-checkout-session", authenticateToken, async (req, res) => {
         {
           price_data: {
             currency: "usd",
-            product_data: {
-              name: course.title,
-              description: course.description || "Math course enrollment",
-            },
+            product_data: { name: course.title, description: course.description || "" },
             unit_amount: Math.round(price * 100),
           },
           quantity: 1,
@@ -213,7 +196,7 @@ router.post("/create-checkout-session", authenticateToken, async (req, res) => {
       customer_email: user.email,
     });
 
-    // Record pending status
+    // create pending record
     await UserCourseAccess.create({
       user_id: user.id,
       course_id: course.id,
@@ -229,21 +212,15 @@ router.post("/create-checkout-session", authenticateToken, async (req, res) => {
 });
 
 /* ============================================================
-   ✅ Get course info for payment page
+   ✅ Get course info (frontend course detail)
    ============================================================ */
 router.get("/:courseId", async (req, res) => {
   try {
     const { courseId } = req.params;
-
     const course = await Course.findByPk(courseId, {
       attributes: ["id", "title", "description", "price", "slug"],
     });
-
-    if (!course) {
-      return res
-        .status(404)
-        .json({ success: false, error: "Course not found" });
-    }
+    if (!course) return res.status(404).json({ success: false, error: "Course not found" });
 
     res.json({
       success: true,
@@ -256,89 +233,18 @@ router.get("/:courseId", async (req, res) => {
       },
     });
   } catch (err) {
-    console.error("❌ Error fetching payment course:", err);
-    res.status(500).json({
-      success: false,
-      error: "Failed to load course information",
-    });
+    console.error("❌ Error fetching course:", err);
+    res.status(500).json({ success: false, error: "Failed to load course information" });
   }
 });
 
 /* ============================================================
-   ✅ Stripe Webhook (handles payment success)
+   ✅ Browser Health Check for /webhook
    ============================================================ */
-router.post(
-  "/webhook",
-  express.raw({ type: "application/json" }), // Stripe needs the raw body
-  async (req, res) => {
-    const sig = req.headers["stripe-signature"];
-
-    try {
-      const event = stripe.webhooks.constructEvent(
-        req.body,
-        sig,
-        process.env.STRIPE_WEBHOOK_SECRET
-      );
-
-      if (event.type === "checkout.session.completed") {
-        const session = event.data.object;
-        const userId = parseInt(session.metadata.user_id, 10);
-        const courseId = parseInt(session.metadata.course_id, 10);
-
-        console.log(`✅ Payment confirmed for user ${userId}, course ${courseId}`);
-
-        // Update UserCourseAccess
-        const access = await UserCourseAccess.findOne({
-          where: { user_id: userId, course_id: courseId },
-        });
-
-        if (access) {
-          access.payment_status = "paid";
-          access.approval_status = "approved";
-          await access.save();
-        } else {
-          await UserCourseAccess.create({
-            user_id: userId,
-            course_id: courseId,
-            payment_status: "paid",
-            approval_status: "approved",
-          });
-        }
-
-        // Also update or create Enrollment table record
-        const [enrollment, created] = await Enrollment.findOrCreate({
-          where: { user_id: userId, course_id: courseId },
-          defaults: {
-            approval_status: "approved",
-            payment_status: "paid",
-          },
-        });
-
-        if (!created) {
-          enrollment.approval_status = "approved";
-          enrollment.payment_status = "paid";
-          await enrollment.save();
-        }
-
-        console.log("🎓 Enrollment and access updated successfully!");
-      }
-
-      res.json({ received: true });
-    } catch (err) {
-      console.error("❌ Webhook signature verification failed:", err.message);
-      res.status(400).send(`Webhook Error: ${err.message}`);
-    }
-  }
-);
-
-/* ============================================================
-   ✅ Health Check
-   ============================================================ */
-router.get("/health/check", (req, res) => {
+router.get("/webhook", (req, res) => {
   res.json({
     success: true,
-    message: "Payments route operational",
-    timestamp: new Date().toISOString(),
+    message: "Stripe webhook endpoint is live. Use POST for real events.",
   });
 });
 
