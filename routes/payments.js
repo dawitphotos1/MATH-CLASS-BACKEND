@@ -312,6 +312,81 @@ router.post("/confirm", authenticateToken, async (req, res) => {
   }
 });
 
+
+/* ============================================================
+   ✅ DEBUG: Test payment confirmation
+   ============================================================ */
+router.post("/debug-confirm", authenticateToken, async (req, res) => {
+  try {
+    const { sessionId, courseId } = req.body;
+    const userId = req.user.id;
+
+    console.log("🔍 DEBUG CONFIRMATION:", { sessionId, courseId, userId });
+
+    if (!sessionId || !courseId) {
+      return res.status(400).json({
+        success: false,
+        error: "Missing sessionId or courseId",
+      });
+    }
+
+    // Test Stripe connection
+    let session;
+    try {
+      session = await stripe.checkout.sessions.retrieve(sessionId);
+      console.log("✅ Stripe session:", {
+        id: session.id,
+        payment_status: session.payment_status,
+        status: session.status
+      });
+    } catch (stripeError) {
+      console.error("❌ Stripe error:", stripeError);
+      return res.status(400).json({
+        success: false,
+        error: "Stripe error: " + stripeError.message,
+      });
+    }
+
+    // Test database connection
+    try {
+      const user = await User.findByPk(userId);
+      const course = await Course.findByPk(courseId);
+      
+      if (!user) throw new Error("User not found");
+      if (!course) throw new Error("Course not found");
+
+      console.log("✅ Database check:", {
+        user: user.email,
+        course: course.title
+      });
+
+    } catch (dbError) {
+      console.error("❌ Database error:", dbError);
+      return res.status(400).json({
+        success: false,
+        error: "Database error: " + dbError.message,
+      });
+    }
+
+    res.json({
+      success: true,
+      message: "Debug check passed",
+      session: {
+        id: session.id,
+        payment_status: session.payment_status
+      },
+      user: { id: userId },
+      course: { id: courseId }
+    });
+
+  } catch (error) {
+    console.error("❌ Debug confirmation error:", error);
+    res.status(500).json({
+      success: false,
+      error: "Debug failed: " + error.message,
+    });
+  }
+});
 /* ============================================================
    ✅ Get course info (frontend)
    ============================================================ */
