@@ -274,7 +274,7 @@ export const createCheckoutSession = async (req, res) => {
   }
 };
 
-// ✅ Confirm Payment (after successful checkout)
+// In confirmPayment function - fix the enrollment creation
 export const confirmPayment = async (req, res) => {
   try {
     const { sessionId, session_id, courseId, course_id } = req.body;
@@ -282,48 +282,47 @@ export const confirmPayment = async (req, res) => {
     const cid = courseId || course_id;
     const userId = req.user?.id;
 
-    console.log(
-      "🔍 Confirming payment for session:",
-      sid,
-      "course:",
-      cid,
-      "user:",
-      userId
-    );
-
     if (!sid || !cid) {
-      return res
-        .status(400)
-        .json({ success: false, error: "Missing session or course ID" });
+      return res.status(400).json({ 
+        success: false, 
+        error: "Missing session or course ID" 
+      });
     }
 
     if (!userId) {
-      return res
-        .status(401)
-        .json({ success: false, error: "Unauthorized: Missing user token" });
+      return res.status(401).json({ 
+        success: false, 
+        error: "Unauthorized: Missing user token" 
+      });
     }
 
     // Retrieve session
     const session = await stripe.checkout.sessions.retrieve(sid);
-    if (!session)
-      return res
-        .status(400)
-        .json({ success: false, error: "Invalid Stripe session" });
+    if (!session) {
+      return res.status(400).json({ 
+        success: false, 
+        error: "Invalid Stripe session" 
+      });
+    }
 
     if (session.payment_status !== "paid") {
-      return res
-        .status(400)
-        .json({ success: false, error: "Payment not completed yet" });
+      return res.status(400).json({ 
+        success: false, 
+        error: "Payment not completed yet" 
+      });
     }
 
     const user = await User.findByPk(userId);
     const course = await Course.findByPk(cid);
-    if (!user || !course)
-      return res
-        .status(404)
-        .json({ success: false, error: "User or course not found" });
+    
+    if (!user || !course) {
+      return res.status(404).json({ 
+        success: false, 
+        error: "User or course not found" 
+      });
+    }
 
-    // ✅ Update enrollment
+    // ✅ Update UserCourseAccess
     const [access] = await UserCourseAccess.findOrCreate({
       where: { user_id: userId, course_id: cid },
       defaults: {
@@ -340,22 +339,19 @@ export const confirmPayment = async (req, res) => {
       await access.save();
     }
 
-    // ✅ Sync enrollment table
-    console.log(
-      "🔄 Syncing Enrollment for user_id:",
-      userId,
-      "course_id:",
-      cid
-    );
+    // ✅ Sync Enrollment table with correct field names
     const [enrollment] = await Enrollment.findOrCreate({
-      where: { user_id: userId, course_id: cid },
-      defaults: { approval_status: "approved" },
+      where: { user_id: userId, course_id: cid }, // Fixed field names
+      defaults: { 
+        approval_status: "approved",
+        payment_status: "paid"
+      },
     });
-    console.log("🔄 Enrollment record:", enrollment.toJSON());
-    if (enrollment.approval_status !== "approved") {
+
+    if (enrollment.approval_status !== "approved" || enrollment.payment_status !== "paid") {
       enrollment.approval_status = "approved";
+      enrollment.payment_status = "paid";
       await enrollment.save();
-      console.log("✅ Updated enrollment approval_status to approved");
     }
 
     // ✅ Send confirmation email
@@ -376,13 +372,13 @@ export const confirmPayment = async (req, res) => {
         enrollmentDate: new Date().toISOString(),
       },
     });
+
   } catch (error) {
-    console.error("❌ Payment confirmation error:", error.stack);
+    console.error("❌ Payment confirmation error:", error);
     res.status(500).json({
       success: false,
       error: "Failed to confirm payment",
-      details:
-        process.env.NODE_ENV === "development" ? error.message : undefined,
+      details: process.env.NODE_ENV === "development" ? error.message : undefined,
     });
   }
 };
