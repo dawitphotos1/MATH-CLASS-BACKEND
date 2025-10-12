@@ -185,7 +185,7 @@
 
 
 
-
+//controllers/paymentController.js
 import stripePackage from "stripe";
 import db from "../models/index.js";
 import sendEmail from "../utils/sendEmail.js";
