@@ -82,7 +82,6 @@
 
 
 
-
 // controllers/adminController.js
 import db from "../models/index.js";
 const { User, Enrollment, Course, UserCourseAccess } = db;
@@ -119,19 +118,24 @@ export const getStudentsByStatus = async (req, res) => {
 };
 
 /**
- * Get enrollments by status
+ * Get enrollments by status - UPDATED TO SHOW PAID ENROLLMENTS
  * @route GET /admin/enrollments?status=pending|approved|rejected
  */
 export const getEnrollmentsByStatus = async (req, res) => {
   try {
     const { status } = req.query;
 
-    if (!status || !["pending", "approved", "rejected"].includes(status)) {
-      return res.status(400).json({ error: "Invalid or missing status" });
+    let whereCondition = {};
+    
+    if (status && ["pending", "approved", "rejected"].includes(status)) {
+      whereCondition.approval_status = status;
     }
+    
+    // Only show paid enrollments - THIS IS THE KEY CHANGE
+    whereCondition.payment_status = "paid";
 
     const enrollments = await Enrollment.findAll({
-      where: { approval_status: status },
+      where: whereCondition,
       include: [
         {
           model: User,

@@ -1,10 +1,12 @@
 // // routes/admin.js
 // import express from "express";
 // import {
-//   getPendingUsers,
-//   updateUserApproval,
-//   getEnrollments,
+//   getStudentsByStatus,
+//   approveStudent,
+//   rejectStudent,
+//   getEnrollmentsByStatus,
 //   approveEnrollment,
+//   rejectEnrollment,
 // } from "../controllers/adminController.js";
 // import { authenticateToken, isAdmin } from "../middleware/authMiddleware.js";
 
@@ -20,23 +22,32 @@
 // router.use(authenticateToken, isAdmin);
 
 // // ====================
-// // Admin API Endpoints
+// // Student Management
 // // ====================
 
-// // Get pending users
-// router.get("/pending-users", getPendingUsers);
+// // Get students by status (pending/approved/rejected)
+// router.get("/students", getStudentsByStatus);
 
-// // Update user approval (approve/reject)
-// router.patch("/users/:userId/approval", updateUserApproval);
+// // Approve a student
+// router.patch("/students/:id/approve", approveStudent);
 
-// // Get enrollments (filter by ?status=pending/approved/rejected)
-// router.get("/enrollments", getEnrollments);
+// // Reject a student  
+// router.patch("/students/:id/reject", rejectStudent);
+
+// // ====================
+// // Enrollment Management
+// // ====================
+
+// // Get enrollments by status (pending/approved/rejected)
+// router.get("/enrollments", getEnrollmentsByStatus);
 
 // // Approve an enrollment
-// router.put("/enrollments/:enrollmentId/approve", approveEnrollment);
+// router.patch("/enrollments/:id/approve", approveEnrollment);
+
+// // Reject an enrollment
+// router.patch("/enrollments/:id/reject", rejectEnrollment);
 
 // export default router;
-
 
 
 
@@ -53,6 +64,7 @@ import {
   rejectEnrollment,
 } from "../controllers/adminController.js";
 import { authenticateToken, isAdmin } from "../middleware/authMiddleware.js";
+import db from "../models/index.js"; // Import db for debug route
 
 const router = express.Router();
 
@@ -90,5 +102,54 @@ router.patch("/enrollments/:id/approve", approveEnrollment);
 
 // Reject an enrollment
 router.patch("/enrollments/:id/reject", rejectEnrollment);
+
+// ====================
+// Debug Routes (Temporary)
+// ====================
+
+// Debug route to check current data
+router.get("/debug-data", async (req, res) => {
+  try {
+    // Check enrollments
+    const enrollments = await db.Enrollment.findAll({
+      include: [
+        { 
+          model: db.User, 
+          as: "student",
+          attributes: ["id", "name", "email"]
+        },
+        { 
+          model: db.Course, 
+          as: "course",
+          attributes: ["id", "title", "price"]
+        }
+      ],
+      order: [["createdAt", "DESC"]]
+    });
+
+    // Check user course access
+    const userCourseAccess = await db.UserCourseAccess.findAll({
+      include: [
+        { model: db.User, attributes: ["id", "name", "email"] },
+        { model: db.Course, attributes: ["id", "title", "price"] }
+      ],
+      order: [["createdAt", "DESC"]]
+    });
+
+    res.json({
+      enrollments: {
+        count: enrollments.length,
+        data: enrollments
+      },
+      userCourseAccess: {
+        count: userCourseAccess.length,
+        data: userCourseAccess
+      }
+    });
+  } catch (error) {
+    console.error("Debug route error:", error);
+    res.status(500).json({ error: error.message });
+  }
+});
 
 export default router;
