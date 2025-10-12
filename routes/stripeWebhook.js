@@ -112,7 +112,9 @@
 // export default router;
 
 
-// routes/stripeWebhook.js
+
+
+// routes/stripeWebhook.js - Add detailed logging
 import express from "express";
 import Stripe from "stripe";
 import fs from "fs";
@@ -128,15 +130,13 @@ const { UserCourseAccess, User, Course, Enrollment } = db;
 // ✅ Stripe Webhook Endpoint
 router.post(
   "/webhook",
-  express.raw({ type: "application/json" }), // Stripe needs raw body
+  express.raw({ type: "application/json" }),
   async (req, res) => {
     const sig = req.headers["stripe-signature"];
     const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET;
 
     let event;
-    
     try {
-      // Verify webhook signature
       event = stripe.webhooks.constructEvent(req.body, sig, webhookSecret);
       console.log("✅ Webhook signature verified:", event.type);
     } catch (err) {
@@ -148,38 +148,33 @@ router.post(
     res.json({ received: true });
 
     try {
-      // Handle checkout session completion
       if (event.type === "checkout.session.completed") {
         await handleCheckoutSessionCompleted(event.data.object);
-      } else if (event.type === "payment_intent.succeeded") {
-        console.log("💰 Payment intent succeeded:", event.data.object.id);
       } else {
         console.log(`ℹ️ Unhandled Stripe event type: ${event.type}`);
       }
     } catch (error) {
       console.error("🔥 Webhook processing error:", error);
-      // Don't return error response since we already acknowledged receipt
     }
   }
 );
 
-/**
- * Handle successful checkout session
- */
 async function handleCheckoutSessionCompleted(session) {
   console.log("💰 Processing checkout.session.completed:", session.id);
+  console.log("📦 Session metadata:", session.metadata);
+  console.log("💰 Payment status:", session.payment_status);
 
   // Extract metadata
   const user_id = session.metadata?.user_id;
   const course_id = session.metadata?.course_id;
 
   if (!user_id || !course_id) {
-    console.warn("⚠️ Missing user_id or course_id in session metadata:", session.id);
+    console.error("❌ Missing user_id or course_id in session metadata");
     return;
   }
 
   if (session.payment_status !== "paid") {
-    console.warn("⚠️ Session not paid:", session.id, "Payment status:", session.payment_status);
+    console.warn("⚠️ Session not paid, payment status:", session.payment_status);
     return;
   }
 
@@ -217,16 +212,15 @@ async function handleCheckoutSessionCompleted(session) {
       });
 
       if (!accessCreated) {
-        // Update existing record
         access.payment_status = "paid";
         access.approval_status = "approved";
         access.access_granted_at = new Date();
         await access.save({ transaction });
       }
 
-      console.log("✅ UserCourseAccess processed:", access.id);
+      console.log("✅ UserCourseAccess processed - ID:", access.id);
 
-      // 2. Create or update Enrollment
+      // 2. Create or update Enrollment - THIS IS WHAT THE ADMIN DASHBOARD NEEDS
       const [enrollment, enrollmentCreated] = await Enrollment.findOrCreate({
         where: { 
           user_id: user_id,
@@ -241,14 +235,14 @@ async function handleCheckoutSessionCompleted(session) {
       });
 
       if (!enrollmentCreated) {
-        // Update existing enrollment
         enrollment.approval_status = "approved";
         enrollment.payment_status = "paid";
         enrollment.enrollment_date = new Date();
         await enrollment.save({ transaction });
+        console.log("✅ Updated existing enrollment - ID:", enrollment.id);
+      } else {
+        console.log("✅ Created new enrollment - ID:", enrollment.id);
       }
-
-      console.log("✅ Enrollment processed:", enrollment.id);
 
       // Log successful enrollment
       await logEnrollment(user, course, session.id);
@@ -261,13 +255,10 @@ async function handleCheckoutSessionCompleted(session) {
 
   } catch (error) {
     console.error("🔥 Error processing enrollment:", error);
-    throw error; // Re-throw to be caught by outer try-catch
+    throw error;
   }
 }
 
-/**
- * Log enrollment to file for debugging
- */
 async function logEnrollment(user, course, sessionId) {
   try {
     const logDir = path.join(process.cwd(), "logs");
@@ -286,9 +277,6 @@ async function logEnrollment(user, course, sessionId) {
   }
 }
 
-/**
- * Send enrollment confirmation email
- */
 async function sendEnrollmentEmail(user, course) {
   try {
     const emailTemplate = courseEnrollmentApproved(user, course);
@@ -296,7 +284,6 @@ async function sendEnrollmentEmail(user, course) {
     console.log("📧 Enrollment confirmation email sent to:", user.email);
   } catch (emailError) {
     console.warn("⚠️ Failed to send enrollment email:", emailError.message);
-    // Don't throw error - email failure shouldn't block enrollment
   }
 }
 
