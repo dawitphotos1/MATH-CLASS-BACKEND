@@ -184,7 +184,6 @@
 // };
 
 
-
 //controllers/paymentController.js
 import stripePackage from "stripe";
 import db from "../models/index.js";
@@ -244,8 +243,9 @@ export const createCheckoutSession = async (req, res) => {
         },
       ],
       mode: "payment",
-      success_url: `${process.env.FRONTEND_URL}/payment-success?session_id={CHECKOUT_SESSION_ID}&course_id=${course.id}`,
-      cancel_url: `${process.env.FRONTEND_URL}/courses/${course.slug}`,
+      // ⚠️ UPDATED: Changed to static HTML files
+      success_url: `https://math-class-platform.netlify.app/payment-success.html?session_id={CHECKOUT_SESSION_ID}&course_id=${course.id}`,
+      cancel_url: `https://math-class-platform.netlify.app/payment-cancel.html`,
       metadata: {
         user_id: String(user.id),
         course_id: String(course.id),
