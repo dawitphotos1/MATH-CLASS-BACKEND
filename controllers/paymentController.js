@@ -141,7 +141,7 @@ export const confirmPayment = async (req, res) => {
       where: { user_id: userId, course_id: cid },
       defaults: {
         payment_status: "paid",
-        approval_status: "approved",
+        approval_status: "pending",
         access_granted_at: new Date(),
       },
     });
