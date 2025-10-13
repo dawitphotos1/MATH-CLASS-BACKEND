@@ -101,7 +101,6 @@
 
 
 
-
 // routes/admin.js
 import express from "express";
 import {
@@ -199,10 +198,6 @@ router.get("/debug-database", async (req, res) => {
     res.status(500).json({ error: error.message });
   }
 });
-
-// ====================
-// NEW DEBUG ROUTES - ADD THESE
-// ====================
 
 // Debug route to check paid enrollments specifically
 router.get("/debug-payments", async (req, res) => {
