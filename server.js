@@ -1,3 +1,4 @@
+
 // server.js
 import dotenv from "dotenv";
 dotenv.config();
@@ -32,10 +33,9 @@ console.log("🌍 FRONTEND_URL:", process.env.FRONTEND_URL);
    ======================================================== */
 app.post(
   "/api/v1/payments/webhook",
-  express.raw({ type: "application/json" }), // raw body only for webhook
+  express.raw({ type: "application/json" }),
   stripeWebhook
 );
-
 
 /* ========================================================
    🧰 Security & Core Middleware
@@ -69,7 +69,7 @@ app.use(
   })
 );
 
-app.options("*", cors()); // Allow preflight
+app.options("*", cors());
 
 /* ========================================================
    🧩 JSON / URL Encoded Middleware
@@ -137,10 +137,7 @@ app.use((err, req, res, next) => {
   const status = err.statusCode || 500;
   res.status(status).json({
     success: false,
-    error:
-      process.env.NODE_ENV === "production"
-        ? "Internal server error"
-        : err.message,
+    error: process.env.NODE_ENV === "production" ? "Internal server error" : err.message,
   });
 });
 

@@ -1,4 +1,4 @@
-// routes/stripeWebhook.js - Add detailed logging
+// routes/stripeWebhook.js - FIXED: Set approval_status to "pending"
 import express from "express";
 import Stripe from "stripe";
 import fs from "fs";
@@ -84,20 +84,20 @@ async function handleCheckoutSessionCompleted(session) {
 
     // Use transaction for data consistency
     await db.sequelize.transaction(async (transaction) => {
-      // 1. Create or update UserCourseAccess
+      // 1. Create or update UserCourseAccess with PENDING status
       const [access, accessCreated] = await UserCourseAccess.findOrCreate({
         where: { user_id, course_id },
         defaults: {
           payment_status: "paid",
-          approval_status: "approved",
+          approval_status: "pending", // FIXED: Set to pending for admin approval
           access_granted_at: new Date(),
         },
-        transaction
+        transaction,
       });
 
       if (!accessCreated) {
         access.payment_status = "paid";
-        access.approval_status = "approved";
+        access.approval_status = "pending"; // FIXED: Set to pending for admin approval
         access.access_granted_at = new Date();
         await access.save({ transaction });
       }
@@ -111,17 +111,15 @@ async function handleCheckoutSessionCompleted(session) {
           course_id: course_id
         },
         defaults: { 
-          approval_status: "approved",
+          approval_status: "pending", // FIXED: Changed from "approved" to "pending"
           payment_status: "paid",
-          enrollment_date: new Date()
         },
         transaction
       });
 
       if (!enrollmentCreated) {
-        enrollment.approval_status = "approved";
+        enrollment.approval_status = "pending"; // FIXED: Changed from "approved" to "pending"
         enrollment.payment_status = "paid";
-        enrollment.enrollment_date = new Date();
         await enrollment.save({ transaction });
         console.log("✅ Updated existing enrollment - ID:", enrollment.id);
       } else {
@@ -131,11 +129,11 @@ async function handleCheckoutSessionCompleted(session) {
       // Log successful enrollment
       await logEnrollment(user, course, session.id);
 
-      // Send confirmation email
-      await sendEnrollmentEmail(user, course);
+      // Don't send approval email yet - wait for admin approval
+      console.log("📧 Enrollment created with PENDING status - waiting for admin approval");
     });
 
-    console.log("🎉 Enrollment completed successfully for user:", user.email);
+    console.log("🎉 Enrollment created successfully for user:", user.email, "(Pending admin approval)");
 
   } catch (error) {
     console.error("🔥 Error processing enrollment:", error);
@@ -152,22 +150,12 @@ async function logEnrollment(user, course, sessionId) {
     
     const logPath = path.join(logDir, "enrollments.log");
     const timestamp = new Date().toISOString();
-    const logMsg = `[WEBHOOK] ${timestamp} - ${user.email} enrolled in "${course.title}" (Session: ${sessionId})\n`;
+    const logMsg = `[WEBHOOK] ${timestamp} - ${user.email} enrolled in "${course.title}" - PENDING ADMIN APPROVAL (Session: ${sessionId})\n`;
     
     fs.appendFileSync(logPath, logMsg);
     console.log("📝 Enrollment logged to file");
   } catch (logError) {
     console.warn("⚠️ Failed to write to log file:", logError.message);
-  }
-}
-
-async function sendEnrollmentEmail(user, course) {
-  try {
-    const emailTemplate = courseEnrollmentApproved(user, course);
-    await sendEmail(user.email, emailTemplate.subject, emailTemplate.html);
-    console.log("📧 Enrollment confirmation email sent to:", user.email);
-  } catch (emailError) {
-    console.warn("⚠️ Failed to send enrollment email:", emailError.message);
   }
 }
 
