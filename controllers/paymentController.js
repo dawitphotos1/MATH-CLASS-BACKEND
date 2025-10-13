@@ -1,8 +1,6 @@
 // controllers/paymentController.js
 import stripePackage from "stripe";
 import db from "../models/index.js";
-import sendEmail from "../utils/sendEmail.js";
-import courseEnrollmentApproved from "../utils/emails/courseEnrollmentApproved.js";
 
 const stripe = stripePackage(process.env.STRIPE_SECRET_KEY);
 const { Course, UserCourseAccess, Enrollment, User } = db;
@@ -13,6 +11,11 @@ export const createCheckoutSession = async (req, res) => {
     const { courseId } = req.body;
     const user = req.user;
     
+    console.log("💰 PAYMENT: Creating checkout session for:", {
+      user: user.email,
+      courseId: courseId
+    });
+
     if (!courseId || !user?.id) {
       return res.status(400).json({ success: false, error: "Missing user or course ID" });
     }
@@ -28,6 +31,7 @@ export const createCheckoutSession = async (req, res) => {
     });
     
     if (existing) {
+      console.log("⚠️ PAYMENT: Duplicate enrollment found");
       return res.status(400).json({ success: false, error: "Already enrolled in this course" });
     }
 
@@ -62,11 +66,11 @@ export const createCheckoutSession = async (req, res) => {
       customer_email: user.email,
     });
 
-    console.log("✅ Stripe session created:", session.id);
+    console.log("✅ PAYMENT: Stripe session created:", session.id);
     res.json({ success: true, sessionId: session.id, url: session.url });
     
   } catch (error) {
-    console.error("🔥 Checkout session error:", error.stack);
+    console.error("🔥 PAYMENT: Checkout session error:", error.stack);
     res.status(500).json({
       success: false,
       error: "Failed to create checkout session",
@@ -82,6 +86,12 @@ export const confirmPayment = async (req, res) => {
     const sid = sessionId || session_id;
     const cid = courseId || course_id;
     const userId = req.user?.id;
+
+    console.log("💰 PAYMENT CONFIRM: Processing payment confirmation", {
+      sessionId: sid,
+      courseId: cid,
+      userId: userId
+    });
 
     if (!sid || !cid) {
       return res.status(400).json({
@@ -107,6 +117,7 @@ export const confirmPayment = async (req, res) => {
     }
 
     if (session.payment_status !== "paid") {
+      console.log("⚠️ PAYMENT: Session not paid, status:", session.payment_status);
       return res.status(400).json({
         success: false,
         error: "Payment not completed yet"
@@ -123,6 +134,8 @@ export const confirmPayment = async (req, res) => {
       });
     }
 
+    console.log("✅ PAYMENT: Found user & course:", user.email, course.title);
+
     // ✅ Create Enrollment with PENDING approval status
     const [enrollment, created] = await Enrollment.findOrCreate({
       where: { user_id: userId, course_id: cid },
@@ -138,21 +151,24 @@ export const confirmPayment = async (req, res) => {
         enrollment.approval_status = "pending";
         enrollment.payment_status = "paid";
         await enrollment.save();
+        console.log("✅ PAYMENT: Updated existing enrollment");
       }
     }
 
-    console.log("✅ Enrollment created for admin approval:", {
+    console.log("🎉 PAYMENT: Enrollment created for admin approval:", {
       enrollmentId: enrollment.id,
       user: user.email,
       course: course.title,
       approval_status: enrollment.approval_status,
-      payment_status: enrollment.payment_status
+      payment_status: enrollment.payment_status,
+      created: created ? "NEW" : "EXISTING"
     });
 
     res.json({
       success: true,
       message: "Payment confirmed - enrollment pending admin approval",
       enrollment: {
+        id: enrollment.id,
         courseTitle: course.title,
         price: course.price,
         enrollmentDate: new Date().toISOString(),
@@ -161,7 +177,7 @@ export const confirmPayment = async (req, res) => {
     });
 
   } catch (error) {
-    console.error("❌ Payment confirmation error:", error);
+    console.error("❌ PAYMENT: Payment confirmation error:", error);
     res.status(500).json({
       success: false,
       error: "Failed to confirm payment",

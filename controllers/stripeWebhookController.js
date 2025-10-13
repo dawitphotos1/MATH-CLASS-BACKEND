@@ -1,12 +1,9 @@
-
 // controllers/stripeWebhookController.js
 import stripePackage from "stripe";
 import db from "../models/index.js";
-import sendEmail from "../utils/sendEmail.js";
-import courseEnrollmentApproved from "../utils/emails/courseEnrollmentApproved.js";
 
 const stripe = stripePackage(process.env.STRIPE_SECRET_KEY);
-const { Course, User, UserCourseAccess, Enrollment } = db;
+const { Course, User, Enrollment } = db;
 
 // ✅ Stripe Webhook endpoint
 export const handleStripeWebhook = async (req, res) => {
@@ -16,8 +13,9 @@ export const handleStripeWebhook = async (req, res) => {
 
   try {
     event = stripe.webhooks.constructEvent(req.rawBody, sig, webhookSecret);
+    console.log("✅ WEBHOOK: Signature verified:", event.type);
   } catch (err) {
-    console.error("❌ Stripe webhook signature verification failed:", err.message);
+    console.error("❌ WEBHOOK: Signature verification failed:", err.message);
     return res.status(400).send(`Webhook Error: ${err.message}`);
   }
 
@@ -25,13 +23,15 @@ export const handleStripeWebhook = async (req, res) => {
     switch (event.type) {
       case "checkout.session.completed": {
         const session = event.data.object;
-        console.log("✅ Stripe checkout.session.completed:", session.id);
+        console.log("💰 WEBHOOK: checkout.session.completed:", session.id);
         
         const userId = session.metadata?.user_id;
         const courseId = session.metadata?.course_id;
 
+        console.log("📦 WEBHOOK: Session metadata:", session.metadata);
+
         if (!userId || !courseId) {
-          console.warn("⚠️ Missing metadata in session:", session.id);
+          console.warn("⚠️ WEBHOOK: Missing metadata in session:", session.id);
           break;
         }
 
@@ -40,12 +40,14 @@ export const handleStripeWebhook = async (req, res) => {
         const course = await Course.findByPk(courseId);
 
         if (!user || !course) {
-          console.warn("⚠️ User or course not found for webhook:", { userId, courseId });
+          console.warn("⚠️ WEBHOOK: User or course not found:", { userId, courseId });
           break;
         }
 
+        console.log("✅ WEBHOOK: Found user & course:", user.email, course.title);
+
         // ✅ Create or update Enrollment with PENDING status
-        console.log("🔄 Creating enrollment for user:", user.email, "course:", course.title);
+        console.log("🔄 WEBHOOK: Creating enrollment...");
         
         const [enrollment, enrollmentCreated] = await Enrollment.findOrCreate({
           where: { user_id: userId, course_id: courseId },
@@ -55,7 +57,7 @@ export const handleStripeWebhook = async (req, res) => {
           },
         });
 
-        console.log("🔄 Enrollment record:", {
+        console.log("🔄 WEBHOOK: Enrollment result:", {
           id: enrollment.id,
           created: enrollmentCreated,
           approval_status: enrollment.approval_status,
@@ -68,22 +70,26 @@ export const handleStripeWebhook = async (req, res) => {
             enrollment.approval_status = "pending";
             enrollment.payment_status = "paid";
             await enrollment.save();
-            console.log("✅ Updated existing enrollment approval_status to pending");
+            console.log("✅ WEBHOOK: Updated existing enrollment");
           }
         }
 
-        console.log("🎉 Enrollment created via webhook for admin approval:", user.email);
+        console.log("🎉 WEBHOOK: Enrollment created for admin approval:", {
+          enrollmentId: enrollment.id,
+          user: user.email,
+          course: course.title
+        });
 
         break;
       }
 
       default:
-        console.log(`ℹ️ Unhandled Stripe event type: ${event.type}`);
+        console.log(`ℹ️ WEBHOOK: Unhandled event type: ${event.type}`);
     }
 
     res.status(200).json({ received: true });
   } catch (error) {
-    console.error("🔥 Webhook handler error:", error.stack);
+    console.error("🔥 WEBHOOK: Handler error:", error.stack);
     res.status(500).json({ error: "Internal Server Error" });
   }
 };
