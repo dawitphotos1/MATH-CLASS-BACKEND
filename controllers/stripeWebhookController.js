@@ -25,7 +25,7 @@ export const stripeWebhookHandler = async (req, res) => {
     return res.status(400).send(`Webhook Error: ${err.message}`);
   }
 
-  // Respond quickly to Stripe (avoids timeout)
+  // Respond immediately to Stripe
   res.json({ received: true });
 
   try {
@@ -33,16 +33,13 @@ export const stripeWebhookHandler = async (req, res) => {
       case "checkout.session.completed":
         await handleCheckoutSession(event.data.object, "paid", "pending");
         break;
-
       case "checkout.session.async_payment_pending":
         await handleCheckoutSession(event.data.object, "pending", "pending");
         break;
-
       case "checkout.session.async_payment_failed":
       case "payment_intent.payment_failed":
         await handleCheckoutSession(event.data.object, "failed", "rejected");
         break;
-
       default:
         console.log(`ℹ️ Unhandled event type: ${event.type}`);
     }
@@ -52,14 +49,14 @@ export const stripeWebhookHandler = async (req, res) => {
 };
 
 /* =====================================================
-   🧩 Helper: Create or Update Enrollment
+   🧩 Handle Checkout Session
 ===================================================== */
 async function handleCheckoutSession(session, paymentStatus, approvalStatus) {
   const userId = session.metadata?.user_id;
   const courseId = session.metadata?.course_id;
 
   if (!userId || !courseId) {
-    console.warn("⚠️ Missing user_id or course_id in metadata:", session.id);
+    console.warn("⚠️ Missing metadata in session:", session.id);
     return;
   }
 
@@ -69,7 +66,7 @@ async function handleCheckoutSession(session, paymentStatus, approvalStatus) {
   ]);
 
   if (!user || !course) {
-    console.warn(`⚠️ Invalid enrollment: user=${userId}, course=${courseId}`);
+    console.warn("⚠️ Invalid user or course:", userId, courseId);
     return;
   }
 
@@ -82,12 +79,9 @@ async function handleCheckoutSession(session, paymentStatus, approvalStatus) {
     enrollment.payment_status = paymentStatus;
     enrollment.approval_status = approvalStatus;
     await enrollment.save();
-    console.log(`🔄 Enrollment updated: ${user.email} → ${course.title}`);
-  } else {
-    console.log(`🆕 Enrollment created: ${user.email} → ${course.title}`);
   }
 
-  // ✉️ Send appropriate email based on payment status
+  // ✉️ Send student and admin emails
   if (paymentStatus === "paid") {
     await sendPaymentEmail(user, course);
   } else if (paymentStatus === "pending") {
@@ -96,23 +90,72 @@ async function handleCheckoutSession(session, paymentStatus, approvalStatus) {
     await sendFailedEmail(user, course);
   }
 
+  await notifyAdminEmail(user, course, paymentStatus);
+
   writeEnrollmentLog(user, course, session.id, paymentStatus, approvalStatus);
 }
 
 /* =====================================================
-   ✉️ Email Templates
+   📩 Notify Admin (HTML Template)
+===================================================== */
+async function notifyAdminEmail(user, course, status) {
+  try {
+    const color =
+      status === "paid"
+        ? "#2ecc71"
+        : status === "pending"
+        ? "#f39c12"
+        : "#e74c3c";
+
+    const title =
+      status === "paid"
+        ? "✅ New Payment Received"
+        : status === "pending"
+        ? "⏳ Payment Pending"
+        : "❌ Payment Failed";
+
+    const adminDashboardURL = `${process.env.FRONTEND_URL}/admin`;
+
+    await transporter.sendMail({
+      from: `"Math Class Platform" <${process.env.EMAIL_FROM}>`,
+      to: process.env.EMAIL_FROM,
+      subject: `${title} – ${user.email}`,
+      html: `
+        <div style="font-family:Arial,sans-serif;max-width:650px;margin:auto;padding:20px;background:#f9f9f9;border-radius:10px;">
+          <h2 style="color:${color}">${title}</h2>
+          <p><strong>Student:</strong> ${user.name || user.email}</p>
+          <p><strong>Course:</strong> ${course.title}</p>
+          <p><strong>Status:</strong> ${status.toUpperCase()}</p>
+          <hr/>
+          <p style="font-size:0.9em;color:#555;">
+            Review and approve this enrollment in your
+            <a href="${adminDashboardURL}" target="_blank">Admin Dashboard</a>.
+          </p>
+        </div>
+      `,
+    });
+
+    console.log(`📧 Admin notified (${status}) for ${course.title}`);
+  } catch (err) {
+    console.error("⚠️ Failed to send admin email:", err.message);
+  }
+}
+
+/* =====================================================
+   ✉️ Nodemailer Transport
 ===================================================== */
 const transporter = nodemailer.createTransport({
   host: process.env.MAIL_HOST,
   port: process.env.MAIL_PORT,
   secure: true,
-  auth: {
-    user: process.env.MAIL_USER,
-    pass: process.env.MAIL_PASS,
-  },
+  auth: { user: process.env.MAIL_USER, pass: process.env.MAIL_PASS },
 });
 
-/* ✅ SUCCESSFUL PAYMENT */
+/* =====================================================
+   🎨 Student Email Templates (HTML Styled)
+===================================================== */
+
+// ✅ SUCCESSFUL PAYMENT
 async function sendPaymentEmail(user, course) {
   try {
     await transporter.sendMail({
@@ -120,25 +163,25 @@ async function sendPaymentEmail(user, course) {
       to: user.email,
       subject: `✅ Payment Received for "${course.title}"`,
       html: `
-        <div style="font-family:Arial,sans-serif;max-width:600px;margin:auto;padding:20px;border-radius:10px;background:#f9f9f9;">
+        <div style="font-family:Arial,sans-serif;max-width:650px;margin:auto;padding:25px;background:#f9f9f9;border-radius:10px;">
           <h2 style="color:#2ecc71;">Payment Confirmed!</h2>
           <p>Hi ${user.name || "Student"},</p>
-          <p>We’ve received your payment for the course:</p>
+          <p>We’ve successfully received your payment for:</p>
           <h3>"${course.title}"</h3>
-          <p>Your enrollment is now <strong>pending admin approval</strong>. You’ll receive another email once access is granted.</p>
-          <p>Thank you for choosing <strong>Math Class Platform</strong>! 🎓</p>
+          <p>Your enrollment is now <strong>pending admin approval</strong>. You'll receive an email once access is granted.</p>
           <br/>
-          <p style="font-size:0.9em;color:#555;">If you have any questions, contact <a href="mailto:support@matheclass.com">support@matheclass.com</a>.</p>
+          <p>Thank you for learning with <strong>Math Class Platform</strong> 🎓</p>
+          <p style="font-size:0.9em;color:#777;">Need help? Contact <a href="mailto:support@matheclass.com">support@matheclass.com</a>.</p>
         </div>
       `,
     });
-    console.log(`📧 Payment confirmation email sent to ${user.email}`);
+    console.log(`📧 Payment confirmation sent to ${user.email}`);
   } catch (err) {
-    console.error("⚠️ Failed to send payment email:", err.message);
+    console.error("⚠️ Payment email failed:", err.message);
   }
 }
 
-/* ⏳ PENDING PAYMENT */
+// ⏳ PENDING PAYMENT
 async function sendPendingEmail(user, course) {
   try {
     await transporter.sendMail({
@@ -146,23 +189,22 @@ async function sendPendingEmail(user, course) {
       to: user.email,
       subject: `⏳ Payment Pending for "${course.title}"`,
       html: `
-        <div style="font-family:Arial,sans-serif;max-width:600px;margin:auto;padding:20px;border-radius:10px;background:#f9f9f9;">
+        <div style="font-family:Arial,sans-serif;max-width:650px;margin:auto;padding:25px;background:#f9f9f9;border-radius:10px;">
           <h2 style="color:#f39c12;">Payment Pending</h2>
           <p>Hi ${user.name || "Student"},</p>
-          <p>Your payment for <strong>${course.title}</strong> is still pending. This can happen due to delayed card authorization or network issues.</p>
-          <p>Please check your bank account to confirm if the charge was processed. If not, you can retry enrolling anytime.</p>
-          <br/>
-          <p style="font-size:0.9em;color:#555;">For help, contact <a href="mailto:support@matheclass.com">support@matheclass.com</a>.</p>
+          <p>Your payment for <strong>${course.title}</strong> is still being processed. This could be due to card verification or a delay in confirmation.</p>
+          <p>You’ll receive another update when the payment is finalized.</p>
+          <p style="font-size:0.9em;color:#777;">Questions? Email <a href="mailto:support@matheclass.com">support@matheclass.com</a>.</p>
         </div>
       `,
     });
-    console.log(`📧 Pending payment email sent to ${user.email}`);
+    console.log(`📧 Pending email sent to ${user.email}`);
   } catch (err) {
-    console.error("⚠️ Failed to send pending email:", err.message);
+    console.error("⚠️ Pending email failed:", err.message);
   }
 }
 
-/* ❌ FAILED PAYMENT */
+// ❌ FAILED PAYMENT
 async function sendFailedEmail(user, course) {
   try {
     await transporter.sendMail({
@@ -170,19 +212,18 @@ async function sendFailedEmail(user, course) {
       to: user.email,
       subject: `❌ Payment Failed for "${course.title}"`,
       html: `
-        <div style="font-family:Arial,sans-serif;max-width:600px;margin:auto;padding:20px;border-radius:10px;background:#f9f9f9;">
+        <div style="font-family:Arial,sans-serif;max-width:650px;margin:auto;padding:25px;background:#f9f9f9;border-radius:10px;">
           <h2 style="color:#e74c3c;">Payment Failed</h2>
           <p>Hi ${user.name || "Student"},</p>
           <p>Unfortunately, your payment for <strong>${course.title}</strong> did not complete successfully.</p>
-          <p>No charges were made. Please try enrolling again with a valid payment method.</p>
-          <br/>
-          <p style="font-size:0.9em;color:#555;">Need assistance? Reach us at <a href="mailto:support@matheclass.com">support@matheclass.com</a>.</p>
+          <p>No charges were made. Please try again later using a valid payment method.</p>
+          <p style="font-size:0.9em;color:#777;">If you continue to experience issues, reach out to <a href="mailto:support@matheclass.com">support@matheclass.com</a>.</p>
         </div>
       `,
     });
-    console.log(`📧 Failed payment email sent to ${user.email}`);
+    console.log(`📧 Failed email sent to ${user.email}`);
   } catch (err) {
-    console.error("⚠️ Failed to send failed email:", err.message);
+    console.error("⚠️ Failed email failed:", err.message);
   }
 }
 
@@ -193,13 +234,12 @@ function writeEnrollmentLog(user, course, sessionId, paymentStatus, approvalStat
   try {
     const logDir = path.join(process.cwd(), "logs");
     if (!fs.existsSync(logDir)) fs.mkdirSync(logDir, { recursive: true });
-
     const logPath = path.join(logDir, "enrollments.log");
-    const timestamp = new Date().toISOString();
-    const msg = `[WEBHOOK] ${timestamp} - ${user.email} - "${course.title}" - ${paymentStatus}/${approvalStatus} (Session: ${sessionId})\n`;
+    const msg = `[WEBHOOK] ${new Date().toISOString()} - ${user.email} - "${course.title}" - ${paymentStatus}/${approvalStatus} (Session: ${sessionId})\n`;
     fs.appendFileSync(logPath, msg);
     console.log("📝 Enrollment logged successfully");
   } catch (err) {
     console.warn("⚠️ Could not write webhook log:", err.message);
   }
 }
+
