@@ -1,4 +1,4 @@
-
+//models/Course.js
 export default (sequelize, DataTypes) => {
   const Course = sequelize.define(
     "Course",
