@@ -1,4 +1,4 @@
-// // controllers/paymentController.js
+// //controllers/paymentController.js
 // import stripePackage from "stripe";
 // import db from "../models/index.js";
 
@@ -27,19 +27,34 @@
 
 //     if (!course) {
 //       console.warn(`⚠️ Course not found for ID: ${id}`);
-//       return res
-//         .status(404)
-//         .json({ success: false, error: "Course not found" });
+//       return res.status(404).json({
+//         success: false,
+//         error: "Course not found",
+//       });
 //     }
 
 //     console.log(`✅ Course loaded for payment: ${course.title}`);
-//     res.json({ success: true, course });
+
+//     // Ensure price is properly formatted
+//     const formattedCourse = {
+//       id: course.id,
+//       title: course.title,
+//       description: course.description,
+//       price: parseFloat(course.price),
+//       thumbnail: course.thumbnail,
+//     };
+
+//     res.json({
+//       success: true,
+//       course: formattedCourse,
+//     });
 //   } catch (error) {
 //     console.error("❌ getCourseForPayment error:", error);
 //     res.status(500).json({
 //       success: false,
 //       error: "Failed to load course information",
-//       details: process.env.NODE_ENV === "development" ? error.message : undefined,
+//       details:
+//         process.env.NODE_ENV === "development" ? error.message : undefined,
 //     });
 //   }
 // };
@@ -58,16 +73,19 @@
 //     });
 
 //     if (!courseId || !user?.id) {
-//       return res
-//         .status(400)
-//         .json({ success: false, error: "Missing user or course ID" });
+//       return res.status(400).json({
+//         success: false,
+//         error: "Missing user or course ID",
+//       });
 //     }
 
 //     const course = await Course.findByPk(courseId);
-//     if (!course)
-//       return res
-//         .status(404)
-//         .json({ success: false, error: "Course not found" });
+//     if (!course) {
+//       return res.status(404).json({
+//         success: false,
+//         error: "Course not found",
+//       });
+//     }
 
 //     // 🧩 Prevent duplicate enrollments
 //     const existing = await Enrollment.findOne({
@@ -101,9 +119,10 @@
 
 //     const price = parseFloat(course.price);
 //     if (isNaN(price) || price <= 0) {
-//       return res
-//         .status(400)
-//         .json({ success: false, error: "Invalid course price" });
+//       return res.status(400).json({
+//         success: false,
+//         error: "Invalid course price",
+//       });
 //     }
 
 //     console.log(`💰 Creating Stripe session for "${course.title}" — $${price}`);
@@ -134,13 +153,18 @@
 //     });
 
 //     console.log("✅ Stripe session created:", session.id);
-//     return res.json({ success: true, sessionId: session.id, url: session.url });
+//     return res.json({
+//       success: true,
+//       sessionId: session.id,
+//       url: session.url,
+//     });
 //   } catch (error) {
 //     console.error("🔥 createCheckoutSession error:", error.stack || error);
 //     res.status(500).json({
 //       success: false,
 //       error: "Failed to create checkout session",
-//       details: process.env.NODE_ENV === "development" ? error.message : undefined,
+//       details:
+//         process.env.NODE_ENV === "development" ? error.message : undefined,
 //     });
 //   }
 // };
@@ -155,16 +179,25 @@
 
 //     console.log("🔁 Confirming payment:", { userId, courseId, sessionId });
 
-//     if (!sessionId || !courseId)
-//       return res.status(400).json({ success: false, error: "Missing IDs" });
-//     if (!userId)
-//       return res.status(401).json({ success: false, error: "Unauthorized" });
+//     if (!sessionId || !courseId) {
+//       return res.status(400).json({
+//         success: false,
+//         error: "Missing IDs",
+//       });
+//     }
+//     if (!userId) {
+//       return res.status(401).json({
+//         success: false,
+//         error: "Unauthorized",
+//       });
+//     }
 
 //     const session = await stripe.checkout.sessions.retrieve(sessionId);
 //     if (!session || session.payment_status !== "paid") {
-//       return res
-//         .status(400)
-//         .json({ success: false, error: "Payment not completed yet" });
+//       return res.status(400).json({
+//         success: false,
+//         error: "Payment not completed yet",
+//       });
 //     }
 
 //     const [user, course] = await Promise.all([
@@ -172,14 +205,19 @@
 //       Course.findByPk(courseId),
 //     ]);
 
-//     if (!user || !course)
-//       return res
-//         .status(404)
-//         .json({ success: false, error: "User or course not found" });
+//     if (!user || !course) {
+//       return res.status(404).json({
+//         success: false,
+//         error: "User or course not found",
+//       });
+//     }
 
 //     const [enrollment, created] = await Enrollment.findOrCreate({
 //       where: { user_id: userId, course_id: courseId },
-//       defaults: { payment_status: "paid", approval_status: "pending" },
+//       defaults: {
+//         payment_status: "paid",
+//         approval_status: "pending",
+//       },
 //     });
 
 //     if (!created) {
@@ -189,9 +227,9 @@
 //     }
 
 //     console.log(
-//       `🎓 Enrollment ${
-//         created ? "created" : "updated"
-//       } for ${user.email} in "${course.title}"`
+//       `🎓 Enrollment ${created ? "created" : "updated"} for ${user.email} in "${
+//         course.title
+//       }"`
 //     );
 
 //     res.json({
@@ -204,11 +242,16 @@
 //     res.status(500).json({
 //       success: false,
 //       error: "Failed to confirm payment",
-//       details: process.env.NODE_ENV === "development" ? error.message : undefined,
+//       details:
+//         process.env.NODE_ENV === "development" ? error.message : undefined,
 //     });
 //   }
 // };
 
+
+
+
+// controllers/paymentController.js
 import stripePackage from "stripe";
 import db from "../models/index.js";
 
@@ -297,33 +340,37 @@ export const createCheckoutSession = async (req, res) => {
       });
     }
 
-    // 🧩 Prevent duplicate enrollments
-    const existing = await Enrollment.findOne({
-      where: { user_id: user.id, course_id: courseId },
+    // 🧩 ENHANCED: Prevent duplicate enrollments
+    const existingEnrollment = await Enrollment.findOne({
+      where: { 
+        user_id: user.id, 
+        course_id: courseId 
+      },
     });
 
-    if (existing) {
-      if (
-        existing.payment_status === "paid" &&
-        existing.approval_status !== "rejected"
-      ) {
+    if (existingEnrollment) {
+      // If already paid and not rejected, block payment
+      if (existingEnrollment.payment_status === "paid" && 
+          existingEnrollment.approval_status !== "rejected") {
         return res.status(400).json({
           success: false,
-          error:
-            "You have already paid for or are awaiting approval for this course.",
+          error: "You have already paid for this course and are enrolled.",
         });
       }
-      if (existing.payment_status === "pending") {
+      
+      // If pending payment, block new payment attempt
+      if (existingEnrollment.payment_status === "pending") {
         return res.status(400).json({
           success: false,
           error: "A payment for this course is already being processed.",
         });
       }
-      if (
-        ["failed", "rejected"].includes(existing.approval_status) ||
-        existing.payment_status === "failed"
-      ) {
-        await existing.destroy(); // allow retry
+
+      // If failed/rejected, allow retry by updating existing record
+      if (["failed", "rejected"].includes(existingEnrollment.approval_status) ||
+          existingEnrollment.payment_status === "failed") {
+        console.log(`🔄 Allowing retry for failed enrollment: ${existingEnrollment.id}`);
+        // We'll update this record in confirmPayment instead of creating new one
       }
     }
 
@@ -422,25 +469,52 @@ export const confirmPayment = async (req, res) => {
       });
     }
 
-    const [enrollment, created] = await Enrollment.findOrCreate({
-      where: { user_id: userId, course_id: courseId },
-      defaults: {
-        payment_status: "paid",
-        approval_status: "pending",
-      },
-    });
+    // 🧩 ENHANCED: Find or create enrollment with proper error handling
+    let enrollment;
+    let created = false;
+    
+    try {
+      // First try to find existing enrollment
+      enrollment = await Enrollment.findOne({
+        where: { user_id: userId, course_id: courseId }
+      });
 
-    if (!created) {
-      enrollment.payment_status = "paid";
-      enrollment.approval_status = "pending";
-      await enrollment.save();
+      if (enrollment) {
+        // Update existing enrollment
+        enrollment.payment_status = "paid";
+        enrollment.approval_status = "pending";
+        await enrollment.save();
+        console.log(`🔄 Updated existing enrollment: ${enrollment.id}`);
+      } else {
+        // Create new enrollment
+        enrollment = await Enrollment.create({
+          user_id: userId,
+          course_id: courseId,
+          payment_status: "paid",
+          approval_status: "pending",
+        });
+        created = true;
+        console.log(`✅ Created new enrollment: ${enrollment.id}`);
+      }
+    } catch (dbError) {
+      console.error("❌ Database error creating enrollment:", dbError);
+      return res.status(500).json({
+        success: false,
+        error: "Failed to create enrollment record",
+      });
     }
 
     console.log(
-      `🎓 Enrollment ${created ? "created" : "updated"} for ${user.email} in "${
-        course.title
-      }"`
+      `🎓 Enrollment ${created ? "created" : "updated"} for ${user.email} in "${course.title}" - Payment: ${enrollment.payment_status}`
     );
+
+    // 🧩 DEBUG: Verify the enrollment was created
+    const verifyEnrollment = await Enrollment.findByPk(enrollment.id);
+    console.log("🔍 Enrollment verification:", {
+      id: verifyEnrollment?.id,
+      payment_status: verifyEnrollment?.payment_status,
+      approval_status: verifyEnrollment?.approval_status
+    });
 
     res.json({
       success: true,

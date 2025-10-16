@@ -1,4 +1,4 @@
-
+//models/Enrollment.js
 export default (sequelize, DataTypes) => {
   const Enrollment = sequelize.define(
     "Enrollment",
