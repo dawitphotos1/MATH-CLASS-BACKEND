@@ -1,17 +1,29 @@
 // Mathe-Class-Website-Backend/routes/paymentRoutes.js
 import express from "express";
-import { confirmPayment, createCheckoutSession } from "../controllers/paymentController.js";
+import {
+  createCheckoutSession,
+  confirmPayment,
+} from "../controllers/paymentController.js";
 import { authenticateToken } from "../middleware/authMiddleware.js";
 
 const router = express.Router();
 
-// Create session (protected)
-router.post("/create-session", authenticateToken, createCheckoutSession);
+/* ============================================================
+   💳 Stripe Payment Routes
+============================================================ */
 
-// Primary confirm endpoint
-router.post("/confirm", authenticateToken, confirmPayment);
+// ✅ Create Stripe checkout session
+router.post(
+  "/create-checkout-session",
+  authenticateToken,
+  createCheckoutSession
+);
 
-// Backwards-compatible alias (some frontends call confirm-payment)
+// ✅ Confirm payment after success
 router.post("/confirm-payment", authenticateToken, confirmPayment);
+
+// ✅ Backward-compatible aliases (optional)
+router.post("/create-session", authenticateToken, createCheckoutSession);
+router.post("/confirm", authenticateToken, confirmPayment);
 
 export default router;
