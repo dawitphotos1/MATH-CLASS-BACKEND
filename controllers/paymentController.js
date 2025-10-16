@@ -209,9 +209,6 @@
 //   }
 // };
 
-
-
-
 import stripePackage from "stripe";
 import db from "../models/index.js";
 

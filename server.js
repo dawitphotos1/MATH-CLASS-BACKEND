@@ -17,7 +17,7 @@ import courseRoutes from "./routes/courses.js";
 import lessonRoutes from "./routes/lessonRoutes.js";
 import enrollmentRoutes from "./routes/enrollmentRoutes.js";
 import paymentsRoutes from "./routes/paymentRoutes.js";
-import stripeWebhookRoutes from "./routes/stripeWebhookRoutes.js";
+import stripeWebhookRoutes from "./routes/stripeWebhookRoutes.js"; // ✅ Make sure this is imported
 
 const app = express();
 app.set("trust proxy", 1);
@@ -32,6 +32,7 @@ console.log("🌍 FRONTEND_URL:", process.env.FRONTEND_URL);
 /* ========================================================
    🧩 Stripe Webhook FIRST (before JSON parser)
 ======================================================== */
+// ✅ CRITICAL: Webhook must be before express.json()
 app.use("/api/v1/payments", stripeWebhookRoutes);
 
 /* ========================================================
@@ -54,7 +55,11 @@ const allowedOrigins = [
 app.use(
   cors({
     origin(origin, callback) {
-      if (!origin || allowedOrigins.includes(origin) || origin.includes(".netlify.app")) {
+      if (
+        !origin ||
+        allowedOrigins.includes(origin) ||
+        origin.includes(".netlify.app")
+      ) {
         callback(null, true);
       } else {
         console.warn("🚫 Blocked by CORS:", origin);
