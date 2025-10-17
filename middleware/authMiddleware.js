@@ -1,4 +1,3 @@
-
 // // middleware/authMiddleware.js
 // import jwt from "jsonwebtoken";
 // import db from "../models/index.js";
@@ -59,9 +58,6 @@
 //   }
 //   next();
 // };
-
-
-
 
 // middleware/authMiddleware.js
 import jwt from "jsonwebtoken";
