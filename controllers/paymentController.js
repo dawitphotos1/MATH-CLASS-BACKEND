@@ -250,7 +250,6 @@
 
 
 
-
 // controllers/paymentController.js
 import stripePackage from "stripe";
 import db from "../models/index.js";
@@ -313,7 +312,7 @@ export const getCourseForPayment = async (req, res) => {
 };
 
 /* ============================================================
-   💳 Create Stripe Checkout Session
+   💳 Create Stripe Checkout Session - ENHANCED DUPLICATE PREVENTION
 ============================================================ */
 export const createCheckoutSession = async (req, res) => {
   try {
@@ -340,7 +339,7 @@ export const createCheckoutSession = async (req, res) => {
       });
     }
 
-    // 🧩 ENHANCED: Prevent duplicate enrollments
+    // 🧩 ENHANCED DUPLICATE PREVENTION - STRICT VERSION
     const existingEnrollment = await Enrollment.findOne({
       where: { 
         user_id: user.id, 
@@ -348,29 +347,51 @@ export const createCheckoutSession = async (req, res) => {
       },
     });
 
+    console.log("🔍 Existing enrollment check:", {
+      exists: !!existingEnrollment,
+      payment_status: existingEnrollment?.payment_status,
+      approval_status: existingEnrollment?.approval_status
+    });
+
     if (existingEnrollment) {
-      // If already paid and not rejected, block payment
+      // 🚫 BLOCK if already paid and not rejected
       if (existingEnrollment.payment_status === "paid" && 
           existingEnrollment.approval_status !== "rejected") {
+        console.log(`🚫 Blocking duplicate payment - Already paid: ${existingEnrollment.id}`);
         return res.status(400).json({
           success: false,
-          error: "You have already paid for this course and are enrolled.",
+          error: "You have already paid for this course. You cannot purchase it again.",
+          enrollmentId: existingEnrollment.id
         });
       }
       
-      // If pending payment, block new payment attempt
+      // 🚫 BLOCK if pending payment
       if (existingEnrollment.payment_status === "pending") {
+        console.log(`🚫 Blocking duplicate payment - Pending: ${existingEnrollment.id}`);
         return res.status(400).json({
           success: false,
-          error: "A payment for this course is already being processed.",
+          error: "A payment for this course is already being processed. Please wait for it to complete.",
+          enrollmentId: existingEnrollment.id
         });
       }
 
-      // If failed/rejected, allow retry by updating existing record
-      if (["failed", "rejected"].includes(existingEnrollment.approval_status) ||
-          existingEnrollment.payment_status === "failed") {
-        console.log(`🔄 Allowing retry for failed enrollment: ${existingEnrollment.id}`);
+      // ✅ ALLOW retry only for failed/rejected enrollments
+      if (existingEnrollment.payment_status === "failed" || 
+          existingEnrollment.approval_status === "rejected") {
+        console.log(`🔄 Allowing retry for failed/rejected enrollment: ${existingEnrollment.id}`);
         // We'll update this record in confirmPayment instead of creating new one
+      } else {
+        // 🚫 BLOCK all other cases
+        console.log(`🚫 Blocking payment - Unexpected enrollment state:`, {
+          id: existingEnrollment.id,
+          payment_status: existingEnrollment.payment_status,
+          approval_status: existingEnrollment.approval_status
+        });
+        return res.status(400).json({
+          success: false,
+          error: "You already have an enrollment record for this course. Please contact support.",
+          enrollmentId: existingEnrollment.id
+        });
       }
     }
 
@@ -427,7 +448,7 @@ export const createCheckoutSession = async (req, res) => {
 };
 
 /* ============================================================
-   ✅ Confirm Payment & Create/Update Enrollment
+   ✅ Confirm Payment & Create/Update Enrollment - ENHANCED VERSION
 ============================================================ */
 export const confirmPayment = async (req, res) => {
   try {
@@ -469,7 +490,7 @@ export const confirmPayment = async (req, res) => {
       });
     }
 
-    // 🧩 ENHANCED: Find or create enrollment with proper error handling
+    // 🧩 ENHANCED: Find or create enrollment with STRONG validation
     let enrollment;
     let created = false;
     
@@ -480,6 +501,16 @@ export const confirmPayment = async (req, res) => {
       });
 
       if (enrollment) {
+        // 🚫 DOUBLE CHECK: If already paid, block the confirmation
+        if (enrollment.payment_status === "paid" && enrollment.approval_status !== "rejected") {
+          console.log(`🚫 CONFIRMATION BLOCKED: Already paid enrollment: ${enrollment.id}`);
+          return res.status(400).json({
+            success: false,
+            error: "This course has already been paid for. Duplicate payment detected.",
+            enrollmentId: enrollment.id
+          });
+        }
+
         // Update existing enrollment
         enrollment.payment_status = "paid";
         enrollment.approval_status = "pending";
@@ -498,6 +529,15 @@ export const confirmPayment = async (req, res) => {
       }
     } catch (dbError) {
       console.error("❌ Database error creating enrollment:", dbError);
+      
+      // Handle unique constraint violation (double payment attempt)
+      if (dbError.name === 'SequelizeUniqueConstraintError') {
+        return res.status(400).json({
+          success: false,
+          error: "Duplicate enrollment detected. This course has already been purchased.",
+        });
+      }
+      
       return res.status(500).json({
         success: false,
         error: "Failed to create enrollment record",
@@ -508,9 +548,9 @@ export const confirmPayment = async (req, res) => {
       `🎓 Enrollment ${created ? "created" : "updated"} for ${user.email} in "${course.title}" - Payment: ${enrollment.payment_status}`
     );
 
-    // 🧩 DEBUG: Verify the enrollment was created
+    // 🧩 FINAL VERIFICATION: Check the enrollment was created properly
     const verifyEnrollment = await Enrollment.findByPk(enrollment.id);
-    console.log("🔍 Enrollment verification:", {
+    console.log("🔍 Final enrollment verification:", {
       id: verifyEnrollment?.id,
       payment_status: verifyEnrollment?.payment_status,
       approval_status: verifyEnrollment?.approval_status
@@ -519,7 +559,11 @@ export const confirmPayment = async (req, res) => {
     res.json({
       success: true,
       message: "Payment confirmed — enrollment pending admin approval",
-      enrollment,
+      enrollment: {
+        id: enrollment.id,
+        payment_status: enrollment.payment_status,
+        approval_status: enrollment.approval_status
+      },
     });
   } catch (error) {
     console.error("❌ confirmPayment error:", error.stack || error);
