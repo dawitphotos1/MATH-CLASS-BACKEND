@@ -386,6 +386,7 @@
 
 
 
+
 // controllers/paymentController.js
 import stripePackage from "stripe";
 import db from "../models/index.js";
@@ -393,7 +394,6 @@ import db from "../models/index.js";
 const stripe = stripePackage(process.env.STRIPE_SECRET_KEY);
 const { Course, Enrollment, User } = db;
 
-// ✅ Consistent frontend fallback
 const FRONTEND_URL =
   process.env.FRONTEND_URL ||
   process.env.FRONTEND_BASE_URL ||
@@ -407,14 +407,14 @@ console.log("🌍 FRONTEND_URL in use:", FRONTEND_URL);
 export const getCourseForPayment = async (req, res) => {
   try {
     const { id } = req.params;
-
     const course = await Course.findByPk(id, {
       attributes: ["id", "title", "description", "price", "thumbnail"],
     });
 
-    if (!course) {
-      return res.status(404).json({ success: false, error: "Course not found" });
-    }
+    if (!course)
+      return res
+        .status(404)
+        .json({ success: false, error: "Course not found" });
 
     res.json({
       success: true,
@@ -433,42 +433,53 @@ export const getCourseForPayment = async (req, res) => {
 };
 
 /* ============================================================
-   💳 Create Stripe Checkout Session (with duplicate prevention)
+   💳 Create Stripe Checkout Session (duplicate prevention)
 ============================================================ */
 export const createCheckoutSession = async (req, res) => {
   try {
     const { courseId } = req.body;
     const user = req.user;
 
-    if (!courseId || !user?.id) {
-      return res.status(400).json({ success: false, error: "Missing user or course ID" });
-    }
+    if (!courseId || !user?.id)
+      return res
+        .status(400)
+        .json({ success: false, error: "Missing user or course ID" });
 
     const course = await Course.findByPk(courseId);
-    if (!course) return res.status(404).json({ success: false, error: "Course not found" });
+    if (!course)
+      return res
+        .status(404)
+        .json({ success: false, error: "Course not found" });
 
     const existing = await Enrollment.findOne({
       where: { user_id: user.id, course_id: courseId },
     });
 
     if (existing) {
-      if (existing.payment_status === "paid" && existing.approval_status !== "rejected") {
+      // ✅ Reject if already paid (and not rejected by admin)
+      if (
+        existing.payment_status === "paid" &&
+        existing.approval_status !== "rejected"
+      ) {
         return res.status(400).json({
           success: false,
-          error: "You already paid for this course.",
+          error:
+            "You have already paid for this course. Duplicate payments are not allowed.",
         });
       }
       if (existing.payment_status === "pending") {
         return res.status(400).json({
           success: false,
-          error: "Payment already in process.",
+          error: "Payment already in process. Please wait for confirmation.",
         });
       }
     }
 
     const price = parseFloat(course.price);
     if (isNaN(price) || price <= 0)
-      return res.status(400).json({ success: false, error: "Invalid course price" });
+      return res
+        .status(400)
+        .json({ success: false, error: "Invalid course price" });
 
     const session = await stripe.checkout.sessions.create({
       payment_method_types: ["card"],
@@ -476,7 +487,10 @@ export const createCheckoutSession = async (req, res) => {
         {
           price_data: {
             currency: "usd",
-            product_data: { name: course.title, description: course.description || "Course payment" },
+            product_data: {
+              name: course.title,
+              description: course.description || "Course payment",
+            },
             unit_amount: Math.round(price * 100),
           },
           quantity: 1,
@@ -495,12 +509,14 @@ export const createCheckoutSession = async (req, res) => {
     res.json({ success: true, sessionId: session.id, url: session.url });
   } catch (error) {
     console.error("🔥 createCheckoutSession error:", error);
-    res.status(500).json({ success: false, error: "Failed to create checkout session" });
+    res
+      .status(500)
+      .json({ success: false, error: "Failed to create checkout session" });
   }
 };
 
 /* ============================================================
-   ✅ Confirm Payment (optional fallback if user is logged in)
+   ✅ Confirm Payment (frontend fallback)
 ============================================================ */
 export const confirmPayment = async (req, res) => {
   try {
@@ -514,16 +530,28 @@ export const confirmPayment = async (req, res) => {
 
     const session = await stripe.checkout.sessions.retrieve(sessionId);
     if (!session || session.payment_status !== "paid")
-      return res.status(400).json({ success: false, error: "Payment not completed yet" });
+      return res
+        .status(400)
+        .json({ success: false, error: "Payment not completed yet" });
 
-    const [user, course] = await Promise.all([User.findByPk(userId), Course.findByPk(courseId)]);
+    const [user, course] = await Promise.all([
+      User.findByPk(userId),
+      Course.findByPk(courseId),
+    ]);
     if (!user || !course)
-      return res.status(404).json({ success: false, error: "User or course not found" });
+      return res
+        .status(404)
+        .json({ success: false, error: "User or course not found" });
 
-    let enrollment = await Enrollment.findOne({ where: { user_id: userId, course_id: courseId } });
+    let enrollment = await Enrollment.findOne({
+      where: { user_id: userId, course_id: courseId },
+    });
 
     if (enrollment) {
-      if (enrollment.payment_status === "paid" && enrollment.approval_status !== "rejected") {
+      if (
+        enrollment.payment_status === "paid" &&
+        enrollment.approval_status !== "rejected"
+      ) {
         return res.status(400).json({
           success: false,
           error: "Duplicate payment detected.",
@@ -548,68 +576,79 @@ export const confirmPayment = async (req, res) => {
     });
   } catch (error) {
     console.error("❌ confirmPayment error:", error);
-    res.status(500).json({ success: false, error: "Failed to confirm payment" });
+    res
+      .status(500)
+      .json({ success: false, error: "Failed to confirm payment" });
   }
 };
 
 /* ============================================================
-   📩 Stripe Webhook (main payment recorder)
+   📩 Stripe Webhook — main enrollment recorder
 ============================================================ */
 export const handleStripeWebhook = async (req, res) => {
   try {
     const sig = req.headers["stripe-signature"];
     const endpointSecret = process.env.STRIPE_WEBHOOK_SECRET;
-    if (!endpointSecret) return res.status(400).send("Webhook secret not configured");
+
+    if (!endpointSecret) {
+      console.warn("⚠️ Missing STRIPE_WEBHOOK_SECRET in .env");
+      return res.status(400).send("Webhook secret not configured");
+    }
 
     let event;
     try {
       event = stripe.webhooks.constructEvent(req.body, sig, endpointSecret);
     } catch (err) {
-      console.error("❌ Stripe webhook verification failed:", err.message);
+      console.error("❌ Stripe signature verification failed:", err.message);
       return res.status(400).send(`Webhook Error: ${err.message}`);
     }
 
     console.log("📩 Stripe webhook received:", event.type);
 
+    // ✅ Main logic: record successful payment
     if (event.type === "checkout.session.completed") {
       const session = event.data.object;
       const userId = session.metadata?.user_id;
       const courseId = session.metadata?.course_id;
 
+      if (!userId || !courseId) {
+        console.warn("⚠️ Missing metadata in Stripe session");
+        return res.status(200).json({ received: true });
+      }
+
       console.log("🎓 Webhook: Payment completed", { userId, courseId });
 
-      if (!userId || !courseId)
-        return res.status(400).send("Missing metadata from session");
-
-      const [user, course] = await Promise.all([
-        User.findByPk(userId),
-        Course.findByPk(courseId),
-      ]);
-
-      if (!user || !course)
-        return res.status(404).send("User or course not found");
-
-      const [enrollment, created] = await Enrollment.findOrCreate({
+      const existing = await Enrollment.findOne({
         where: { user_id: userId, course_id: courseId },
-        defaults: {
-          payment_status: "paid",
-          approval_status: "pending",
-        },
       });
 
-      if (!created) {
-        enrollment.payment_status = "paid";
-        enrollment.approval_status = "pending";
-        await enrollment.save();
-        console.log(`🔄 Enrollment updated via webhook: ${enrollment.id}`);
+      if (existing) {
+        if (existing.payment_status !== "paid") {
+          existing.payment_status = "paid";
+          existing.approval_status = "pending";
+          await existing.save();
+          console.log(`🔄 Updated existing enrollment ${existing.id} to paid`);
+        } else {
+          console.log(
+            `🚫 Webhook skipped — already paid enrollment ${existing.id}`
+          );
+        }
       } else {
-        console.log(`✅ Enrollment created via webhook: ${enrollment.id}`);
+        const newEnroll = await Enrollment.create({
+          user_id: userId,
+          course_id: courseId,
+          payment_status: "paid",
+          approval_status: "pending",
+        });
+        console.log(`✅ Created new enrollment ${newEnroll.id}`);
       }
     }
 
     res.status(200).json({ received: true });
   } catch (error) {
-    console.error("🔥 handleStripeWebhook error:", error);
-    res.status(500).json({ success: false, error: "Webhook processing failed" });
+    console.error("🔥 handleStripeWebhook fatal error:", error);
+    res
+      .status(500)
+      .json({ success: false, error: "Webhook processing failed" });
   }
 };
