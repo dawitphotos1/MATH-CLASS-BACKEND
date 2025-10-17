@@ -323,3 +323,62 @@ export const confirmPayment = async (req, res) => {
     });
   }
 };
+
+/* ============================================================
+   📩 Handle Stripe Webhook (payment confirmation fallback)
+============================================================ */
+export const handleStripeWebhook = async (req, res) => {
+  try {
+    const sig = req.headers["stripe-signature"];
+    const endpointSecret = process.env.STRIPE_WEBHOOK_SECRET;
+
+    if (!endpointSecret) {
+      console.warn("⚠️ Missing STRIPE_WEBHOOK_SECRET in .env");
+      return res.status(400).send("Webhook secret not configured");
+    }
+
+    let event;
+    try {
+      event = stripe.webhooks.constructEvent(req.body, sig, endpointSecret);
+    } catch (err) {
+      console.error("❌ Stripe webhook signature verification failed:", err.message);
+      return res.status(400).send(`Webhook Error: ${err.message}`);
+    }
+
+    console.log("📩 Stripe webhook received:", event.type);
+
+    if (event.type === "checkout.session.completed") {
+      const session = event.data.object;
+      const userId = session.metadata?.user_id;
+      const courseId = session.metadata?.course_id;
+
+      console.log("🎓 Webhook: Payment completed", { userId, courseId });
+
+      if (userId && courseId) {
+        const enrollment = await Enrollment.findOne({
+          where: { user_id: userId, course_id: courseId },
+        });
+
+        if (enrollment) {
+          enrollment.payment_status = "paid";
+          enrollment.approval_status = "pending";
+          await enrollment.save();
+          console.log("✅ Enrollment updated via webhook:", enrollment.id);
+        } else {
+          await Enrollment.create({
+            user_id: userId,
+            course_id: courseId,
+            payment_status: "paid",
+            approval_status: "pending",
+          });
+          console.log("✅ Enrollment created via webhook for user:", userId);
+        }
+      }
+    }
+
+    res.status(200).json({ received: true });
+  } catch (error) {
+    console.error("🔥 handleStripeWebhook error:", error);
+    res.status(500).json({ success: false, error: "Webhook processing failed" });
+  }
+};
