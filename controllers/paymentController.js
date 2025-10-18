@@ -1,8 +1,8 @@
 // controllers/paymentController.js
-import stripePackage from "stripe";
+import Stripe from "stripe";
 import db from "../models/index.js";
 
-const stripe = stripePackage(process.env.STRIPE_SECRET_KEY);
+const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
 const { Course, Enrollment, User } = db;
 
 const FRONTEND_URL =
