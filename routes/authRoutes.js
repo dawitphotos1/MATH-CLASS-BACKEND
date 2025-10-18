@@ -1,21 +1,42 @@
-
 // routes/authRoutes.js
 import express from "express";
-import { register, login, getMe, logout } from "../controllers/authController.js";
+import {
+  register,
+  login,
+  getMe,
+  logout,
+} from "../controllers/authController.js";
 import { authenticateToken } from "../middleware/authMiddleware.js";
 
 const router = express.Router();
 
-// @route   POST /api/v1/auth/register
+/* ============================================================
+   👤 Auth Routes
+============================================================ */
+
+// 📝 Register a new user
+// POST /api/v1/auth/register
 router.post("/register", register);
 
-// @route   POST /api/v1/auth/login
+// 🔑 Login (returns JWT + cookie)
+// POST /api/v1/auth/login
 router.post("/login", login);
 
-// @route   GET /api/v1/auth/me (requires auth)
-router.get("/me", authenticateToken, getMe);
+// 🙋‍♂️ Get current logged-in user
+// GET /api/v1/auth/me
+router.get("/me", authenticateToken, async (req, res, next) => {
+  try {
+    await getMe(req, res, next);
+  } catch (err) {
+    console.error("⚠️ /auth/me error:", err.message);
+    res
+      .status(500)
+      .json({ success: false, error: "Unable to fetch current user" });
+  }
+});
 
-// @route   POST /api/v1/auth/logout
+// 🚪 Logout user (clears cookie)
+// POST /api/v1/auth/logout
 router.post("/logout", logout);
 
 export default router;
