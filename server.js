@@ -211,7 +211,6 @@
 
 
 
-
 // server.js
 import dotenv from "dotenv";
 dotenv.config();
@@ -254,27 +253,35 @@ app.post(
 );
 
 /* ========================================================
-   🧰 SECURITY & CORS (Render + Netlify + Stripe FIX)
+   🧰 SECURITY & CORS (Fixed for Render + Netlify)
 ======================================================== */
 app.use(helmet());
 app.use(cookieParser());
 
-// ✅ Allowed frontends and local origins
+// ✅ Allowed origins - Updated with your actual domains
 const allowedOrigins = [
   "http://localhost:3000",
   "http://localhost:3001",
+  "http://localhost:5173", // Vite dev server
   "https://math-class-platform.netlify.app",
   "https://leafy-semolina-fc0934.netlify.app",
   "https://mathe-class-website-frontend.onrender.com",
-  "https://math-class-backend.onrender.com", // allow self
+  "https://mathe-class-website-backend-1.onrender.com", // Your actual backend
+  "https://math-class-backend.onrender.com", // Alternative backend URL
 ];
 
-// ✅ Universal CORS middleware
-const corsMiddleware = cors({
+// ✅ Enhanced CORS configuration
+const corsOptions = {
   origin: function (origin, callback) {
-    // Allow REST clients & server-to-server calls
+    // Allow requests with no origin (like mobile apps, Postman, server-to-server)
     if (!origin) return callback(null, true);
-    if (allowedOrigins.includes(origin) || origin.endsWith(".netlify.app")) {
+    
+    // Check against allowed origins
+    if (
+      allowedOrigins.includes(origin) || 
+      origin.endsWith(".netlify.app") ||
+      origin.endsWith(".onrender.com")
+    ) {
       callback(null, true);
     } else {
       console.warn("🚫 Blocked by CORS:", origin);
@@ -283,23 +290,29 @@ const corsMiddleware = cors({
   },
   credentials: true,
   methods: ["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"],
-  allowedHeaders: ["Content-Type", "Authorization", "Accept", "Origin"],
-  exposedHeaders: ["Content-Length"],
-});
+  allowedHeaders: [
+    "Content-Type",
+    "Authorization", 
+    "X-Requested-With",
+    "Accept",
+    "Origin",
+    "Stripe-Signature" // Important for Stripe webhooks
+  ],
+  exposedHeaders: ["Content-Length", "Authorization"],
+  maxAge: 86400, // 24 hours
+};
 
-// ✅ Apply CORS globally before anything else
-app.use(corsMiddleware);
+// Apply CORS globally
+app.use(cors(corsOptions));
 
-// ✅ Handle all preflight requests (fixes /payments/confirm)
-app.options("*", corsMiddleware, (req, res) => {
-  res.sendStatus(204);
-});
+// Handle preflight requests explicitly
+app.options("*", cors(corsOptions));
 
 /* ========================================================
    🧩 BODY PARSERS (AFTER webhook + CORS)
 ======================================================== */
-app.use(express.json());
-app.use(express.urlencoded({ extended: true }));
+app.use(express.json({ limit: "10mb" }));
+app.use(express.urlencoded({ extended: true, limit: "10mb" }));
 
 /* ========================================================
    ⚡ RATE LIMITING (Production only)
@@ -309,6 +322,8 @@ if (process.env.NODE_ENV === "production") {
     windowMs: 15 * 60 * 1000, // 15 minutes
     max: 500,
     message: { success: false, error: "Too many requests, try again later" },
+    standardHeaders: true,
+    legacyHeaders: false,
   });
   app.use("/api", limiter);
   console.log("✅ Rate limiting enabled");
@@ -353,6 +368,8 @@ app.get("/api/v1/health", async (req, res) => {
       db: "connected",
       environment: process.env.NODE_ENV,
       timestamp: new Date().toISOString(),
+      cors: "enabled",
+      allowedOrigins: allowedOrigins
     });
   } catch (err) {
     res.status(500).json({ status: "ERROR", error: err.message });
@@ -366,6 +383,7 @@ app.get("/", (req, res) => {
     status: "running",
     environment: process.env.NODE_ENV,
     timestamp: new Date().toISOString(),
+    cors: "enabled"
   });
 });
 
@@ -373,7 +391,11 @@ app.get("/", (req, res) => {
    🚫 404 HANDLER
 ======================================================== */
 app.use((req, res) => {
-  res.status(404).json({ success: false, error: "Route not found" });
+  res.status(404).json({ 
+    success: false, 
+    error: "Route not found",
+    path: req.originalUrl 
+  });
 });
 
 /* ========================================================
@@ -387,19 +409,21 @@ app.use((err, req, res, next) => {
     return res.status(403).json({
       success: false,
       error: "CORS policy: Origin not allowed",
-      details:
-        process.env.NODE_ENV === "development" ? err.message : undefined,
+      allowedOrigins: allowedOrigins,
+      details: process.env.NODE_ENV === "development" ? err.message : undefined,
     });
   }
 
   const status = err.statusCode || 500;
   res.status(status).json({
     success: false,
-    error:
-      process.env.NODE_ENV === "production"
-        ? "Internal server error"
-        : err.message,
-    ...(process.env.NODE_ENV === "development" && { stack: err.stack }),
+    error: process.env.NODE_ENV === "production" 
+      ? "Internal server error" 
+      : err.message,
+    ...(process.env.NODE_ENV === "development" && { 
+      stack: err.stack,
+      path: req.originalUrl 
+    }),
   });
 });
 
@@ -419,9 +443,13 @@ const PORT = process.env.PORT || 5000;
       console.log(`🌍 Environment: ${process.env.NODE_ENV}`);
       console.log(`🔗 Health check: http://localhost:${PORT}/api/v1/health`);
       console.log(`🎯 Frontend URL: ${process.env.FRONTEND_URL}`);
+      console.log(`🌐 CORS enabled for: ${allowedOrigins.join(", ")}`);
     });
 
-    console.table(listEndpoints(app));
+    // Log all endpoints in development
+    if (process.env.NODE_ENV === "development") {
+      console.table(listEndpoints(app));
+    }
   } catch (err) {
     console.error("❌ Startup Error:", err.message);
     process.exit(1);
