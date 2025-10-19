@@ -212,7 +212,6 @@
 
 
 
-
 // server.js
 import dotenv from "dotenv";
 dotenv.config();
@@ -246,7 +245,7 @@ console.log("🌍 FRONTEND_URL:", process.env.FRONTEND_URL);
 console.log("🔔 NODE_ENV:", process.env.NODE_ENV);
 
 /* ========================================================
-   🧩 STRIPE WEBHOOK (RAW BODY) — MUST BE FIRST!
+   💳 STRIPE WEBHOOK (RAW BODY) — MUST BE FIRST
 ======================================================== */
 app.post(
   "/api/v1/payments/webhook",
@@ -255,64 +254,61 @@ app.post(
 );
 
 /* ========================================================
-   🧰 Security & CORS Setup — FIXED FOR DEPLOYMENT
+   🧰 SECURITY & CORS (Render + Netlify + Stripe FIX)
 ======================================================== */
 app.use(helmet());
 app.use(cookieParser());
 
-// ✅ Allow frontend origins
+// ✅ Allowed frontends and local origins
 const allowedOrigins = [
   "http://localhost:3000",
   "http://localhost:3001",
   "https://math-class-platform.netlify.app",
   "https://leafy-semolina-fc0934.netlify.app",
   "https://mathe-class-website-frontend.onrender.com",
-  "https://math-class-backend.onrender.com", // allow self-calls
+  "https://math-class-backend.onrender.com", // allow self
 ];
 
-// ✅ Enhanced CORS configuration
-app.use(
-  cors({
-    origin: function (origin, callback) {
-      // Allow REST clients and internal Render calls
-      if (!origin) return callback(null, true);
-      if (allowedOrigins.includes(origin) || origin.endsWith(".netlify.app")) {
-        callback(null, true);
-      } else {
-        console.warn("🚫 Blocked by CORS:", origin);
-        callback(new Error("Not allowed by CORS"));
-      }
-    },
-    credentials: true,
-    methods: ["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"],
-    allowedHeaders: [
-      "Content-Type",
-      "Authorization",
-      "X-Requested-With",
-      "Accept",
-      "Origin",
-    ],
-    exposedHeaders: ["Content-Length", "X-Knowledge"],
-  })
-);
+// ✅ Universal CORS middleware
+const corsMiddleware = cors({
+  origin: function (origin, callback) {
+    // Allow REST clients & server-to-server calls
+    if (!origin) return callback(null, true);
+    if (allowedOrigins.includes(origin) || origin.endsWith(".netlify.app")) {
+      callback(null, true);
+    } else {
+      console.warn("🚫 Blocked by CORS:", origin);
+      callback(new Error("Not allowed by CORS"));
+    }
+  },
+  credentials: true,
+  methods: ["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"],
+  allowedHeaders: ["Content-Type", "Authorization", "Accept", "Origin"],
+  exposedHeaders: ["Content-Length"],
+});
 
-// ✅ Handle preflight (important for Netlify → Render)
-app.options("*", cors());
+// ✅ Apply CORS globally before anything else
+app.use(corsMiddleware);
+
+// ✅ Handle all preflight requests (fixes /payments/confirm)
+app.options("*", corsMiddleware, (req, res) => {
+  res.sendStatus(204);
+});
 
 /* ========================================================
-   🧩 JSON Parser (AFTER webhook)
+   🧩 BODY PARSERS (AFTER webhook + CORS)
 ======================================================== */
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
 /* ========================================================
-   ⚡ Rate Limiting
+   ⚡ RATE LIMITING (Production only)
 ======================================================== */
 if (process.env.NODE_ENV === "production") {
   const limiter = rateLimit({
-    windowMs: 15 * 60 * 1000,
+    windowMs: 15 * 60 * 1000, // 15 minutes
     max: 500,
-    message: { success: false, error: "Too many requests" },
+    message: { success: false, error: "Too many requests, try again later" },
   });
   app.use("/api", limiter);
   console.log("✅ Rate limiting enabled");
@@ -321,7 +317,7 @@ if (process.env.NODE_ENV === "production") {
 }
 
 /* ========================================================
-   🧾 Request Logger
+   🧾 REQUEST LOGGER
 ======================================================== */
 app.use((req, res, next) => {
   console.log(`📥 [${req.method}] ${req.originalUrl}`, {
@@ -332,12 +328,12 @@ app.use((req, res, next) => {
 });
 
 /* ========================================================
-   📂 Static Uploads
+   📂 STATIC FILES (Uploads)
 ======================================================== */
 app.use("/Uploads", express.static("Uploads"));
 
 /* ========================================================
-   🔗 Routes (v1)
+   🔗 ROUTES (v1)
 ======================================================== */
 app.use("/api/v1/auth", authRoutes);
 app.use("/api/v1/admin", adminRoutes);
@@ -347,7 +343,7 @@ app.use("/api/v1/enrollments", enrollmentRoutes);
 app.use("/api/v1/payments", paymentRoutes);
 
 /* ========================================================
-   💓 Health Checks
+   💓 HEALTH CHECKS
 ======================================================== */
 app.get("/api/v1/health", async (req, res) => {
   try {
@@ -374,19 +370,19 @@ app.get("/", (req, res) => {
 });
 
 /* ========================================================
-   🚫 404 Handler
+   🚫 404 HANDLER
 ======================================================== */
 app.use((req, res) => {
   res.status(404).json({ success: false, error: "Route not found" });
 });
 
 /* ========================================================
-   🧱 Global Error Handler
+   🧱 GLOBAL ERROR HANDLER
 ======================================================== */
 app.use((err, req, res, next) => {
   console.error("❌ Global Error:", err.message);
 
-  // Handle CORS errors
+  // Handle CORS errors gracefully
   if (err.message.includes("CORS")) {
     return res.status(403).json({
       success: false,
@@ -408,7 +404,7 @@ app.use((err, req, res, next) => {
 });
 
 /* ========================================================
-   🚀 Start Server
+   🚀 START SERVER
 ======================================================== */
 const PORT = process.env.PORT || 5000;
 
