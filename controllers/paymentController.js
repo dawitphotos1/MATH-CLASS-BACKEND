@@ -298,8 +298,6 @@
 // };
 
 
-
-
 // controllers/paymentController.js
 import Stripe from "stripe";
 import db from "../models/index.js";
@@ -547,4 +545,7 @@ export const handleStripeWebhook = async (req, res) => {
 
     res.status(200).json({ received: true });
   } catch (error) {
-    console.error("🔥 handleStripeW
+    console.error("🔥 handleStripeWebhook error:", error);
+    res.status(500).json({ success: false, error: "Webhook processing failed" });
+  }
+};
