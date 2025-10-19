@@ -210,7 +210,6 @@
 // })();
 
 
-
 // server.js
 import dotenv from "dotenv";
 dotenv.config();
@@ -242,6 +241,7 @@ console.log("🚀 DATABASE_URL:", !!process.env.DATABASE_URL);
 console.log("🔑 JWT_SECRET:", !!process.env.JWT_SECRET);
 console.log("🌍 FRONTEND_URL:", process.env.FRONTEND_URL);
 console.log("🔔 NODE_ENV:", process.env.NODE_ENV);
+console.log("🔗 BACKEND_URL: https://mathe-class-website-backend-1.onrender.com");
 
 /* ========================================================
    💳 STRIPE WEBHOOK (RAW BODY) — MUST BE FIRST
@@ -267,7 +267,7 @@ const allowedOrigins = [
   "https://leafy-semolina-fc0934.netlify.app",
   "https://mathe-class-website-frontend.onrender.com",
   "https://mathe-class-website-backend-1.onrender.com", // Your actual backend
-  "https://math-class-backend.onrender.com", // Alternative backend URL
+  "https://math-class-backend.onrender.com", // Keep this for compatibility
 ];
 
 // ✅ Enhanced CORS configuration
@@ -282,6 +282,7 @@ const corsOptions = {
       origin.endsWith(".netlify.app") ||
       origin.endsWith(".onrender.com")
     ) {
+      console.log(`✅ CORS allowed for: ${origin}`);
       callback(null, true);
     } else {
       console.warn("🚫 Blocked by CORS:", origin);
@@ -315,21 +316,17 @@ app.use(express.json({ limit: "10mb" }));
 app.use(express.urlencoded({ extended: true, limit: "10mb" }));
 
 /* ========================================================
-   ⚡ RATE LIMITING (Production only)
+   ⚡ RATE LIMITING
 ======================================================== */
-if (process.env.NODE_ENV === "production") {
-  const limiter = rateLimit({
-    windowMs: 15 * 60 * 1000, // 15 minutes
-    max: 500,
-    message: { success: false, error: "Too many requests, try again later" },
-    standardHeaders: true,
-    legacyHeaders: false,
-  });
-  app.use("/api", limiter);
-  console.log("✅ Rate limiting enabled");
-} else {
-  console.log("⚡ Rate limiting disabled (development)");
-}
+const limiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: 1000,
+  message: { success: false, error: "Too many requests, try again later" },
+  standardHeaders: true,
+  legacyHeaders: false,
+});
+app.use("/api", limiter);
+console.log("✅ Rate limiting enabled");
 
 /* ========================================================
    🧾 REQUEST LOGGER
@@ -337,7 +334,7 @@ if (process.env.NODE_ENV === "production") {
 app.use((req, res, next) => {
   console.log(`📥 [${req.method}] ${req.originalUrl}`, {
     origin: req.headers.origin,
-    "user-agent": req.headers["user-agent"],
+    ip: req.ip,
   });
   next();
 });
@@ -369,6 +366,7 @@ app.get("/api/v1/health", async (req, res) => {
       environment: process.env.NODE_ENV,
       timestamp: new Date().toISOString(),
       cors: "enabled",
+      backendUrl: "https://mathe-class-website-backend-1.onrender.com",
       allowedOrigins: allowedOrigins
     });
   } catch (err) {
@@ -382,7 +380,7 @@ app.get("/", (req, res) => {
     message: "Math Class Platform API",
     status: "running",
     environment: process.env.NODE_ENV,
-    timestamp: new Date().toISOString(),
+    backendUrl: "https://mathe-class-website-backend-1.onrender.com",
     cors: "enabled"
   });
 });
@@ -394,7 +392,8 @@ app.use((req, res) => {
   res.status(404).json({ 
     success: false, 
     error: "Route not found",
-    path: req.originalUrl 
+    path: req.originalUrl,
+    backendUrl: "https://mathe-class-website-backend-1.onrender.com"
   });
 });
 
@@ -410,6 +409,7 @@ app.use((err, req, res, next) => {
       success: false,
       error: "CORS policy: Origin not allowed",
       allowedOrigins: allowedOrigins,
+      backendUrl: "https://mathe-class-website-backend-1.onrender.com",
       details: process.env.NODE_ENV === "development" ? err.message : undefined,
     });
   }
@@ -420,9 +420,9 @@ app.use((err, req, res, next) => {
     error: process.env.NODE_ENV === "production" 
       ? "Internal server error" 
       : err.message,
+    backendUrl: "https://mathe-class-website-backend-1.onrender.com",
     ...(process.env.NODE_ENV === "development" && { 
       stack: err.stack,
-      path: req.originalUrl 
     }),
   });
 });
@@ -441,15 +441,12 @@ const PORT = process.env.PORT || 5000;
     app.listen(PORT, "0.0.0.0", () => {
       console.log(`🚀 Server running on port ${PORT}`);
       console.log(`🌍 Environment: ${process.env.NODE_ENV}`);
-      console.log(`🔗 Health check: http://localhost:${PORT}/api/v1/health`);
+      console.log(`🔗 Backend URL: https://mathe-class-website-backend-1.onrender.com`);
+      console.log(`🔗 Health check: https://mathe-class-website-backend-1.onrender.com/api/v1/health`);
       console.log(`🎯 Frontend URL: ${process.env.FRONTEND_URL}`);
-      console.log(`🌐 CORS enabled for: ${allowedOrigins.join(", ")}`);
+      console.log(`🌐 CORS enabled for: ${allowedOrigins.length} domains`);
     });
 
-    // Log all endpoints in development
-    if (process.env.NODE_ENV === "development") {
-      console.table(listEndpoints(app));
-    }
   } catch (err) {
     console.error("❌ Startup Error:", err.message);
     process.exit(1);
