@@ -58,7 +58,6 @@
 
 
 
-
 // routes/paymentRoutes.js
 import express from "express";
 import {
@@ -66,6 +65,7 @@ import {
   createCheckoutSession,
   confirmPayment,
   handleStripeWebhook,
+  testStripeConnection, // Add this import
 } from "../controllers/paymentController.js";
 import { authenticateToken } from "../middleware/authMiddleware.js";
 
@@ -76,56 +76,41 @@ const router = express.Router();
 ============================================================ */
 
 /**
+ * 🧪 DEBUG: Test Stripe connection
+ * GET /api/v1/payments/debug/stripe
+ */
+router.get("/debug/stripe", authenticateToken, testStripeConnection);
+
+/**
  * 1️⃣ Get course info for the payment page
- * Used by PaymentPage.jsx to display course details before checkout
+ * GET /api/v1/payments/:id
  */
 router.get("/:id", authenticateToken, getCourseForPayment);
 
 /**
  * 2️⃣ Create Stripe checkout session
- * Creates a secure Stripe Checkout session and returns a URL
+ * POST /api/v1/payments/create-checkout-session
  */
-router.post("/create-session", authenticateToken, createCheckoutSession);
+router.post("/create-checkout-session", authenticateToken, createCheckoutSession);
 
-// ✅ Alias for older frontend compatibility
-router.post(
-  "/create-checkout-session",
-  authenticateToken,
-  createCheckoutSession
-);
+// ✅ Alias for compatibility
+router.post("/create-session", authenticateToken, createCheckoutSession);
 
 /**
  * 3️⃣ Confirm payment (from payment-success.html)
- * Called after Stripe redirects the user back to success page
- *
- * ⚠️ Important:
- * - This route must use express.json() (NOT express.raw())
- * - CORS must run normally here
- * - Stripe’s raw body handling only applies to /webhook
+ * POST /api/v1/payments/confirm
  */
-router.post(
-  "/confirm",
-  express.json(), // ✅ ensures JSON parsing + CORS preflight pass
-  authenticateToken,
-  confirmPayment
-);
+router.post("/confirm", authenticateToken, confirmPayment);
 
-// ✅ Optional alias (for redundancy or legacy)
-router.post(
-  "/confirm-payment",
-  express.json(), // ✅ same protection
-  authenticateToken,
-  confirmPayment
-);
+// ✅ Alias for redundancy
+router.post("/confirm-payment", authenticateToken, confirmPayment);
 
 /**
  * 4️⃣ Stripe Webhook (Server-to-Server)
- * Stripe calls this endpoint directly when a payment is completed.
- * It must receive the raw request body to verify the event signature.
+ * POST /api/v1/payments/webhook
  */
 router.post(
   "/webhook",
-  // ⚠️ Important: Stripe requires the *raw* request body for signature verification.
   express.raw({ type: "application/json" }),
   handleStripeWebhook
 );
