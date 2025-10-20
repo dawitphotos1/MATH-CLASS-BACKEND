@@ -221,19 +221,17 @@
 
 
 
-
 // controllers/courseController.js
 import db from "../models/index.js";
 
 const { Course, Lesson, User } = db;
 
 /* ============================================================
-   ✅ Get course by ID
+   Get course by ID
 ============================================================ */
 export const getCourseById = async (req, res) => {
   try {
     const { id } = req.params;
-    console.log("🔍 Fetching course by ID:", id);
 
     const course = await Course.findByPk(id, {
       attributes: ["id", "title", "description", "price", "thumbnail"],
@@ -247,27 +245,27 @@ export const getCourseById = async (req, res) => {
     });
 
     if (!course) {
-      console.log("❌ Course not found for ID:", id);
       return res.status(404).json({
         success: false,
         message: "Course not found",
       });
     }
 
-    console.log("✅ Course found:", course.title);
+    const courseData = course.toJSON();
+    
     res.json({
       success: true,
       course: {
-        id: course.id,
-        title: course.title,
-        description: course.description,
-        price: parseFloat(course.price),
-        thumbnail: course.thumbnail,
-        teacher: course.teacher,
+        id: courseData.id,
+        title: courseData.title,
+        description: courseData.description,
+        price: parseFloat(courseData.price),
+        thumbnail: courseData.thumbnail,
+        teacher: courseData.teacher,
       },
     });
   } catch (error) {
-    console.error("❌ Error fetching course by ID:", error);
+    console.error("Error fetching course by ID:", error);
     res.status(500).json({
       success: false,
       message: "Failed to fetch course",
@@ -277,12 +275,10 @@ export const getCourseById = async (req, res) => {
 };
 
 /* ============================================================
-   ✅ Get all courses - FIXED PRICE FORMATTING
+   Get all courses
 ============================================================ */
 export const getCourses = async (req, res) => {
   try {
-    console.log("🔍 Fetching all courses...");
-
     const courses = await Course.findAll({
       attributes: [
         "id",
@@ -304,40 +300,35 @@ export const getCourses = async (req, res) => {
       order: [["id", "ASC"]],
     });
 
-    // FIX: Ensure prices are properly formatted as numbers
-    const formattedCourses = courses.map(course => ({
-      ...course.toJSON(),
-      price: parseFloat(course.price) || 0
-    }));
-
-    console.log(`✅ Found ${formattedCourses.length} courses with prices:`, 
-      formattedCourses.map(c => ({ title: c.title, price: c.price }))
-    );
+    // Format courses with proper price handling
+    const formattedCourses = courses.map(course => {
+      const courseData = course.toJSON();
+      return {
+        ...courseData,
+        price: parseFloat(courseData.price) || 0
+      };
+    });
 
     res.json({ 
       success: true, 
       courses: formattedCourses 
     });
   } catch (error) {
-    console.error("❌ Error fetching courses:", error);
+    console.error("Error fetching courses:", error);
     res.status(500).json({
       success: false,
       message: "Failed to fetch courses",
-      error:
-        process.env.NODE_ENV === "production"
-          ? "Database error"
-          : error.message,
+      error: process.env.NODE_ENV === "production" ? "Database error" : error.message,
     });
   }
 };
 
 /* ============================================================
-   ✅ Get public course by slug (with lessons)
+   Get public course by slug (with lessons)
 ============================================================ */
 export const getPublicCourseBySlug = async (req, res) => {
   try {
     const { slug } = req.params;
-    console.log("📡 Fetching course by slug:", slug);
 
     const course = await Course.findOne({
       where: { slug },
@@ -349,22 +340,23 @@ export const getPublicCourseBySlug = async (req, res) => {
     });
 
     if (!course) {
-      console.warn(`⚠️ Course with slug '${slug}' not found`);
       return res.status(404).json({
         success: false,
         message: "Course not found",
       });
     }
 
-    // FIX: Format price for slug-based queries too
-    const formattedCourse = {
-      ...course.toJSON(),
-      price: parseFloat(course.price) || 0
-    };
+    const courseData = course.toJSON();
 
-    res.json({ success: true, course: formattedCourse });
+    res.json({ 
+      success: true, 
+      course: {
+        ...courseData,
+        price: parseFloat(courseData.price) || 0
+      }
+    });
   } catch (error) {
-    console.error("❌ Error fetching course by slug:", error);
+    console.error("Error fetching course by slug:", error);
     res.status(500).json({
       success: false,
       message: "Failed to fetch course",
@@ -374,7 +366,7 @@ export const getPublicCourseBySlug = async (req, res) => {
 };
 
 /* ============================================================
-   ✅ Create a new course
+   Create a new course
 ============================================================ */
 export const createCourse = async (req, res) => {
   try {
@@ -391,7 +383,7 @@ export const createCourse = async (req, res) => {
 
     res.status(201).json({ success: true, course });
   } catch (error) {
-    console.error("❌ Error creating course:", error);
+    console.error("Error creating course:", error);
     res.status(500).json({
       success: false,
       message: "Failed to create course",
@@ -401,7 +393,7 @@ export const createCourse = async (req, res) => {
 };
 
 /* ============================================================
-   ✅ Get lessons for a specific course
+   Get lessons for a specific course
 ============================================================ */
 export const getLessonsByCourse = async (req, res) => {
   try {
@@ -414,7 +406,7 @@ export const getLessonsByCourse = async (req, res) => {
 
     res.json({ success: true, lessons });
   } catch (error) {
-    console.error("❌ Error fetching lessons:", error);
+    console.error("Error fetching lessons:", error);
     res.status(500).json({
       success: false,
       message: "Failed to fetch lessons",
@@ -424,7 +416,7 @@ export const getLessonsByCourse = async (req, res) => {
 };
 
 /* ============================================================
-   ✅ Delete course
+   Delete course
 ============================================================ */
 export const deleteCourse = async (req, res) => {
   try {
@@ -451,7 +443,7 @@ export const deleteCourse = async (req, res) => {
       message: "Course deleted successfully",
     });
   } catch (error) {
-    console.error("❌ Error deleting course:", error);
+    console.error("Error deleting course:", error);
     res.status(500).json({
       success: false,
       message: "Failed to delete course",
