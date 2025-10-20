@@ -325,25 +325,19 @@ export const getCourses = async (req, res) => {
 export const getPublicCourseBySlug = async (req, res) => {
   try {
     const { slug } = req.params;
-    console.log("🔍 Fetching course by slug:", slug);
+    console.log("📡 Fetching course by slug:", slug);
 
     const course = await Course.findOne({
       where: { slug },
       include: [
-        {
-          model: Lesson,
-          as: "lessons",
-        },
-        {
-          model: User,
-          as: "teacher",
-          attributes: ["id", "name", "email"],
-        },
+        { model: Lesson, as: "lessons" },
+        { model: User, as: "teacher", attributes: ["id", "name", "email"] },
       ],
       order: [[{ model: Lesson, as: "lessons" }, "order_index", "ASC"]],
     });
 
     if (!course) {
+      console.warn(`⚠️ Course with slug '${slug}' not found`);
       return res.status(404).json({
         success: false,
         message: "Course not found",
