@@ -233,7 +233,6 @@
 
 
 
-
 // controllers/courseController.js
 import db from "../models/index.js";
 
@@ -352,6 +351,7 @@ export const getPublicCourseBySlug = async (req, res) => {
 
     const course = await Course.findOne({
       where: { slug },
+      attributes: ["id", "title", "slug", "description", "price", "thumbnail"],
       include: [
         { model: Lesson, as: "lessons" },
         { model: User, as: "teacher", attributes: ["id", "name", "email"] },
