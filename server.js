@@ -211,8 +211,6 @@
 
 
 
-
-// server.js
 import dotenv from "dotenv";
 dotenv.config();
 
@@ -224,7 +222,6 @@ import rateLimit from "express-rate-limit";
 import listEndpoints from "express-list-endpoints";
 import sequelize from "./config/db.js";
 
-// 🔹 Routes
 import authRoutes from "./routes/authRoutes.js";
 import adminRoutes from "./routes/adminRoutes.js";
 import courseRoutes from "./routes/courses.js";
@@ -239,13 +236,10 @@ app.set("trust proxy", 1);
 /* ========================================================
    🌍 Environment Info
 ======================================================== */
-console.log("🚀 DATABASE_URL:", !!process.env.DATABASE_URL);
-console.log("🔑 JWT_SECRET:", !!process.env.JWT_SECRET);
 console.log("🌍 FRONTEND_URL:", process.env.FRONTEND_URL);
-console.log("🔔 NODE_ENV:", process.env.NODE_ENV);
 
 /* ========================================================
-   ⚡ STRIPE WEBHOOK — RAW BODY (MUST COME FIRST!)
+   🧩 STRIPE WEBHOOK — MUST COME FIRST
 ======================================================== */
 app.post(
   "/api/v1/payments/webhook",
@@ -254,32 +248,28 @@ app.post(
 );
 
 /* ========================================================
-   🧰 Security & CORS Setup
+   🧰 Security + CORS
 ======================================================== */
 app.use(helmet());
 app.use(cookieParser());
 
-// ✅ Allow all frontend domains you deploy to
+// ✅ Make sure this list includes BOTH Netlify and Render URLs
 const allowedOrigins = [
   "http://localhost:3000",
-  "http://localhost:3001",
   "https://math-class-platform.netlify.app",
-  "https://leafy-semolina-fc0934.netlify.app",
   "https://mathe-class-website-frontend.onrender.com",
-  "https://checkout.stripe.com", // ✅ Stripe redirect domain
+  "https://mathe-class-website-backend-1.onrender.com", // your own backend (for self-calls)
+  "https://checkout.stripe.com", // stripe redirect
 ];
 
-// ✅ Enhanced CORS setup for production & Stripe redirects
 app.use(
   cors({
-    origin: function (origin, callback) {
-      // Allow requests with no origin (curl, mobile apps, etc.)
+    origin: (origin, callback) => {
       if (!origin) return callback(null, true);
-
       if (
         allowedOrigins.includes(origin) ||
-        origin.includes(".netlify.app") ||
-        origin.includes(".onrender.com")
+        origin.endsWith(".netlify.app") ||
+        origin.endsWith(".onrender.com")
       ) {
         callback(null, true);
       } else {
@@ -300,43 +290,25 @@ app.use(
   })
 );
 
-// ✅ Handle preflight requests
+// ✅ Handle all OPTIONS preflight requests
 app.options("*", cors());
 
 /* ========================================================
-   🧩 JSON Parsers (AFTER webhook)
+   🧩 JSON Parsers — after webhook
 ======================================================== */
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
 /* ========================================================
-   ⚡ Rate Limiting
-======================================================== */
-if (process.env.NODE_ENV === "production") {
-  const limiter = rateLimit({
-    windowMs: 15 * 60 * 1000,
-    max: 500,
-    message: { success: false, error: "Too many requests" },
-  });
-  app.use("/api", limiter);
-  console.log("✅ Rate limiting enabled");
-} else {
-  console.log("⚡ Rate limiting disabled (development)");
-}
-
-/* ========================================================
-   🧾 Request Logger
+   🧾 Logger
 ======================================================== */
 app.use((req, res, next) => {
-  console.log(`📥 [${req.method}] ${req.originalUrl}`, {
-    origin: req.headers.origin,
-    "user-agent": req.headers["user-agent"],
-  });
+  console.log(`📥 ${req.method} ${req.originalUrl} from ${req.headers.origin}`);
   next();
 });
 
 /* ========================================================
-   🔗 Routes (v1)
+   🔗 Routes
 ======================================================== */
 app.use("/api/v1/auth", authRoutes);
 app.use("/api/v1/admin", adminRoutes);
@@ -354,7 +326,7 @@ app.get("/api/v1/health", async (req, res) => {
     res.json({
       status: "OK",
       db: "connected",
-      environment: process.env.NODE_ENV,
+      origin: req.headers.origin || null,
       timestamp: new Date().toISOString(),
     });
   } catch (err) {
@@ -362,44 +334,31 @@ app.get("/api/v1/health", async (req, res) => {
   }
 });
 
-// Additional root health check
 app.get("/", (req, res) => {
   res.json({
-    message: "✅ Math Class Platform API running",
-    environment: process.env.NODE_ENV,
+    message: "Math Class Platform API Running",
     timestamp: new Date().toISOString(),
   });
 });
 
 /* ========================================================
-   🚫 404 Handler
+   🚫 404 & Error Handlers
 ======================================================== */
 app.use((req, res) => {
   res.status(404).json({ success: false, error: "Route not found" });
 });
 
-/* ========================================================
-   🧱 Global Error Handler
-======================================================== */
 app.use((err, req, res, next) => {
   console.error("❌ Global Error:", err.message);
-
   if (err.message.includes("CORS")) {
     return res.status(403).json({
       success: false,
       error: "CORS policy: Origin not allowed",
-      details: process.env.NODE_ENV === "development" ? err.message : undefined,
     });
   }
-
-  const status = err.statusCode || 500;
-  res.status(status).json({
+  res.status(500).json({
     success: false,
-    error:
-      process.env.NODE_ENV === "production"
-        ? "Internal server error"
-        : err.message,
-    ...(process.env.NODE_ENV === "development" && { stack: err.stack }),
+    error: err.message || "Internal Server Error",
   });
 });
 
@@ -410,20 +369,14 @@ const PORT = process.env.PORT || 5000;
 
 (async () => {
   try {
-    const shouldAlter = process.env.ALTER_DB === "true";
-    await sequelize.sync({ alter: shouldAlter });
+    await sequelize.sync({ alter: process.env.ALTER_DB === "true" });
     console.log("✅ Database synced");
-
-    app.listen(PORT, "0.0.0.0", () => {
-      console.log(`🚀 Server running on port ${PORT}`);
-      console.log(`🌍 Environment: ${process.env.NODE_ENV}`);
-      console.log(`🔗 Health check: http://localhost:${PORT}/api/v1/health`);
-      console.log(`🎯 Frontend URL: ${process.env.FRONTEND_URL}`);
-    });
-
+    app.listen(PORT, "0.0.0.0", () =>
+      console.log(`🚀 Server running on port ${PORT}`)
+    );
     console.table(listEndpoints(app));
   } catch (err) {
-    console.error("❌ Startup Error:", err.message);
+    console.error("❌ Startup Error:", err);
     process.exit(1);
   }
 })();
