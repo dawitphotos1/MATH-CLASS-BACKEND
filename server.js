@@ -211,6 +211,8 @@
 
 
 
+
+// server.js
 import dotenv from "dotenv";
 dotenv.config();
 
@@ -234,12 +236,7 @@ const app = express();
 app.set("trust proxy", 1);
 
 /* ========================================================
-   🌍 Environment Info
-======================================================== */
-console.log("🌍 FRONTEND_URL:", process.env.FRONTEND_URL);
-
-/* ========================================================
-   🧩 STRIPE WEBHOOK — MUST COME FIRST
+   💳 Stripe Webhook (MUST come before JSON parsing)
 ======================================================== */
 app.post(
   "/api/v1/payments/webhook",
@@ -248,18 +245,17 @@ app.post(
 );
 
 /* ========================================================
-   🧰 Security + CORS
+   🔒 Security + CORS
 ======================================================== */
 app.use(helmet());
 app.use(cookieParser());
 
-// ✅ Make sure this list includes BOTH Netlify and Render URLs
 const allowedOrigins = [
   "http://localhost:3000",
   "https://math-class-platform.netlify.app",
   "https://mathe-class-website-frontend.onrender.com",
-  "https://mathe-class-website-backend-1.onrender.com", // your own backend (for self-calls)
-  "https://checkout.stripe.com", // stripe redirect
+  "https://mathe-class-website-backend-1.onrender.com",
+  "https://checkout.stripe.com",
 ];
 
 app.use(
@@ -271,14 +267,13 @@ app.use(
         origin.endsWith(".netlify.app") ||
         origin.endsWith(".onrender.com")
       ) {
-        callback(null, true);
-      } else {
-        console.warn("🚫 Blocked by CORS:", origin);
-        callback(new Error("Not allowed by CORS"));
+        return callback(null, true);
       }
+      console.warn("🚫 Blocked by CORS:", origin);
+      return callback(new Error("Not allowed by CORS"));
     },
     credentials: true,
-    methods: ["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"],
+    methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
     allowedHeaders: [
       "Content-Type",
       "Authorization",
@@ -287,23 +282,26 @@ app.use(
       "Accept",
       "Origin",
     ],
+    exposedHeaders: ["Access-Control-Allow-Origin"],
   })
 );
 
-// ✅ Handle all OPTIONS preflight requests
+// ✅ Handle preflight everywhere
 app.options("*", cors());
 
 /* ========================================================
-   🧩 JSON Parsers — after webhook
+   🧩 JSON Parser (after webhook)
 ======================================================== */
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
 /* ========================================================
-   🧾 Logger
+   🧾 Request Logger
 ======================================================== */
 app.use((req, res, next) => {
-  console.log(`📥 ${req.method} ${req.originalUrl} from ${req.headers.origin}`);
+  console.log(`📥 [${req.method}] ${req.originalUrl}`, {
+    origin: req.headers.origin,
+  });
   next();
 });
 
@@ -342,7 +340,7 @@ app.get("/", (req, res) => {
 });
 
 /* ========================================================
-   🚫 404 & Error Handlers
+   🚫 404 & Global Error Handler
 ======================================================== */
 app.use((req, res) => {
   res.status(404).json({ success: false, error: "Route not found" });
@@ -366,7 +364,6 @@ app.use((err, req, res, next) => {
    🚀 Start Server
 ======================================================== */
 const PORT = process.env.PORT || 5000;
-
 (async () => {
   try {
     await sequelize.sync({ alter: process.env.ALTER_DB === "true" });
