@@ -57,7 +57,6 @@
 
 
 
-
 // routes/paymentRoutes.js
 import express from "express";
 import {
@@ -75,36 +74,33 @@ const router = express.Router();
 ============================================================ */
 
 /**
- * 1️⃣ Get course info for the payment page
- * Used by PaymentPage.jsx to display course details before checkout
- * Example: GET /api/v1/payments/:id
+ * 1️⃣ Get course info for payment page
+ *    Used by PaymentPage.jsx to display course details before checkout
  */
 router.get("/:id", authenticateToken, getPaymentByCourseId);
 
 /**
  * 2️⃣ Create Stripe checkout session
- * Example: POST /api/v1/payments/create-checkout-session
+ *    Creates a secure Stripe Checkout session and returns a sessionId + URL
  */
+router.post("/create-session", authenticateToken, createCheckoutSession);
+
+// ✅ Alias for compatibility with frontend older naming
 router.post(
   "/create-checkout-session",
   authenticateToken,
   createCheckoutSession
 );
 
-// ✅ Optional backward-compatible alias for legacy frontend code
-router.post("/create-session", authenticateToken, createCheckoutSession);
-
 /**
- * 3️⃣ Confirm payment
- * Called after Stripe redirects back to frontend success page
- * Example: POST /api/v1/payments/confirm
+ * 3️⃣ Confirm payment (from frontend fallback or success redirect)
  */
 router.post("/confirm", authenticateToken, confirmPayment);
-router.post("/confirm-payment", authenticateToken, confirmPayment); // optional alias
+router.post("/confirm-payment", authenticateToken, confirmPayment); // ✅ Alias for redundancy
 
 /**
- * 4️⃣ Stripe Webhook (server-to-server)
- * ⚠️ Requires raw body for Stripe signature verification
+ * 4️⃣ Stripe Webhook — used directly by Stripe after successful payments
+ * ⚠️ Important: Stripe requires raw request body for signature verification
  */
 router.post(
   "/webhook",
