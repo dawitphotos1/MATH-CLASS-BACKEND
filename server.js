@@ -211,7 +211,10 @@
 
 
 
-// server.js - COMPLETE CORS FIX VERSION
+
+
+
+// server.js - FIXED CORS VERSION
 import dotenv from "dotenv";
 dotenv.config();
 
@@ -223,7 +226,7 @@ import rateLimit from "express-rate-limit";
 import listEndpoints from "express-list-endpoints";
 import sequelize from "./config/db.js";
 
-// Routes
+// 🔹 Routes
 import authRoutes from "./routes/authRoutes.js";
 import adminRoutes from "./routes/adminRoutes.js";
 import courseRoutes from "./routes/courses.js";
@@ -244,7 +247,7 @@ console.log("🌐 FRONTEND_URL:", process.env.FRONTEND_URL);
 console.log("🔗 BACKEND_URL:", process.env.BACKEND_URL);
 
 /* ========================================================
-   🧩 STRIPE WEBHOOK — MUST COME FIRST
+   🧩 STRIPE WEBHOOK (RAW BODY) — MUST BE FIRST!
 ======================================================== */
 app.post(
   "/api/v1/payments/webhook",
@@ -253,79 +256,107 @@ app.post(
 );
 
 /* ========================================================
-   🚨 NUCLEAR CORS FIX - GUARANTEED TO WORK
+   🧰 SECURITY & CORS SETUP - FIXED VERSION
 ======================================================== */
+app.use(helmet());
 
-// Remove ALL helmet security temporarily to eliminate conflicts
-// app.use(helmet());
-
-// MANUAL CORS HEADERS - This will definitely work
+// Remove restrictive headers that block CORS
 app.use((req, res, next) => {
-  // Allow ALL origins
-  const origin = req.headers.origin;
-  
-  if (origin) {
-    res.header('Access-Control-Allow-Origin', origin);
-  } else {
-    res.header('Access-Control-Allow-Origin', '*');
-  }
-  
-  res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, PATCH, OPTIONS');
-  res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization, Stripe-Signature, X-Requested-With, Accept, Origin');
-  res.header('Access-Control-Allow-Credentials', 'true');
-  
-  // Handle preflight requests
-  if (req.method === 'OPTIONS') {
-    return res.status(200).end();
-  }
-  
+  res.removeHeader("Cross-Origin-Resource-Policy");
+  res.removeHeader("Cross-Origin-Opener-Policy");
+  res.removeHeader("Cross-Origin-Embedder-Policy");
   next();
 });
 
 app.use(cookieParser());
 
-// Additional CORS middleware as backup
-app.use(cors({
-  origin: function (origin, callback) {
-    // Allow ALL origins without checking
-    callback(null, true);
-  },
-  credentials: true,
-  methods: ["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"],
-  allowedHeaders: ["Content-Type", "Authorization", "Stripe-Signature", "X-Requested-With", "Accept", "Origin"],
-}));
+// ✅ FIXED CORS CONFIGURATION - GUARANTEED TO WORK
+const allowedOrigins = [
+  "http://localhost:3000",
+  "http://127.0.0.1:3000",
+  "http://localhost:3001", 
+  "https://math-class-platform.netlify.app",
+  "https://leafy-semolina-fc0934.netlify.app",
+];
+
+app.use(
+  cors({
+    origin: function (origin, callback) {
+      // Allow requests with no origin (mobile apps, curl, etc.)
+      if (!origin) return callback(null, true);
+      
+      // Allow all localhost origins for development
+      if (origin.includes('localhost') || origin.includes('127.0.0.1')) {
+        console.log(`✅ Allowing localhost origin: ${origin}`);
+        return callback(null, true);
+      }
+      
+      // Allow Netlify domains and other production frontends
+      if (allowedOrigins.includes(origin) || origin.endsWith('.netlify.app')) {
+        console.log(`✅ Allowing production origin: ${origin}`);
+        return callback(null, true);
+      }
+      
+      console.warn("🚫 CORS blocked origin:", origin);
+      callback(new Error(`CORS not allowed for origin: ${origin}`));
+    },
+    credentials: true,
+    methods: ["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"],
+    allowedHeaders: [
+      "Content-Type",
+      "Authorization",
+      "X-Requested-With",
+      "Accept",
+      "Origin",
+      "Stripe-Signature"
+    ],
+  })
+);
+
+// ✅ Handle preflight requests explicitly
+app.options("*", (req, res) => {
+  console.log(`🛠️ Handling OPTIONS preflight for: ${req.headers.origin}`);
+  res.header("Access-Control-Allow-Origin", req.headers.origin || "*");
+  res.header("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, PATCH, OPTIONS");
+  res.header("Access-Control-Allow-Headers", "Content-Type, Authorization, X-Requested-With, Accept, Origin");
+  res.header("Access-Control-Allow-Credentials", "true");
+  res.status(200).send();
+});
 
 /* ========================================================
-   🧩 JSON Parsers — AFTER webhook and CORS
+   🧩 JSON Parser (AFTER webhook)
 ======================================================== */
-app.use(express.json({ limit: '10mb' }));
-app.use(express.urlencoded({ extended: true, limit: '10mb' }));
+app.use(express.json());
+app.use(express.urlencoded({ extended: true }));
 
 /* ========================================================
-   ⚡ Rate Limiting (Production only) - DISABLED FOR TESTING
+   ⚡ Rate Limiting
 ======================================================== */
-// if (process.env.NODE_ENV === "production") {
-//   const limiter = rateLimit({
-//     windowMs: 15 * 60 * 1000,
-//     max: 500,
-//     message: { success: false, error: "Too many requests. Please try again later." },
-//   });
-//   app.use("/api", limiter);
-//   console.log("✅ Rate limiting enabled");
-// } else {
-//   console.log("⚡ Rate limiting disabled (development)");
-// }
+if (process.env.NODE_ENV === "production") {
+  const limiter = rateLimit({
+    windowMs: 15 * 60 * 1000,
+    max: 500,
+    message: { success: false, error: "Too many requests" },
+  });
+  app.use("/api", limiter);
+  console.log("✅ Rate limiting enabled");
+} else {
+  console.log("⚡ Rate limiting disabled (development)");
+}
 
 /* ========================================================
    🧾 Request Logger
 ======================================================== */
 app.use((req, res, next) => {
-  console.log(`📥 ${req.method} ${req.originalUrl} | Origin: ${req.headers.origin} | Time: ${new Date().toISOString()}`);
+  console.log(`📥 [${req.method}] ${req.originalUrl}`, {
+    origin: req.headers.origin,
+    timestamp: new Date().toISOString()
+  });
   next();
 });
 
 /* ========================================================
-   🔗 API Routes
+   🔗 Routes (v1)
 ======================================================== */
 app.use("/api/v1/auth", authRoutes);
 app.use("/api/v1/admin", adminRoutes);
@@ -335,19 +366,19 @@ app.use("/api/v1/enrollments", enrollmentRoutes);
 app.use("/api/v1/payments", paymentRoutes);
 
 /* ========================================================
-   💓 Health Check - TEST THIS FIRST
+   💓 Health Check
 ======================================================== */
 app.get("/api/v1/health", async (req, res) => {
   try {
     await sequelize.authenticate();
-    res.json({
-      status: "OK",
+    res.json({ 
+      status: "OK", 
       db: "connected",
       environment: process.env.NODE_ENV,
       origin: req.headers.origin || "none",
       cors: "enabled",
       timestamp: new Date().toISOString(),
-      message: "CORS is working! Backend is healthy."
+      message: "Backend is healthy and CORS is working! 🎉"
     });
   } catch (err) {
     res.status(500).json({ 
@@ -358,22 +389,23 @@ app.get("/api/v1/health", async (req, res) => {
   }
 });
 
-// Test endpoint specifically for CORS
+// Additional CORS test endpoint
 app.get("/api/v1/cors-test", (req, res) => {
   res.json({
-    message: "CORS test successful!",
+    message: "CORS test successful! ✅",
     yourOrigin: req.headers.origin,
-    timestamp: new Date().toISOString(),
-    cors: "working"
+    cors: "working",
+    timestamp: new Date().toISOString()
   });
 });
 
 app.get("/", (req, res) => {
-  res.json({
-    message: "Math Class Platform API is running ✅",
+  res.json({ 
+    message: "Math Class Platform API", 
+    status: "running",
     environment: process.env.NODE_ENV,
     cors: "enabled",
-    timestamp: new Date().toISOString(),
+    timestamp: new Date().toISOString()
   });
 });
 
@@ -393,17 +425,25 @@ app.use((req, res) => {
 ======================================================== */
 app.use((err, req, res, next) => {
   console.error("❌ Global Error:", err.message);
-  console.error("Error Stack:", err.stack);
+  
+  // Handle CORS errors
+  if (err.message.includes("CORS")) {
+    return res.status(403).json({
+      success: false,
+      error: "CORS policy: Origin not allowed",
+      yourOrigin: req.headers.origin,
+      allowedOrigins: allowedOrigins,
+      details: process.env.NODE_ENV === "development" ? err.message : undefined
+    });
+  }
 
-  res.status(500).json({
+  const status = err.statusCode || 500;
+  res.status(status).json({
     success: false,
     error: process.env.NODE_ENV === "production" 
       ? "Internal server error" 
       : err.message,
-    ...(process.env.NODE_ENV === "development" && { 
-      stack: err.stack,
-      details: "CORS is enabled - this should work"
-    })
+    ...(process.env.NODE_ENV === "development" && { stack: err.stack })
   });
 });
 
@@ -414,10 +454,9 @@ const PORT = process.env.PORT || 5000;
 
 (async () => {
   try {
-    console.log("🔄 Connecting to database...");
     const shouldAlter = process.env.ALTER_DB === "true";
     await sequelize.sync({ alter: shouldAlter });
-    console.log("✅ Database synced successfully");
+    console.log("✅ Database synced");
 
     app.listen(PORT, "0.0.0.0", () => {
       console.log(`\n🎉 SERVER STARTED SUCCESSFULLY!`);
@@ -425,18 +464,16 @@ const PORT = process.env.PORT || 5000;
       console.log(`🌍 Environment: ${process.env.NODE_ENV}`);
       console.log(`🔗 Backend URL: ${process.env.BACKEND_URL}`);
       console.log(`🎯 Frontend URL: ${process.env.FRONTEND_URL}`);
-      console.log(`✅ CORS: ENABLED FOR ALL ORIGINS`);
+      console.log(`✅ CORS: ENABLED`);
       console.log(`📋 Health Check: ${process.env.BACKEND_URL}/api/v1/health`);
       console.log(`🧪 CORS Test: ${process.env.BACKEND_URL}/api/v1/cors-test`);
-      console.log(`\n📍 Ready to accept requests from any origin!`);
     });
 
-    // Log all endpoints
     console.log("\n📋 Available Endpoints:");
     console.table(listEndpoints(app));
     
   } catch (err) {
-    console.error("💥 FATAL Startup Error:", err);
+    console.error("❌ Startup Error:", err);
     process.exit(1);
   }
 })();
