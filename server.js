@@ -211,7 +211,6 @@
 
 
 
-
 // server.js
 import dotenv from "dotenv";
 dotenv.config();
@@ -224,6 +223,7 @@ import rateLimit from "express-rate-limit";
 import listEndpoints from "express-list-endpoints";
 import sequelize from "./config/db.js";
 
+// 🔹 Routes
 import authRoutes from "./routes/authRoutes.js";
 import adminRoutes from "./routes/adminRoutes.js";
 import courseRoutes from "./routes/courses.js";
@@ -236,7 +236,14 @@ const app = express();
 app.set("trust proxy", 1);
 
 /* ========================================================
-   🧩 STRIPE WEBHOOK — RAW BODY FIRST
+   🌍 Environment Info
+======================================================== */
+console.log("🌍 FRONTEND_URL:", process.env.FRONTEND_URL);
+console.log("🌍 BACKEND_URL:", process.env.BACKEND_URL);
+console.log("🚀 NODE_ENV:", process.env.NODE_ENV);
+
+/* ========================================================
+   🧩 STRIPE WEBHOOK — MUST COME FIRST
 ======================================================== */
 app.post(
   "/api/v1/payments/webhook",
@@ -245,13 +252,26 @@ app.post(
 );
 
 /* ========================================================
-   🌍 CORS CONFIG
+   🧰 Security + CORS Setup
 ======================================================== */
+app.use(helmet());
+
+// ✅ Remove restrictive headers added by Helmet that can break CORS
+app.use((req, res, next) => {
+  res.removeHeader("Cross-Origin-Resource-Policy");
+  res.removeHeader("Cross-Origin-Opener-Policy");
+  res.removeHeader("Cross-Origin-Embedder-Policy");
+  next();
+});
+
+app.use(cookieParser());
+
+// ✅ Allow both local dev and deployed frontends
 const allowedOrigins = [
   "http://localhost:3000",
   "https://math-class-platform.netlify.app",
   "https://math-class-website-backend-1.onrender.com",
-  "https://checkout.stripe.com",
+  "https://checkout.stripe.com", // Stripe redirect
 ];
 
 app.use(
@@ -281,18 +301,41 @@ app.use(
     ],
   })
 );
+
+// ✅ Handle preflight requests explicitly
 app.options("*", cors());
 
 /* ========================================================
-   🧰 SECURITY & MIDDLEWARE
+   🧩 JSON Parsers — AFTER webhook
 ======================================================== */
-app.use(helmet());
-app.use(cookieParser());
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
 /* ========================================================
-   🔗 ROUTES
+   ⚡ Rate Limiting (Production only)
+======================================================== */
+if (process.env.NODE_ENV === "production") {
+  const limiter = rateLimit({
+    windowMs: 15 * 60 * 1000, // 15 minutes
+    max: 500,
+    message: { success: false, error: "Too many requests. Please try again later." },
+  });
+  app.use("/api", limiter);
+  console.log("✅ Rate limiting enabled");
+} else {
+  console.log("⚡ Rate limiting disabled (development)");
+}
+
+/* ========================================================
+   🧾 Request Logger
+======================================================== */
+app.use((req, res, next) => {
+  console.log(`📥 [${req.method}] ${req.originalUrl} from ${req.headers.origin}`);
+  next();
+});
+
+/* ========================================================
+   🔗 Routes (v1)
 ======================================================== */
 app.use("/api/v1/auth", authRoutes);
 app.use("/api/v1/admin", adminRoutes);
@@ -302,23 +345,36 @@ app.use("/api/v1/enrollments", enrollmentRoutes);
 app.use("/api/v1/payments", paymentRoutes);
 
 /* ========================================================
-   🩺 HEALTH CHECK
+   💓 Health Check
 ======================================================== */
 app.get("/api/v1/health", async (req, res) => {
   try {
     await sequelize.authenticate();
-    res.json({ status: "OK", db: "connected" });
+    res.json({
+      status: "OK",
+      db: "connected",
+      origin: req.headers.origin || null,
+      timestamp: new Date().toISOString(),
+    });
   } catch (err) {
     res.status(500).json({ status: "ERROR", error: err.message });
   }
 });
 
+app.get("/", (req, res) => {
+  res.json({
+    message: "Math Class Platform API is running ✅",
+    environment: process.env.NODE_ENV,
+    timestamp: new Date().toISOString(),
+  });
+});
+
 /* ========================================================
-   🚫 404 & ERROR HANDLERS
+   🚫 404 & Global Error Handlers
 ======================================================== */
-app.use((req, res) =>
-  res.status(404).json({ success: false, error: "Route not found" })
-);
+app.use((req, res) => {
+  res.status(404).json({ success: false, error: "Route not found" });
+});
 
 app.use((err, req, res, next) => {
   console.error("❌ Global Error:", err.message);
@@ -328,11 +384,16 @@ app.use((err, req, res, next) => {
       error: "CORS policy: Origin not allowed",
     });
   }
-  res.status(500).json({ success: false, error: err.message });
+  res.status(500).json({
+    success: false,
+    error: process.env.NODE_ENV === "production"
+      ? "Internal server error"
+      : err.message,
+  });
 });
 
 /* ========================================================
-   🚀 START SERVER
+   🚀 Start Server
 ======================================================== */
 const PORT = process.env.PORT || 5000;
 
@@ -340,9 +401,13 @@ const PORT = process.env.PORT || 5000;
   try {
     await sequelize.sync({ alter: process.env.ALTER_DB === "true" });
     console.log("✅ Database synced");
-    app.listen(PORT, "0.0.0.0", () =>
-      console.log(`🚀 Server running on port ${PORT}`)
-    );
+
+    app.listen(PORT, "0.0.0.0", () => {
+      console.log(`🚀 Server running on port ${PORT}`);
+      console.log(`🌍 Frontend URL: ${process.env.FRONTEND_URL}`);
+      console.log(`🔗 Health check: https://math-class-website-backend-1.onrender.com/api/v1/health`);
+    });
+
     console.table(listEndpoints(app));
   } catch (err) {
     console.error("❌ Startup Error:", err);
