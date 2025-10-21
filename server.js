@@ -211,7 +211,6 @@
 
 
 
-
 // server.js
 import dotenv from "dotenv";
 dotenv.config();
@@ -232,11 +231,20 @@ import enrollmentRoutes from "./routes/enrollmentRoutes.js";
 import paymentRoutes from "./routes/paymentRoutes.js";
 import { handleStripeWebhook } from "./controllers/paymentController.js";
 
+import jwt from "jsonwebtoken";
+
 const app = express();
 app.set("trust proxy", 1);
 
 /* ========================================================
-   💳 Stripe Webhook (MUST come before JSON parsing)
+   🌍 ENVIRONMENT LOGGING
+======================================================== */
+console.log("🌍 FRONTEND_URL:", process.env.FRONTEND_URL);
+console.log("🌐 BACKEND_URL:", process.env.BACKEND_URL);
+console.log("💳 Stripe key present:", !!process.env.STRIPE_SECRET_KEY);
+
+/* ========================================================
+   ⚡ STRIPE WEBHOOK — MUST COME FIRST (RAW BODY)
 ======================================================== */
 app.post(
   "/api/v1/payments/webhook",
@@ -245,7 +253,7 @@ app.post(
 );
 
 /* ========================================================
-   🔒 Security + CORS
+   🧰 SECURITY + CORS CONFIGURATION
 ======================================================== */
 app.use(helmet());
 app.use(cookieParser());
@@ -258,22 +266,24 @@ const allowedOrigins = [
   "https://checkout.stripe.com",
 ];
 
+// ✅ CORS setup
 app.use(
   cors({
-    origin: (origin, callback) => {
+    origin: function (origin, callback) {
       if (!origin) return callback(null, true);
       if (
         allowedOrigins.includes(origin) ||
         origin.endsWith(".netlify.app") ||
         origin.endsWith(".onrender.com")
       ) {
-        return callback(null, true);
+        callback(null, true);
+      } else {
+        console.warn("🚫 Blocked by CORS:", origin);
+        callback(new Error("Not allowed by CORS"));
       }
-      console.warn("🚫 Blocked by CORS:", origin);
-      return callback(new Error("Not allowed by CORS"));
     },
     credentials: true,
-    methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+    methods: ["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"],
     allowedHeaders: [
       "Content-Type",
       "Authorization",
@@ -282,21 +292,20 @@ app.use(
       "Accept",
       "Origin",
     ],
-    exposedHeaders: ["Access-Control-Allow-Origin"],
   })
 );
 
-// ✅ Handle preflight everywhere
+// ✅ Always respond to OPTIONS preflight
 app.options("*", cors());
 
 /* ========================================================
-   🧩 JSON Parser (after webhook)
+   🧩 JSON PARSERS (AFTER webhook)
 ======================================================== */
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
 /* ========================================================
-   🧾 Request Logger
+   🧾 REQUEST LOGGER
 ======================================================== */
 app.use((req, res, next) => {
   console.log(`📥 [${req.method}] ${req.originalUrl}`, {
@@ -306,7 +315,22 @@ app.use((req, res, next) => {
 });
 
 /* ========================================================
-   🔗 Routes
+   🚦 RATE LIMITING (PRODUCTION ONLY)
+======================================================== */
+if (process.env.NODE_ENV === "production") {
+  const limiter = rateLimit({
+    windowMs: 15 * 60 * 1000,
+    max: 500,
+    message: { success: false, error: "Too many requests" },
+  });
+  app.use("/api", limiter);
+  console.log("✅ Rate limiting enabled");
+} else {
+  console.log("⚡ Rate limiting disabled (development)");
+}
+
+/* ========================================================
+   🔗 ROUTES
 ======================================================== */
 app.use("/api/v1/auth", authRoutes);
 app.use("/api/v1/admin", adminRoutes);
@@ -316,7 +340,24 @@ app.use("/api/v1/enrollments", enrollmentRoutes);
 app.use("/api/v1/payments", paymentRoutes);
 
 /* ========================================================
-   💓 Health Check
+   🧠 TOKEN VERIFICATION ENDPOINT (for testing)
+======================================================== */
+app.get("/api/v1/auth/verify-token", (req, res) => {
+  const header = req.headers.authorization;
+  if (!header)
+    return res.status(401).json({ success: false, error: "No token provided" });
+
+  const token = header.split(" ")[1];
+  try {
+    const decoded = jwt.verify(token, process.env.JWT_SECRET);
+    res.json({ success: true, user: decoded });
+  } catch (err) {
+    res.status(401).json({ success: false, error: "Invalid token" });
+  }
+});
+
+/* ========================================================
+   💓 HEALTH CHECK
 ======================================================== */
 app.get("/api/v1/health", async (req, res) => {
   try {
@@ -324,7 +365,7 @@ app.get("/api/v1/health", async (req, res) => {
     res.json({
       status: "OK",
       db: "connected",
-      origin: req.headers.origin || null,
+      environment: process.env.NODE_ENV,
       timestamp: new Date().toISOString(),
     });
   } catch (err) {
@@ -335,12 +376,13 @@ app.get("/api/v1/health", async (req, res) => {
 app.get("/", (req, res) => {
   res.json({
     message: "Math Class Platform API Running",
+    environment: process.env.NODE_ENV,
     timestamp: new Date().toISOString(),
   });
 });
 
 /* ========================================================
-   🚫 404 & Global Error Handler
+   🚫 404 + GLOBAL ERROR HANDLING
 ======================================================== */
 app.use((req, res) => {
   res.status(404).json({ success: false, error: "Route not found" });
@@ -356,21 +398,28 @@ app.use((err, req, res, next) => {
   }
   res.status(500).json({
     success: false,
-    error: err.message || "Internal Server Error",
+    error: process.env.NODE_ENV === "production"
+      ? "Internal Server Error"
+      : err.message,
   });
 });
 
 /* ========================================================
-   🚀 Start Server
+   🚀 START SERVER
 ======================================================== */
 const PORT = process.env.PORT || 5000;
+
 (async () => {
   try {
     await sequelize.sync({ alter: process.env.ALTER_DB === "true" });
-    console.log("✅ Database synced");
-    app.listen(PORT, "0.0.0.0", () =>
-      console.log(`🚀 Server running on port ${PORT}`)
-    );
+    console.log("✅ Database synced successfully");
+
+    app.listen(PORT, "0.0.0.0", () => {
+      console.log(`🚀 Server running on port ${PORT}`);
+      console.log(`🌍 FRONTEND_URL: ${process.env.FRONTEND_URL}`);
+      console.log(`🔗 API Base: ${process.env.API_BASE_URL}`);
+    });
+
     console.table(listEndpoints(app));
   } catch (err) {
     console.error("❌ Startup Error:", err);
