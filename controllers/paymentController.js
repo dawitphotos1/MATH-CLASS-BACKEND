@@ -355,7 +355,7 @@ export const getPaymentByCourseId = async (req, res) => {
 };
 
 /* ============================================================
-   💳 Create Stripe Checkout Session
+   💳 Create Stripe Checkout Session (Fixed)
 ============================================================ */
 export const createCheckoutSession = async (req, res) => {
   try {
@@ -368,12 +368,29 @@ export const createCheckoutSession = async (req, res) => {
         .json({ success: false, error: "Missing user or course ID" });
     }
 
-    const course = await Course.findByPk(courseId, { raw: true });
-    if (!course)
-      return res
-        .status(404)
-        .json({ success: false, error: "Course not found" });
+    // ✅ Make sure we fetch plain data
+    const course = await Course.findByPk(courseId, {
+      attributes: ["id", "title", "description", "price"],
+      raw: true,
+    });
 
+    if (!course) {
+      console.error(`❌ Course not found for ID: ${courseId}`);
+      return res.status(404).json({ success: false, error: "Course not found" });
+    }
+
+    // ✅ Convert safely and verify price
+    const price = Number(course.price);
+    console.log(`💰 Stripe Session → courseId:${courseId}, price:${price}`);
+
+    if (!price || isNaN(price) || price <= 0) {
+      console.error("❌ Invalid price detected for course:", course);
+      return res
+        .status(400)
+        .json({ success: false, error: "Invalid course price" });
+    }
+
+    // ✅ Prevent double payment
     const existing = await Enrollment.findOne({
       where: { user_id: user.id, course_id: courseId },
     });
@@ -397,14 +414,7 @@ export const createCheckoutSession = async (req, res) => {
       }
     }
 
-    const price = parseFloat(course.price);
-    if (isNaN(price) || price <= 0) {
-      console.error("❌ Invalid price for course:", course);
-      return res
-        .status(400)
-        .json({ success: false, error: "Invalid course price" });
-    }
-
+    // ✅ Stripe session creation
     const session = await stripe.checkout.sessions.create({
       payment_method_types: ["card"],
       line_items: [
