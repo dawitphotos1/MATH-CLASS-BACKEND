@@ -212,8 +212,7 @@
 
 
 
-
-// server.js
+// server.js - TEMPORARY FIX VERSION
 import dotenv from "dotenv";
 dotenv.config();
 
@@ -254,11 +253,11 @@ app.post(
 );
 
 /* ========================================================
-   🧰 Security + CORS Setup - FIXED
+   🧰 TEMPORARY CORS FIX - ALLOW ALL ORIGINS
 ======================================================== */
 app.use(helmet());
 
-// Remove restrictive headers that break CORS
+// Remove restrictive headers
 app.use((req, res, next) => {
   res.removeHeader("Cross-Origin-Resource-Policy");
   res.removeHeader("Cross-Origin-Opener-Policy");
@@ -268,52 +267,22 @@ app.use((req, res, next) => {
 
 app.use(cookieParser());
 
-// ✅ CORRECTED allowed origins - only frontend URLs
-const allowedOrigins = [
-  "http://localhost:3000",
-  "http://127.0.0.1:3000",
-  "http://localhost:3001",
-  "https://math-class-platform.netlify.app",
-  "https://leafy-semolina-fc0934.netlify.app",
-  "https://checkout.stripe.com",
-];
+// 🚨 TEMPORARY: Allow ALL origins for testing
+app.use(cors({
+  origin: "*",
+  credentials: true,
+  methods: ["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"],
+  allowedHeaders: [
+    "Content-Type",
+    "Authorization",
+    "Stripe-Signature", 
+    "X-Requested-With",
+    "Accept",
+    "Origin",
+  ],
+}));
 
-// ✅ FIXED CORS configuration
-app.use(
-  cors({
-    origin: function (origin, callback) {
-      // Allow requests with no origin (mobile apps, curl, etc.)
-      if (!origin) return callback(null, true);
-      
-      // Allow all localhost origins for development
-      if (origin.includes('localhost') || origin.includes('127.0.0.1')) {
-        console.log(`✅ Allowing localhost origin: ${origin}`);
-        return callback(null, true);
-      }
-      
-      // Allow Netlify and other production frontends
-      if (allowedOrigins.includes(origin) || origin.endsWith('.netlify.app')) {
-        console.log(`✅ Allowing production origin: ${origin}`);
-        return callback(null, true);
-      }
-      
-      console.warn("🚫 CORS blocked origin:", origin);
-      callback(new Error(`CORS not allowed for origin: ${origin}`));
-    },
-    credentials: true,
-    methods: ["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"],
-    allowedHeaders: [
-      "Content-Type",
-      "Authorization",
-      "Stripe-Signature",
-      "X-Requested-With",
-      "Accept",
-      "Origin",
-    ],
-  })
-);
-
-// ✅ Handle preflight requests
+// Handle preflight requests
 app.options("*", cors());
 
 /* ========================================================
