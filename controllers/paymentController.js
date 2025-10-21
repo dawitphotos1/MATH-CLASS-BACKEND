@@ -298,8 +298,6 @@
 // };
 
 
-
-
 // controllers/paymentController.js
 import Stripe from "stripe";
 import db from "../models/index.js";
@@ -315,7 +313,7 @@ const FRONTEND_URL =
 console.log("🌍 FRONTEND_URL in use:", FRONTEND_URL);
 
 /* ============================================================
-   📘 Get Course Info by ID (for PaymentPage.jsx)
+   📘 Get Course Info by ID (used by PaymentPage.jsx)
 ============================================================ */
 export const getPaymentByCourseId = async (req, res) => {
   try {
@@ -323,13 +321,7 @@ export const getPaymentByCourseId = async (req, res) => {
 
     const course = await Course.findByPk(id, {
       attributes: ["id", "title", "description", "price", "thumbnail"],
-      include: [
-        {
-          model: User,
-          as: "teacher",
-          attributes: ["id", "name", "email"],
-        },
-      ],
+      raw: true, // ✅ Ensures we get plain values, not model instance
     });
 
     if (!course) {
@@ -339,29 +331,26 @@ export const getPaymentByCourseId = async (req, res) => {
       });
     }
 
-    // ✅ Properly normalize price
-    let numericPrice = 0;
-    if (course.price !== undefined && course.price !== null) {
-      const parsed = Number(course.price);
-      numericPrice = isNaN(parsed) ? 0 : parsed;
-    }
+    const priceValue =
+      course.price !== undefined && course.price !== null
+        ? parseFloat(course.price)
+        : 0;
 
-    res.json({
+    console.log(`💰 getPaymentByCourseId → ID:${id}, PRICE:${priceValue}`);
+
+    return res.json({
       success: true,
       course: {
         id: course.id,
         title: course.title,
         description: course.description,
-        price: numericPrice,
+        price: priceValue,
         thumbnail: course.thumbnail,
-        teacher: course.teacher || null,
       },
     });
   } catch (error) {
     console.error("❌ getPaymentByCourseId error:", error);
-    res
-      .status(500)
-      .json({ success: false, error: "Failed to load course for payment" });
+    res.status(500).json({ success: false, error: "Failed to load course" });
   }
 };
 
@@ -379,7 +368,7 @@ export const createCheckoutSession = async (req, res) => {
         .json({ success: false, error: "Missing user or course ID" });
     }
 
-    const course = await Course.findByPk(courseId);
+    const course = await Course.findByPk(courseId, { raw: true });
     if (!course)
       return res
         .status(404)
@@ -408,11 +397,13 @@ export const createCheckoutSession = async (req, res) => {
       }
     }
 
-    const numericPrice = Number(course.price);
-    if (isNaN(numericPrice) || numericPrice <= 0)
+    const price = parseFloat(course.price);
+    if (isNaN(price) || price <= 0) {
+      console.error("❌ Invalid price for course:", course);
       return res
         .status(400)
         .json({ success: false, error: "Invalid course price" });
+    }
 
     const session = await stripe.checkout.sessions.create({
       payment_method_types: ["card"],
@@ -424,7 +415,7 @@ export const createCheckoutSession = async (req, res) => {
               name: course.title,
               description: course.description || "Course payment",
             },
-            unit_amount: Math.round(numericPrice * 100),
+            unit_amount: Math.round(price * 100),
           },
           quantity: 1,
         },
@@ -442,14 +433,15 @@ export const createCheckoutSession = async (req, res) => {
     res.json({ success: true, sessionId: session.id, url: session.url });
   } catch (error) {
     console.error("🔥 createCheckoutSession error:", error);
-    res
-      .status(500)
-      .json({ success: false, error: "Failed to create checkout session" });
+    res.status(500).json({
+      success: false,
+      error: "Failed to create checkout session",
+    });
   }
 };
 
 /* ============================================================
-   ✅ Confirm Payment
+   ✅ Confirm Payment (frontend fallback)
 ============================================================ */
 export const confirmPayment = async (req, res) => {
   try {
@@ -510,9 +502,7 @@ export const confirmPayment = async (req, res) => {
     });
   } catch (error) {
     console.error("❌ confirmPayment error:", error);
-    res
-      .status(500)
-      .json({ success: false, error: "Failed to confirm payment" });
+    res.status(500).json({ success: false, error: "Failed to confirm payment" });
   }
 };
 
@@ -569,16 +559,16 @@ export const handleStripeWebhook = async (req, res) => {
           existing.payment_status = "paid";
           existing.approval_status = "pending";
           await existing.save();
-          console.log(`🔄 Updated enrollment ${existing.id} to paid`);
+          console.log(`🔄 Updated existing enrollment ${existing.id} to paid`);
         }
       } else {
-        await Enrollment.create({
+        const newEnroll = await Enrollment.create({
           user_id: userId,
           course_id: courseId,
           payment_status: "paid",
           approval_status: "pending",
         });
-        console.log("✅ Created new enrollment record");
+        console.log(`✅ Created new enrollment ${newEnroll.id}`);
       }
     }
 
