@@ -294,7 +294,6 @@
 // };
 
 
-
 // controllers/paymentController.js
 import Stripe from "stripe";
 import dotenv from "dotenv";
@@ -306,22 +305,32 @@ dotenv.config();
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
 
 /* ============================================================
-   1️⃣ Get Course Info by ID (used in PaymentPage.jsx)
+   1️⃣ Get Course Info by ID or Slug
 ============================================================ */
 export const getPaymentByCourseId = async (req, res) => {
   try {
     const { id } = req.params;
     console.log("🔍 Fetching course for payment:", id);
 
-    // Try by _id first
-    let course = await Course.findById(id).lean();
+    let course = null;
 
-    // Fallback — if id is not a Mongo ObjectId (like "algebra-1"), try slug
+    // 1️⃣ Try valid Mongo ObjectId
+    if (/^[0-9a-fA-F]{24}$/.test(id)) {
+      course = await Course.findById(id).lean();
+    }
+
+    // 2️⃣ Try by numeric id (for legacy SQL-like data)
+    if (!course && !isNaN(id)) {
+      course = await Course.findOne({ id: Number(id) }).lean();
+    }
+
+    // 3️⃣ Try by slug
     if (!course) {
       course = await Course.findOne({ slug: id }).lean();
     }
 
     if (!course) {
+      console.warn("⚠️ Course not found for:", id);
       return res.status(404).json({ success: false, message: "Course not found" });
     }
 
@@ -344,22 +353,35 @@ export const createCheckoutSession = async (req, res) => {
     const { courseId } = req.body;
     console.log("💰 Creating checkout session for course:", courseId);
 
-    // Fetch course
-    let course = await Course.findById(courseId);
+    let course = null;
+
+    // 1️⃣ Try by ObjectId
+    if (/^[0-9a-fA-F]{24}$/.test(courseId)) {
+      course = await Course.findById(courseId);
+    }
+
+    // 2️⃣ Try by numeric ID
+    if (!course && !isNaN(courseId)) {
+      course = await Course.findOne({ id: Number(courseId) });
+    }
+
+    // 3️⃣ Try by slug
     if (!course) {
       course = await Course.findOne({ slug: courseId });
     }
 
     if (!course) {
+      console.warn("⚠️ Course not found for:", courseId);
       return res.status(404).json({ success: false, error: "Course not found" });
     }
 
-    // Validate price
+    // ✅ Validate price
     const price = Number(course.price);
     if (isNaN(price) || price <= 0) {
       return res.status(400).json({ success: false, error: "Invalid course price" });
     }
 
+    // ✅ Create Stripe checkout session
     const session = await stripe.checkout.sessions.create({
       payment_method_types: ["card"],
       mode: "payment",
@@ -373,9 +395,9 @@ export const createCheckoutSession = async (req, res) => {
           quantity: 1,
         },
       ],
-      success_url: `${process.env.CLIENT_URL}/payment-success?course=${course._id}`,
-      cancel_url: `${process.env.CLIENT_URL}/payment-cancel?course=${course._id}`,
-      metadata: { courseId: String(course._id) },
+      success_url: `${process.env.CLIENT_URL}/payment-success?course=${course._id || course.id}`,
+      cancel_url: `${process.env.CLIENT_URL}/payment-cancel?course=${course._id || course.id}`,
+      metadata: { courseId: String(course._id || course.id) },
     });
 
     console.log("✅ Stripe session created:", session.id);
@@ -420,8 +442,8 @@ export const confirmPayment = async (req, res) => {
 ============================================================ */
 export const handleStripeWebhook = async (req, res) => {
   const sig = req.headers["stripe-signature"];
-
   let event;
+
   try {
     event = stripe.webhooks.constructEvent(
       req.body,
