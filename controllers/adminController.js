@@ -181,7 +181,6 @@
 
 
 
-
 // controllers/adminController.js
 import db from "../models/index.js";
 import sendEmail from "../utils/sendEmail.js";
@@ -279,67 +278,114 @@ export const getEnrollmentsByStatus = async (req, res) => {
   }
 };
 
-// ✅ FIXED: Approve Enrollment Function
+// ✅ COMPLETELY REWRITTEN: Approve Enrollment Function
 export const approveEnrollment = async (req, res) => {
+  let transaction;
+  
   try {
     const { id } = req.params;
-    console.log(`🔄 Approving enrollment ID: ${id}`);
+    console.log(`🔄 APPROVING ENROLLMENT: Starting approval for enrollment ID: ${id}`);
 
+    // Start a transaction to ensure data consistency
+    transaction = await db.sequelize.transaction();
+
+    // Find the enrollment with associated student and course
     const enrollment = await Enrollment.findByPk(id, {
       include: [
-        { model: User, as: "student" },
-        { model: Course, as: "course" },
+        { 
+          model: User, 
+          as: "student", 
+          attributes: ["id", "name", "email", "approval_status"] 
+        },
+        { 
+          model: Course, 
+          as: "course", 
+          attributes: ["id", "title", "description", "price"] 
+        },
       ],
+      transaction
     });
 
     if (!enrollment) {
-      console.log(`❌ Enrollment not found: ${id}`);
-      return res.status(404).json({ success: false, error: "Enrollment not found" });
+      console.log(`❌ Enrollment not found with ID: ${id}`);
+      await transaction.rollback();
+      return res.status(404).json({ 
+        success: false, 
+        error: "Enrollment not found" 
+      });
     }
 
     console.log(`📝 Found enrollment:`, {
       id: enrollment.id,
       user_id: enrollment.user_id,
       course_id: enrollment.course_id,
-      current_status: enrollment.approval_status
+      current_approval_status: enrollment.approval_status,
+      payment_status: enrollment.payment_status,
+      student_approved: enrollment.student?.approval_status
     });
 
-    // ✅ FIX: Update enrollment status
+    // ✅ Check if student is approved
+    if (enrollment.student?.approval_status !== "approved") {
+      console.log(`❌ Student not approved: ${enrollment.user_id}`);
+      await transaction.rollback();
+      return res.status(400).json({
+        success: false,
+        error: "Cannot approve enrollment: Student account is not approved"
+      });
+    }
+
+    // ✅ Check if enrollment is already approved
+    if (enrollment.approval_status === "approved") {
+      console.log(`ℹ️ Enrollment already approved: ${enrollment.id}`);
+      await transaction.rollback();
+      return res.status(400).json({
+        success: false,
+        error: "Enrollment is already approved"
+      });
+    }
+
+    // ✅ Update enrollment status
     enrollment.approval_status = "approved";
-    await enrollment.save();
+    enrollment.updatedAt = new Date();
+    await enrollment.save({ transaction });
 
-    console.log(`✅ Enrollment approved: ${enrollment.id}`);
+    console.log(`✅ Enrollment status updated to: ${enrollment.approval_status}`);
 
-    // ✅ FIX: Update UserCourseAccess if it exists
+    // ✅ Update or create UserCourseAccess
     try {
-      // Check if UserCourseAccess model exists and update
-      const userCourseAccess = await UserCourseAccess.findOne({
+      let userCourseAccess = await UserCourseAccess.findOne({
         where: { 
           user_id: enrollment.user_id, 
           course_id: enrollment.course_id 
-        }
+        },
+        transaction
       });
 
       if (userCourseAccess) {
         userCourseAccess.approval_status = "approved";
-        await userCourseAccess.save();
-        console.log(`✅ UserCourseAccess updated for user ${enrollment.user_id}`);
+        userCourseAccess.updated_at = new Date();
+        await userCourseAccess.save({ transaction });
+        console.log(`✅ Updated existing UserCourseAccess record`);
       } else {
-        // Create new UserCourseAccess record if it doesn't exist
-        await UserCourseAccess.create({
+        userCourseAccess = await UserCourseAccess.create({
           user_id: enrollment.user_id,
           course_id: enrollment.course_id,
           approval_status: "approved",
-          access_granted_at: new Date()
-        });
-        console.log(`✅ Created new UserCourseAccess for user ${enrollment.user_id}`);
+          access_granted_at: new Date(),
+          created_at: new Date(),
+          updated_at: new Date()
+        }, { transaction });
+        console.log(`✅ Created new UserCourseAccess record`);
       }
     } catch (accessError) {
-      console.warn("⚠️ Could not update UserCourseAccess:", accessError.message);
-      // Don't fail the whole request if this fails
+      console.warn("⚠️ UserCourseAccess update warning:", accessError.message);
+      // Continue even if this fails - don't rollback the whole transaction
     }
 
-    // ✅ Send approval email
+    // ✅ Commit the transaction
+    await transaction.commit();
+
+    // ✅ Send approval email (outside transaction)
     try {
       if (enrollment.student && enrollment.course) {
         const emailTemplate = courseEnrollmentApproved(enrollment.student, enrollment.course);
@@ -347,9 +393,11 @@ export const approveEnrollment = async (req, res) => {
         console.log(`📧 Approval email sent to: ${enrollment.student.email}`);
       }
     } catch (emailErr) {
-      console.warn("⚠️ Failed to send approval email:", emailErr.message);
+      console.warn("⚠️ Email sending warning:", emailErr.message);
+      // Don't fail the request if email fails
     }
 
+    // ✅ Return success response
     return res.json({ 
       success: true, 
       message: "Enrollment approved successfully",
@@ -358,6 +406,7 @@ export const approveEnrollment = async (req, res) => {
         user_id: enrollment.user_id,
         course_id: enrollment.course_id,
         approval_status: enrollment.approval_status,
+        payment_status: enrollment.payment_status,
         student: enrollment.student ? {
           name: enrollment.student.name,
           email: enrollment.student.email
@@ -369,7 +418,13 @@ export const approveEnrollment = async (req, res) => {
     });
 
   } catch (err) {
-    console.error("❌ Error approving enrollment:", err);
+    // ✅ Rollback transaction on error
+    if (transaction) {
+      await transaction.rollback();
+      console.log("🔁 Transaction rolled back due to error");
+    }
+    
+    console.error("❌ CRITICAL ERROR approving enrollment:", err);
     return res.status(500).json({ 
       success: false, 
       error: "Failed to approve enrollment",
@@ -420,32 +475,5 @@ export const debugEnrollments = async (req, res) => {
   } catch (err) {
     console.error("❌ Debug enrollments error:", err);
     return res.status(500).json({ success: false, error: "Debug failed" });
-  }
-};
-
-// ✅ ADDED: Debug function to test approval
-export const testApproval = async (req, res) => {
-  try {
-    const { enrollmentId } = req.body;
-    console.log("🧪 Testing approval for:", enrollmentId);
-    
-    const enrollment = await Enrollment.findByPk(enrollmentId);
-    if (!enrollment) {
-      return res.status(404).json({ error: "Enrollment not found" });
-    }
-    
-    return res.json({
-      success: true,
-      enrollment: {
-        id: enrollment.id,
-        user_id: enrollment.user_id,
-        course_id: enrollment.course_id,
-        approval_status: enrollment.approval_status,
-        payment_status: enrollment.payment_status
-      }
-    });
-  } catch (error) {
-    console.error("Test approval error:", error);
-    return res.status(500).json({ error: error.message });
   }
 };
