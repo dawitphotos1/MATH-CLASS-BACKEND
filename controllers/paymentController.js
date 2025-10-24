@@ -295,61 +295,69 @@
 
 
 
-
+// controllers/paymentController.js
 import Stripe from "stripe";
 import dotenv from "dotenv";
 import Course from "../models/courseModel.js";
+import Payment from "../models/paymentModel.js";
 
 dotenv.config();
-const stripe = new Stripe(process.env.STRIPE_SECRET_KEY, {
-  apiVersion: "2025-03-31",
-});
 
-/* =========================================================
-   1️⃣ Get Course Info for Payment Page
-========================================================= */
+const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
+
+/* ============================================================
+   1️⃣ Get Course Info by ID (used in PaymentPage.jsx)
+============================================================ */
 export const getPaymentByCourseId = async (req, res) => {
   try {
     const { id } = req.params;
-    const course = await Course.findById(id);
+    console.log("🔍 Fetching course for payment:", id);
+
+    // Try by _id first
+    let course = await Course.findById(id).lean();
+
+    // Fallback — if id is not a Mongo ObjectId (like "algebra-1"), try slug
+    if (!course) {
+      course = await Course.findOne({ slug: id }).lean();
+    }
 
     if (!course) {
-      return res
-        .status(404)
-        .json({ success: false, error: "Course not found" });
+      return res.status(404).json({ success: false, message: "Course not found" });
     }
 
     res.json({ success: true, course });
-  } catch (err) {
-    console.error("❌ Error fetching course:", err);
-    res.status(500).json({ success: false, error: err.message });
+  } catch (error) {
+    console.error("❌ getPaymentByCourseId error:", error);
+    res.status(500).json({
+      success: false,
+      message: "Failed to load course for payment",
+      error: error.message,
+    });
   }
 };
 
-/* =========================================================
+/* ============================================================
    2️⃣ Create Stripe Checkout Session
-========================================================= */
+============================================================ */
 export const createCheckoutSession = async (req, res) => {
   try {
     const { courseId } = req.body;
-    if (!courseId) {
-      return res
-        .status(400)
-        .json({ success: false, error: "Missing courseId" });
-    }
+    console.log("💰 Creating checkout session for course:", courseId);
 
-    const course = await Course.findById(courseId);
+    // Fetch course
+    let course = await Course.findById(courseId);
     if (!course) {
-      return res
-        .status(404)
-        .json({ success: false, error: "Course not found" });
+      course = await Course.findOne({ slug: courseId });
     }
 
-    const priceInCents = Math.round(Number(course.price) * 100);
-    if (isNaN(priceInCents) || priceInCents <= 0) {
-      return res
-        .status(400)
-        .json({ success: false, error: "Invalid course price" });
+    if (!course) {
+      return res.status(404).json({ success: false, error: "Course not found" });
+    }
+
+    // Validate price
+    const price = Number(course.price);
+    if (isNaN(price) || price <= 0) {
+      return res.status(400).json({ success: false, error: "Invalid course price" });
     }
 
     const session = await stripe.checkout.sessions.create({
@@ -359,42 +367,61 @@ export const createCheckoutSession = async (req, res) => {
         {
           price_data: {
             currency: "usd",
-            product_data: {
-              name: course.title,
-              description: course.description?.slice(0, 100),
-            },
-            unit_amount: priceInCents,
+            product_data: { name: course.title },
+            unit_amount: Math.round(price * 100),
           },
           quantity: 1,
         },
       ],
-      success_url: `${process.env.FRONTEND_URL}/payment-success?session_id={CHECKOUT_SESSION_ID}`,
-      cancel_url: `${process.env.FRONTEND_URL}/payment-cancel`,
-      metadata: { courseId: course._id.toString(), courseTitle: course.title },
+      success_url: `${process.env.CLIENT_URL}/payment-success?course=${course._id}`,
+      cancel_url: `${process.env.CLIENT_URL}/payment-cancel?course=${course._id}`,
+      metadata: { courseId: String(course._id) },
     });
 
     console.log("✅ Stripe session created:", session.id);
-    res.json({ success: true, sessionId: session.id });
-  } catch (err) {
-    console.error("❌ Stripe session error:", err);
-    res.status(500).json({ success: false, error: err.message });
+    res.json({ success: true, sessionId: session.id, url: session.url });
+  } catch (error) {
+    console.error("❌ createCheckoutSession error:", error);
+    res.status(500).json({
+      success: false,
+      error: error.message || "Failed to create checkout session",
+    });
   }
 };
 
-/* =========================================================
-   3️⃣ Confirm Payment (optional - if you track enrollments)
-========================================================= */
+/* ============================================================
+   3️⃣ Confirm Payment (after success)
+============================================================ */
 export const confirmPayment = async (req, res) => {
-  res.json({ success: true, message: "Payment confirmation endpoint active." });
+  try {
+    const { courseId, userId } = req.body;
+
+    if (!courseId || !userId) {
+      return res.status(400).json({ success: false, error: "Missing courseId or userId" });
+    }
+
+    const payment = await Payment.create({
+      courseId,
+      userId,
+      status: "paid",
+      date: new Date(),
+    });
+
+    console.log("✅ Payment confirmed:", payment);
+    res.json({ success: true, payment });
+  } catch (error) {
+    console.error("❌ confirmPayment error:", error);
+    res.status(500).json({ success: false, error: error.message });
+  }
 };
 
-/* =========================================================
-   4️⃣ Stripe Webhook (server-to-server)
-========================================================= */
+/* ============================================================
+   4️⃣ Stripe Webhook (backend listener)
+============================================================ */
 export const handleStripeWebhook = async (req, res) => {
   const sig = req.headers["stripe-signature"];
-  let event;
 
+  let event;
   try {
     event = stripe.webhooks.constructEvent(
       req.body,
@@ -402,15 +429,15 @@ export const handleStripeWebhook = async (req, res) => {
       process.env.STRIPE_WEBHOOK_SECRET
     );
   } catch (err) {
-    console.error("❌ Webhook signature error:", err);
+    console.error("❌ Webhook signature error:", err.message);
     return res.status(400).send(`Webhook Error: ${err.message}`);
   }
 
   if (event.type === "checkout.session.completed") {
     const session = event.data.object;
-    console.log("🎉 Payment successful for:", session.metadata.courseTitle);
-    // TODO: Mark user as enrolled in DB here
+    const courseId = session.metadata?.courseId;
+    console.log("✅ Stripe checkout completed for course:", courseId);
   }
 
-  res.status(200).json({ received: true });
+  res.json({ received: true });
 };
