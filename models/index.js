@@ -15,6 +15,8 @@ import AttachmentModel from "./attachment.js";
 import LessonCompletionModel from "./lessoncompletion.js";
 import LessonProgressModel from "./lessonProgress.js";
 import LessonViewModel from "./LessonView.js";
+import PaymentModel from "./Payment.js";
+
 
 // ============================
 // Initialize Models
@@ -29,6 +31,8 @@ const Attachment = AttachmentModel(sequelize, DataTypes);
 const LessonCompletion = LessonCompletionModel(sequelize, DataTypes);
 const LessonProgress = LessonProgressModel(sequelize, DataTypes);
 const LessonView = LessonViewModel(sequelize, DataTypes);
+const Payment = PaymentModel(sequelize, DataTypes);
+
 
 // ============================
 // Define Associations 👇
@@ -64,6 +68,10 @@ LessonView.belongsTo(Lesson, { foreignKey: "lesson_id", as: "lesson" });
 // 🧭 If you need: User ↔ LessonProgress (Progress tracking)
 User.hasMany(LessonProgress, { foreignKey: "user_id", as: "lessonProgress" });
 LessonProgress.belongsTo(User, { foreignKey: "user_id", as: "studentProgress" });
+User.hasMany(Payment, { foreignKey: "user_id", as: "payments" });
+Course.hasMany(Payment, { foreignKey: "course_id", as: "payments" });
+Payment.belongsTo(User, { foreignKey: "user_id", as: "user" });
+Payment.belongsTo(Course, { foreignKey: "course_id", as: "course" });
 
 // ============================
 // Collect Models
@@ -79,6 +87,7 @@ const models = {
   LessonCompletion,
   LessonProgress,
   LessonView,
+  Payment,
 };
 
 // ============================
@@ -103,6 +112,7 @@ export {
   LessonCompletion,
   LessonProgress,
   LessonView,
+  Payment,
 };
 
 export default models;
