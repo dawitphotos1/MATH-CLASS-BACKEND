@@ -298,7 +298,11 @@
 
 
 
-import db from "../models/index.js";
+
+
+
+// controllers/adminController.js
+import db, { sequelize } from "../models/index.js";
 import sendEmail from "../utils/sendEmail.js";
 import courseEnrollmentApproved from "../utils/emails/courseEnrollmentApproved.js";
 
@@ -420,10 +424,10 @@ export const getEnrollmentsByStatus = async (req, res) => {
 };
 
 /* ============================================================
-   ✅ APPROVE ENROLLMENT
+   ✅ APPROVE ENROLLMENT + SEND EMAIL
 ============================================================ */
 export const approveEnrollment = async (req, res) => {
-  const transaction = await db.sequelize.transaction();
+  const transaction = await sequelize.transaction();
   try {
     const { id } = req.params;
     console.log(`🔄 Approving enrollment ID: ${id}`);
@@ -478,15 +482,28 @@ export const approveEnrollment = async (req, res) => {
       { transaction }
     );
 
-    // ✅ Commit the transaction
+    // ✅ Commit DB transaction
     await transaction.commit();
 
-    // 🧪 Temporarily disable email sending for debugging
-    console.log(
-      "📧 Email sending disabled (debug mode). Enrollment approved successfully."
-    );
+    // ✅ Send confirmation email
+    try {
+      const htmlContent = courseEnrollmentApproved({
+        studentName: enrollment.student.name,
+        courseTitle: enrollment.course.title,
+      });
 
-    // ✅ Return success response
+      await sendEmail({
+        to: enrollment.student.email,
+        subject: `✅ Enrollment Approved: ${enrollment.course.title}`,
+        html: htmlContent,
+      });
+
+      console.log(`📧 Email sent to ${enrollment.student.email}`);
+    } catch (emailErr) {
+      console.warn("⚠️ Enrollment approved but failed to send email:", emailErr.message);
+    }
+
+    // ✅ Success response
     return res.json({
       success: true,
       message: `Enrollment for ${enrollment.student.name} approved successfully.`,
