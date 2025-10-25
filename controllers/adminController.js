@@ -298,8 +298,6 @@
 
 
 
-
-// controllers/adminController.js
 import db from "../models/index.js";
 import sendEmail from "../utils/sendEmail.js";
 import courseEnrollmentApproved from "../utils/emails/courseEnrollmentApproved.js";
@@ -319,14 +317,23 @@ export const getStudentsByStatus = async (req, res) => {
 
     const students = await User.findAll({
       where: { role: "student", approval_status: status },
-      attributes: ["id", "name", "email", "subject", "approval_status", "updatedAt"],
+      attributes: [
+        "id",
+        "name",
+        "email",
+        "subject",
+        "approval_status",
+        "updatedAt",
+      ],
       order: [["createdAt", "DESC"]],
     });
 
     return res.json({ success: true, students });
   } catch (err) {
     console.error("❌ Error fetching students:", err);
-    return res.status(500).json({ success: false, error: "Failed to fetch students" });
+    return res
+      .status(500)
+      .json({ success: false, error: "Failed to fetch students" });
   }
 };
 
@@ -341,10 +348,16 @@ export const approveStudent = async (req, res) => {
     student.approval_status = "approved";
     await student.save();
 
-    return res.json({ success: true, message: "Student approved successfully", student });
+    return res.json({
+      success: true,
+      message: "Student approved successfully",
+      student,
+    });
   } catch (err) {
     console.error("❌ Error approving student:", err);
-    return res.status(500).json({ success: false, error: "Failed to approve student" });
+    return res
+      .status(500)
+      .json({ success: false, error: "Failed to approve student" });
   }
 };
 
@@ -359,10 +372,16 @@ export const rejectStudent = async (req, res) => {
     student.approval_status = "rejected";
     await student.save();
 
-    return res.json({ success: true, message: "Student rejected successfully", student });
+    return res.json({
+      success: true,
+      message: "Student rejected successfully",
+      student,
+    });
   } catch (err) {
     console.error("❌ Error rejecting student:", err);
-    return res.status(500).json({ success: false, error: "Failed to reject student" });
+    return res
+      .status(500)
+      .json({ success: false, error: "Failed to reject student" });
   }
 };
 
@@ -381,7 +400,11 @@ export const getEnrollmentsByStatus = async (req, res) => {
     const enrollments = await Enrollment.findAll({
       where: whereCondition,
       include: [
-        { model: User, as: "student", attributes: ["id", "name", "email", "approval_status"] },
+        {
+          model: User,
+          as: "student",
+          attributes: ["id", "name", "email", "approval_status"],
+        },
         { model: Course, as: "course", attributes: ["id", "title", "price"] },
       ],
       order: [["createdAt", "DESC"]],
@@ -390,7 +413,9 @@ export const getEnrollmentsByStatus = async (req, res) => {
     return res.json({ success: true, enrollments });
   } catch (err) {
     console.error("❌ Error fetching enrollments:", err);
-    return res.status(500).json({ success: false, error: "Failed to fetch enrollments" });
+    return res
+      .status(500)
+      .json({ success: false, error: "Failed to fetch enrollments" });
   }
 };
 
@@ -405,7 +430,11 @@ export const approveEnrollment = async (req, res) => {
 
     const enrollment = await Enrollment.findByPk(id, {
       include: [
-        { model: User, as: "student", attributes: ["id", "name", "email", "approval_status"] },
+        {
+          model: User,
+          as: "student",
+          attributes: ["id", "name", "email", "approval_status"],
+        },
         { model: Course, as: "course", attributes: ["id", "title", "price"] },
       ],
       transaction,
@@ -413,12 +442,16 @@ export const approveEnrollment = async (req, res) => {
 
     if (!enrollment) {
       await transaction.rollback();
-      return res.status(404).json({ success: false, error: "Enrollment not found" });
+      return res
+        .status(404)
+        .json({ success: false, error: "Enrollment not found" });
     }
 
     if (enrollment.approval_status === "approved") {
       await transaction.rollback();
-      return res.status(400).json({ success: false, error: "Enrollment already approved" });
+      return res
+        .status(400)
+        .json({ success: false, error: "Enrollment already approved" });
     }
 
     if (enrollment.student?.approval_status !== "approved") {
@@ -433,7 +466,7 @@ export const approveEnrollment = async (req, res) => {
     enrollment.approval_status = "approved";
     await enrollment.save({ transaction });
 
-    // ✅ Ensure UserCourseAccess record exists
+    // ✅ Ensure UserCourseAccess record exists or update it
     await UserCourseAccess.upsert(
       {
         user_id: enrollment.user_id,
@@ -445,16 +478,15 @@ export const approveEnrollment = async (req, res) => {
       { transaction }
     );
 
+    // ✅ Commit the transaction
     await transaction.commit();
 
-    // ✅ Send confirmation email (safe)
-    try {
-      const emailTemplate = courseEnrollmentApproved(enrollment.student, enrollment.course);
-      await sendEmail(enrollment.student.email, emailTemplate.subject, emailTemplate.html);
-    } catch (e) {
-      console.warn("⚠️ Email send failed:", e.message);
-    }
+    // 🧪 Temporarily disable email sending for debugging
+    console.log(
+      "📧 Email sending disabled (debug mode). Enrollment approved successfully."
+    );
 
+    // ✅ Return success response
     return res.json({
       success: true,
       message: `Enrollment for ${enrollment.student.name} approved successfully.`,
@@ -463,24 +495,37 @@ export const approveEnrollment = async (req, res) => {
   } catch (err) {
     await transaction.rollback();
     console.error("❌ Error approving enrollment:", err);
-    return res.status(500).json({ success: false, error: "Failed to approve enrollment" });
+    return res
+      .status(500)
+      .json({ success: false, error: "Failed to approve enrollment" });
   }
 };
 
+/* ============================================================
+   ❌ REJECT ENROLLMENT
+============================================================ */
 export const rejectEnrollment = async (req, res) => {
   try {
     const { id } = req.params;
     const enrollment = await Enrollment.findByPk(id);
     if (!enrollment) {
-      return res.status(404).json({ success: false, error: "Enrollment not found" });
+      return res
+        .status(404)
+        .json({ success: false, error: "Enrollment not found" });
     }
 
     enrollment.approval_status = "rejected";
     await enrollment.save();
 
-    return res.json({ success: true, message: "Enrollment rejected successfully", enrollment });
+    return res.json({
+      success: true,
+      message: "Enrollment rejected successfully",
+      enrollment,
+    });
   } catch (err) {
     console.error("❌ Error rejecting enrollment:", err);
-    return res.status(500).json({ success: false, error: "Failed to reject enrollment" });
+    return res
+      .status(500)
+      .json({ success: false, error: "Failed to reject enrollment" });
   }
 };
