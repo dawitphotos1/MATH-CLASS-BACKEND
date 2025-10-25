@@ -1,3 +1,4 @@
+
 // // controllers/adminController.js
 // import db from "../models/index.js";
 // import sendEmail from "../utils/sendEmail.js";
@@ -95,42 +96,158 @@
 //   }
 // };
 
+// // ✅ COMPLETELY REWRITTEN: Approve Enrollment Function
 // export const approveEnrollment = async (req, res) => {
+//   let transaction;
+  
 //   try {
 //     const { id } = req.params;
+//     console.log(`🔄 APPROVING ENROLLMENT: Starting approval for enrollment ID: ${id}`);
 
+//     // Start a transaction to ensure data consistency
+//     transaction = await db.sequelize.transaction();
+
+//     // Find the enrollment with associated student and course
 //     const enrollment = await Enrollment.findByPk(id, {
 //       include: [
-//         { model: User, as: "student" },
-//         { model: Course, as: "course" },
+//         { 
+//           model: User, 
+//           as: "student", 
+//           attributes: ["id", "name", "email", "approval_status"] 
+//         },
+//         { 
+//           model: Course, 
+//           as: "course", 
+//           attributes: ["id", "title", "description", "price"] 
+//         },
 //       ],
+//       transaction
 //     });
 
 //     if (!enrollment) {
-//       return res.status(404).json({ success: false, error: "Enrollment not found" });
+//       console.log(`❌ Enrollment not found with ID: ${id}`);
+//       await transaction.rollback();
+//       return res.status(404).json({ 
+//         success: false, 
+//         error: "Enrollment not found" 
+//       });
 //     }
 
+//     console.log(`📝 Found enrollment:`, {
+//       id: enrollment.id,
+//       user_id: enrollment.user_id,
+//       course_id: enrollment.course_id,
+//       current_approval_status: enrollment.approval_status,
+//       payment_status: enrollment.payment_status,
+//       student_approved: enrollment.student?.approval_status
+//     });
+
+//     // ✅ Check if student is approved
+//     if (enrollment.student?.approval_status !== "approved") {
+//       console.log(`❌ Student not approved: ${enrollment.user_id}`);
+//       await transaction.rollback();
+//       return res.status(400).json({
+//         success: false,
+//         error: "Cannot approve enrollment: Student account is not approved"
+//       });
+//     }
+
+//     // ✅ Check if enrollment is already approved
+//     if (enrollment.approval_status === "approved") {
+//       console.log(`ℹ️ Enrollment already approved: ${enrollment.id}`);
+//       await transaction.rollback();
+//       return res.status(400).json({
+//         success: false,
+//         error: "Enrollment is already approved"
+//       });
+//     }
+
+//     // ✅ Update enrollment status
 //     enrollment.approval_status = "approved";
-//     await enrollment.save();
+//     enrollment.updatedAt = new Date();
+//     await enrollment.save({ transaction });
 
-//     if (UserCourseAccess) {
-//       await UserCourseAccess.update(
-//         { approval_status: "approved" },
-//         { where: { user_id: enrollment.user_id, course_id: enrollment.course_id } }
-//       );
-//     }
+//     console.log(`✅ Enrollment status updated to: ${enrollment.approval_status}`);
 
+//     // ✅ Update or create UserCourseAccess
 //     try {
-//       const emailTemplate = courseEnrollmentApproved(enrollment.student, enrollment.course);
-//       await sendEmail(enrollment.student.email, emailTemplate.subject, emailTemplate.html);
-//     } catch (emailErr) {
-//       console.warn("⚠️ Failed to send approval email:", emailErr.message);
+//       let userCourseAccess = await UserCourseAccess.findOne({
+//         where: { 
+//           user_id: enrollment.user_id, 
+//           course_id: enrollment.course_id 
+//         },
+//         transaction
+//       });
+
+//       if (userCourseAccess) {
+//         userCourseAccess.approval_status = "approved";
+//         userCourseAccess.updated_at = new Date();
+//         await userCourseAccess.save({ transaction });
+//         console.log(`✅ Updated existing UserCourseAccess record`);
+//       } else {
+//         userCourseAccess = await UserCourseAccess.create({
+//           user_id: enrollment.user_id,
+//           course_id: enrollment.course_id,
+//           approval_status: "approved",
+//           access_granted_at: new Date(),
+//           created_at: new Date(),
+//           updated_at: new Date()
+//         }, { transaction });
+//         console.log(`✅ Created new UserCourseAccess record`);
+//       }
+//     } catch (accessError) {
+//       console.warn("⚠️ UserCourseAccess update warning:", accessError.message);
+//       // Continue even if this fails - don't rollback the whole transaction
 //     }
 
-//     return res.json({ success: true, message: "Enrollment approved", enrollment });
+//     // ✅ Commit the transaction
+//     await transaction.commit();
+
+//     // ✅ Send approval email (outside transaction)
+//     try {
+//       if (enrollment.student && enrollment.course) {
+//         const emailTemplate = courseEnrollmentApproved(enrollment.student, enrollment.course);
+//         await sendEmail(enrollment.student.email, emailTemplate.subject, emailTemplate.html);
+//         console.log(`📧 Approval email sent to: ${enrollment.student.email}`);
+//       }
+//     } catch (emailErr) {
+//       console.warn("⚠️ Email sending warning:", emailErr.message);
+//       // Don't fail the request if email fails
+//     }
+
+//     // ✅ Return success response
+//     return res.json({ 
+//       success: true, 
+//       message: "Enrollment approved successfully",
+//       enrollment: {
+//         id: enrollment.id,
+//         user_id: enrollment.user_id,
+//         course_id: enrollment.course_id,
+//         approval_status: enrollment.approval_status,
+//         payment_status: enrollment.payment_status,
+//         student: enrollment.student ? {
+//           name: enrollment.student.name,
+//           email: enrollment.student.email
+//         } : null,
+//         course: enrollment.course ? {
+//           title: enrollment.course.title
+//         } : null
+//       }
+//     });
+
 //   } catch (err) {
-//     console.error("❌ Error approving enrollment:", err);
-//     return res.status(500).json({ success: false, error: "Failed to approve enrollment" });
+//     // ✅ Rollback transaction on error
+//     if (transaction) {
+//       await transaction.rollback();
+//       console.log("🔁 Transaction rolled back due to error");
+//     }
+    
+//     console.error("❌ CRITICAL ERROR approving enrollment:", err);
+//     return res.status(500).json({ 
+//       success: false, 
+//       error: "Failed to approve enrollment",
+//       details: process.env.NODE_ENV === "development" ? err.message : undefined
+//     });
 //   }
 // };
 
@@ -181,6 +298,8 @@
 
 
 
+
+
 // controllers/adminController.js
 import db from "../models/index.js";
 import sendEmail from "../utils/sendEmail.js";
@@ -224,7 +343,7 @@ export const approveStudent = async (req, res) => {
     student.approval_status = "approved";
     await student.save();
 
-    return res.json({ success: true, message: "Student approved", student });
+    return res.json({ success: true, message: "Student approved successfully", student });
   } catch (err) {
     console.error("❌ Error approving student:", err);
     return res.status(500).json({ success: false, error: "Failed to approve student" });
@@ -243,7 +362,7 @@ export const rejectStudent = async (req, res) => {
     student.approval_status = "rejected";
     await student.save();
 
-    return res.json({ success: true, message: "Student rejected", student });
+    return res.json({ success: true, message: "Student rejected successfully", student });
   } catch (err) {
     console.error("❌ Error rejecting student:", err);
     return res.status(500).json({ success: false, error: "Failed to reject student" });
@@ -256,8 +375,8 @@ export const rejectStudent = async (req, res) => {
 export const getEnrollmentsByStatus = async (req, res) => {
   try {
     const { status } = req.query;
-
     const whereCondition = {};
+
     if (status && ["pending", "approved", "rejected"].includes(status)) {
       whereCondition.approval_status = status;
     }
@@ -278,161 +397,124 @@ export const getEnrollmentsByStatus = async (req, res) => {
   }
 };
 
-// ✅ COMPLETELY REWRITTEN: Approve Enrollment Function
+/* ============================================================
+   ✅ Approve Enrollment (Auto-Approve Student)
+============================================================ */
 export const approveEnrollment = async (req, res) => {
   let transaction;
-  
   try {
     const { id } = req.params;
-    console.log(`🔄 APPROVING ENROLLMENT: Starting approval for enrollment ID: ${id}`);
+    console.log(`🔄 Approving enrollment ID: ${id}`);
 
-    // Start a transaction to ensure data consistency
+    // Begin transaction
     transaction = await db.sequelize.transaction();
 
-    // Find the enrollment with associated student and course
     const enrollment = await Enrollment.findByPk(id, {
       include: [
-        { 
-          model: User, 
-          as: "student", 
-          attributes: ["id", "name", "email", "approval_status"] 
-        },
-        { 
-          model: Course, 
-          as: "course", 
-          attributes: ["id", "title", "description", "price"] 
-        },
+        { model: User, as: "student", attributes: ["id", "name", "email", "approval_status"] },
+        { model: Course, as: "course", attributes: ["id", "title", "description", "price"] },
       ],
-      transaction
+      transaction,
     });
 
     if (!enrollment) {
-      console.log(`❌ Enrollment not found with ID: ${id}`);
       await transaction.rollback();
-      return res.status(404).json({ 
-        success: false, 
-        error: "Enrollment not found" 
-      });
+      return res.status(404).json({ success: false, error: "Enrollment not found" });
     }
 
-    console.log(`📝 Found enrollment:`, {
-      id: enrollment.id,
-      user_id: enrollment.user_id,
-      course_id: enrollment.course_id,
-      current_approval_status: enrollment.approval_status,
-      payment_status: enrollment.payment_status,
-      student_approved: enrollment.student?.approval_status
-    });
-
-    // ✅ Check if student is approved
+    // 🔹 Auto-approve student if not approved
     if (enrollment.student?.approval_status !== "approved") {
-      console.log(`❌ Student not approved: ${enrollment.user_id}`);
-      await transaction.rollback();
-      return res.status(400).json({
-        success: false,
-        error: "Cannot approve enrollment: Student account is not approved"
-      });
+      console.log(`ℹ️ Auto-approving student ${enrollment.user_id}`);
+      enrollment.student.approval_status = "approved";
+      await enrollment.student.save({ transaction });
     }
 
-    // ✅ Check if enrollment is already approved
+    // 🔹 Check if enrollment already approved
     if (enrollment.approval_status === "approved") {
-      console.log(`ℹ️ Enrollment already approved: ${enrollment.id}`);
       await transaction.rollback();
       return res.status(400).json({
         success: false,
-        error: "Enrollment is already approved"
+        error: "Enrollment is already approved",
       });
     }
 
-    // ✅ Update enrollment status
+    // 🔹 Update enrollment
     enrollment.approval_status = "approved";
     enrollment.updatedAt = new Date();
     await enrollment.save({ transaction });
 
-    console.log(`✅ Enrollment status updated to: ${enrollment.approval_status}`);
+    // 🔹 Update or create UserCourseAccess
+    let userCourseAccess = await UserCourseAccess.findOne({
+      where: { user_id: enrollment.user_id, course_id: enrollment.course_id },
+      transaction,
+    });
 
-    // ✅ Update or create UserCourseAccess
-    try {
-      let userCourseAccess = await UserCourseAccess.findOne({
-        where: { 
-          user_id: enrollment.user_id, 
-          course_id: enrollment.course_id 
-        },
-        transaction
-      });
-
-      if (userCourseAccess) {
-        userCourseAccess.approval_status = "approved";
-        userCourseAccess.updated_at = new Date();
-        await userCourseAccess.save({ transaction });
-        console.log(`✅ Updated existing UserCourseAccess record`);
-      } else {
-        userCourseAccess = await UserCourseAccess.create({
+    if (userCourseAccess) {
+      userCourseAccess.approval_status = "approved";
+      userCourseAccess.updated_at = new Date();
+      await userCourseAccess.save({ transaction });
+      console.log("✅ Updated existing UserCourseAccess");
+    } else {
+      await UserCourseAccess.create(
+        {
           user_id: enrollment.user_id,
           course_id: enrollment.course_id,
           approval_status: "approved",
           access_granted_at: new Date(),
           created_at: new Date(),
-          updated_at: new Date()
-        }, { transaction });
-        console.log(`✅ Created new UserCourseAccess record`);
-      }
-    } catch (accessError) {
-      console.warn("⚠️ UserCourseAccess update warning:", accessError.message);
-      // Continue even if this fails - don't rollback the whole transaction
+          updated_at: new Date(),
+        },
+        { transaction }
+      );
+      console.log("✅ Created new UserCourseAccess");
     }
 
-    // ✅ Commit the transaction
+    // Commit
     await transaction.commit();
 
-    // ✅ Send approval email (outside transaction)
+    // 🔹 Send email (after transaction)
     try {
       if (enrollment.student && enrollment.course) {
         const emailTemplate = courseEnrollmentApproved(enrollment.student, enrollment.course);
         await sendEmail(enrollment.student.email, emailTemplate.subject, emailTemplate.html);
-        console.log(`📧 Approval email sent to: ${enrollment.student.email}`);
+        console.log(`📧 Sent approval email to ${enrollment.student.email}`);
       }
     } catch (emailErr) {
-      console.warn("⚠️ Email sending warning:", emailErr.message);
-      // Don't fail the request if email fails
+      console.warn("⚠️ Failed to send approval email:", emailErr.message);
     }
 
-    // ✅ Return success response
-    return res.json({ 
-      success: true, 
+    return res.json({
+      success: true,
       message: "Enrollment approved successfully",
       enrollment: {
         id: enrollment.id,
-        user_id: enrollment.user_id,
-        course_id: enrollment.course_id,
         approval_status: enrollment.approval_status,
         payment_status: enrollment.payment_status,
         student: enrollment.student ? {
+          id: enrollment.student.id,
           name: enrollment.student.name,
-          email: enrollment.student.email
+          email: enrollment.student.email,
         } : null,
         course: enrollment.course ? {
-          title: enrollment.course.title
-        } : null
-      }
+          id: enrollment.course.id,
+          title: enrollment.course.title,
+        } : null,
+      },
     });
-
   } catch (err) {
-    // ✅ Rollback transaction on error
-    if (transaction) {
-      await transaction.rollback();
-      console.log("🔁 Transaction rolled back due to error");
-    }
-    
-    console.error("❌ CRITICAL ERROR approving enrollment:", err);
-    return res.status(500).json({ 
-      success: false, 
+    if (transaction) await transaction.rollback();
+    console.error("❌ Error approving enrollment:", err);
+    return res.status(500).json({
+      success: false,
       error: "Failed to approve enrollment",
-      details: process.env.NODE_ENV === "development" ? err.message : undefined
+      details: process.env.NODE_ENV === "development" ? err.message : undefined,
     });
   }
 };
 
+/* ============================================================
+   ❌ Reject Enrollment
+============================================================ */
 export const rejectEnrollment = async (req, res) => {
   try {
     const { id } = req.params;
@@ -445,13 +527,16 @@ export const rejectEnrollment = async (req, res) => {
     enrollment.approval_status = "rejected";
     await enrollment.save();
 
-    return res.json({ success: true, message: "Enrollment rejected", enrollment });
+    return res.json({ success: true, message: "Enrollment rejected successfully", enrollment });
   } catch (err) {
     console.error("❌ Error rejecting enrollment:", err);
     return res.status(500).json({ success: false, error: "Failed to reject enrollment" });
   }
 };
 
+/* ============================================================
+   🧪 Debug Utility
+============================================================ */
 export const debugEnrollments = async (req, res) => {
   try {
     const all = await Enrollment.findAll({
