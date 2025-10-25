@@ -18,7 +18,6 @@ import lessonRoutes from "./routes/lessonRoutes.js";
 import enrollmentRoutes from "./routes/enrollmentRoutes.js";
 import paymentRoutes from "./routes/paymentRoutes.js";
 import { handleStripeWebhook } from "./controllers/paymentController.js";
-import testEmailRoutes from "./routes/testEmail.js";
 
 const app = express();
 app.set("trust proxy", 1);
@@ -52,10 +51,6 @@ app.use((req, res, next) => {
   res.removeHeader("Cross-Origin-Embedder-Policy");
   next();
 });
-
-app.use("/api/v1", testEmailRoutes);
-
-
 
 app.use(cookieParser());
 
