@@ -290,7 +290,7 @@
 
 
 
-// server.js — Render-safe + PATCH + Warmup Fix
+// server.js — Render-Safe Backend with Warmup + PATCH Fix
 import dotenv from "dotenv";
 dotenv.config();
 
@@ -313,13 +313,13 @@ import { handleStripeWebhook } from "./controllers/paymentController.js";
 const app = express();
 app.set("trust proxy", 1);
 
-console.log("🚀 Starting Math Class Platform Backend...");
+console.log("🚀 Starting Math Class Backend...");
 console.log("🌍 NODE_ENV:", process.env.NODE_ENV);
 console.log("🌐 FRONTEND_URL:", process.env.FRONTEND_URL);
 console.log("🔗 BACKEND_URL:", process.env.BACKEND_URL);
 
 /* ========================================================
-   💳 STRIPE WEBHOOK (RAW BODY FIRST)
+   💳 STRIPE WEBHOOK (MUST BE RAW)
 ======================================================== */
 app.post(
   "/api/v1/payments/webhook",
@@ -328,19 +328,16 @@ app.post(
 );
 
 /* ========================================================
-   🧰 RESTORE JSON PARSER AFTER STRIPE WEBHOOK
+   📦 Enable JSON after webhook
 ======================================================== */
 app.use((req, res, next) => {
-  if (req.originalUrl.startsWith("/api/v1/payments/webhook")) {
-    next();
-  } else {
-    express.json()(req, res, next);
-  }
+  if (req.originalUrl.startsWith("/api/v1/payments/webhook")) return next();
+  express.json()(req, res, next);
 });
 app.use(express.urlencoded({ extended: true }));
 
 /* ========================================================
-   🧰 SECURITY & CORS SETUP
+   🧰 SECURITY & CORS
 ======================================================== */
 app.use(helmet());
 app.use(cookieParser());
@@ -365,8 +362,8 @@ app.use(
         console.log(`✅ Allowing origin: ${origin}`);
         return callback(null, true);
       }
-      console.warn("🚫 CORS blocked origin:", origin);
-      return callback(new Error(`CORS not allowed for origin: ${origin}`));
+      console.warn("🚫 Blocked CORS origin:", origin);
+      return callback(new Error(`CORS not allowed for: ${origin}`));
     },
     credentials: true,
     methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
@@ -381,7 +378,7 @@ app.use(
   })
 );
 
-// ✅ Handle all OPTIONS quickly
+// ✅ Global OPTIONS preflight
 app.options("*", (req, res) => {
   res.header("Access-Control-Allow-Origin", req.headers.origin || "*");
   res.header("Access-Control-Allow-Credentials", "true");
@@ -396,7 +393,7 @@ app.options("*", (req, res) => {
   res.status(200).end();
 });
 
-// ✅ Explicit PATCH preflight handler (Render-safe)
+// ✅ Explicit PATCH preflight for Render
 app.options("/api/v1/admin/students/:id/approve", (req, res) => {
   res.header("Access-Control-Allow-Origin", req.headers.origin || "*");
   res.header("Access-Control-Allow-Credentials", "true");
@@ -427,12 +424,12 @@ if (process.env.NODE_ENV === "production") {
 }
 
 /* ========================================================
-   🧾 Request Logger
+   🧾 Logger
 ======================================================== */
 app.use((req, res, next) => {
   console.log(`📥 [${req.method}] ${req.originalUrl}`, {
     origin: req.headers.origin,
-    timestamp: new Date().toISOString(),
+    time: new Date().toISOString(),
   });
   next();
 });
@@ -454,15 +451,13 @@ app.get("/api/v1/health", async (req, res) => {
   try {
     await sequelize.authenticate();
     res.json({
-      status: "OK",
+      status: "ok",
       db: "connected",
-      environment: process.env.NODE_ENV,
-      origin: req.headers.origin || "none",
-      cors: "enabled",
+      env: process.env.NODE_ENV,
       timestamp: new Date().toISOString(),
     });
   } catch (err) {
-    res.status(500).json({ status: "ERROR", error: err.message });
+    res.status(500).json({ status: "error", error: err.message });
   }
 });
 
@@ -486,12 +481,9 @@ app.use((err, req, res, next) => {
     return res.status(403).json({
       success: false,
       error: "CORS policy: Origin not allowed",
-      yourOrigin: req.headers.origin,
-      allowedOrigins,
     });
   }
-  const status = err.statusCode || 500;
-  res.status(status).json({
+  res.status(err.statusCode || 500).json({
     success: false,
     error:
       process.env.NODE_ENV === "production"
@@ -501,14 +493,14 @@ app.use((err, req, res, next) => {
 });
 
 /* ========================================================
-   💤 Render Keep-Alive (prevents cold start timeout)
+   💤 Render Keep-Alive Ping (prevent sleep)
 ======================================================== */
-if (process.env.NODE_ENV === "production") {
+if (process.env.NODE_ENV === "production" && process.env.BACKEND_URL) {
   setInterval(() => {
     fetch(`${process.env.BACKEND_URL}/api/v1/health`)
-      .then(() => console.log("💤 Render ping → keeping backend awake"))
+      .then(() => console.log("💤 Render ping — backend kept awake"))
       .catch(() => {});
-  }, 5 * 60 * 1000); // every 5 minutes
+  }, 5 * 60 * 1000);
 }
 
 /* ========================================================
@@ -518,16 +510,15 @@ const PORT = process.env.PORT || 5000;
 
 (async () => {
   try {
-    const shouldAlter = process.env.ALTER_DB === "true";
-    await sequelize.sync({ alter: shouldAlter });
-    console.log("✅ Database synced");
+    await sequelize.sync({ alter: process.env.ALTER_DB === "true" });
+    console.log("✅ Database connected & synced");
 
     app.listen(PORT, "0.0.0.0", () => {
-      console.log(`\n🎉 SERVER STARTED SUCCESSFULLY on ${PORT}`);
+      console.log(`🎉 Server running on port ${PORT}`);
       console.table(listEndpoints(app));
     });
   } catch (err) {
-    console.error("❌ Startup Error:", err);
+    console.error("❌ Startup error:", err);
     process.exit(1);
   }
 })();
