@@ -291,7 +291,6 @@
 
 
 
-
 // controllers/adminController.js
 import db, { sequelize } from "../models/index.js";
 import sendEmail from "../utils/sendEmail.js";
@@ -301,6 +300,18 @@ import userRejectionEmail from "../utils/emails/userRejectionEmail.js";
 import courseEnrollmentRejected from "../utils/emails/courseEnrollmentRejected.js";
 
 const { User, Enrollment, Course, UserCourseAccess } = db;
+
+// Helper function for async email sending
+const sendEmailAsync = async (emailData) => {
+  try {
+    await sendEmail(emailData);
+    console.log(`📧 Email sent successfully to ${emailData.to}`);
+    return true;
+  } catch (error) {
+    console.warn(`⚠️ Failed to send email to ${emailData.to}:`, error.message);
+    return false;
+  }
+};
 
 /* ============================================================
    👩‍🎓 STUDENTS
@@ -347,35 +358,29 @@ export const approveStudent = async (req, res) => {
       return res.status(404).json({ error: "Student not found" });
     }
 
-    // Update approval status
     student.approval_status = "approved";
     await student.save();
 
-    // ✅ Send confirmation email
-    try {
-      const { subject, html } = userApprovalEmail({
-        id: student.id,
-        name: student.name,
-        email: student.email,
-      });
+    // Send email async (don't wait)
+    const { subject, html } = userApprovalEmail({
+      id: student.id,
+      name: student.name,
+      email: student.email,
+    });
 
-      await sendEmail({
-        to: student.email,
-        subject,
-        html,
-      });
-
-      console.log(`📧 Approval email sent to ${student.email}`);
-    } catch (emailErr) {
-      console.warn(
-        "⚠️ Approved student but failed to send email:",
-        emailErr.message
-      );
-    }
+    sendEmailAsync({
+      to: student.email,
+      subject,
+      html,
+    }).then(success => {
+      if (success) {
+        console.log(`📧 Approval email sent to ${student.email}`);
+      }
+    });
 
     return res.json({
       success: true,
-      message: "Student approved successfully and email sent.",
+      message: "Student approved successfully.",
       student: {
         id: student.id,
         name: student.name,
@@ -406,30 +411,25 @@ export const rejectStudent = async (req, res) => {
     student.approval_status = "rejected";
     await student.save();
 
-    // ✅ Send rejection email
-    try {
-      const { subject, html } = userRejectionEmail({
-        name: student.name,
-        email: student.email,
-      });
+    // Send email async (don't wait)
+    const { subject, html } = userRejectionEmail({
+      name: student.name,
+      email: student.email,
+    });
 
-      await sendEmail({
-        to: student.email,
-        subject,
-        html,
-      });
-
-      console.log(`📧 Rejection email sent to ${student.email}`);
-    } catch (emailErr) {
-      console.warn(
-        "⚠️ Rejected student but failed to send email:",
-        emailErr.message
-      );
-    }
+    sendEmailAsync({
+      to: student.email,
+      subject,
+      html,
+    }).then(success => {
+      if (success) {
+        console.log(`📧 Rejection email sent to ${student.email}`);
+      }
+    });
 
     return res.json({
       success: true,
-      message: "Student rejected successfully and email sent.",
+      message: "Student rejected successfully.",
       student: {
         id: student.id,
         name: student.name,
@@ -522,11 +522,9 @@ export const approveEnrollment = async (req, res) => {
       });
     }
 
-    // ✅ Update enrollment status
     enrollment.approval_status = "approved";
     await enrollment.save({ transaction });
 
-    // ✅ Ensure UserCourseAccess record exists or update it
     await UserCourseAccess.upsert(
       {
         user_id: enrollment.user_id,
@@ -538,32 +536,26 @@ export const approveEnrollment = async (req, res) => {
       { transaction }
     );
 
-    // ✅ Commit DB transaction
     await transaction.commit();
 
-    // ✅ Send enrollment approval email
-    try {
-      const htmlContent = courseEnrollmentApproved({
-        studentName: enrollment.student.name,
-        courseTitle: enrollment.course.title,
-        coursePrice: enrollment.course.price,
-      });
+    console.log(`✅ Enrollment ${id} approved successfully`);
 
-      await sendEmail({
-        to: enrollment.student.email,
-        subject: `✅ Enrollment Approved: ${enrollment.course.title}`,
-        html: htmlContent,
-      });
+    // Send email async (don't wait)
+    const htmlContent = courseEnrollmentApproved({
+      studentName: enrollment.student.name,
+      courseTitle: enrollment.course.title,
+      coursePrice: enrollment.course.price,
+    });
 
-      console.log(
-        `📧 Enrollment approval email sent to ${enrollment.student.email}`
-      );
-    } catch (emailErr) {
-      console.warn(
-        "⚠️ Enrollment approved but failed to send email:",
-        emailErr.message
-      );
-    }
+    sendEmailAsync({
+      to: enrollment.student.email,
+      subject: `✅ Enrollment Approved: ${enrollment.course.title}`,
+      html: htmlContent,
+    }).then(success => {
+      if (success) {
+        console.log(`📧 Enrollment approval email sent to ${enrollment.student.email}`);
+      }
+    });
 
     return res.json({
       success: true,
@@ -605,30 +597,27 @@ export const rejectEnrollment = async (req, res) => {
     enrollment.approval_status = "rejected";
     await enrollment.save();
 
-    // ✅ Send enrollment rejection email
-    try {
-      const htmlContent = courseEnrollmentRejected({
-        studentName: enrollment.student.name,
-        courseTitle: enrollment.course.title,
-      });
+    console.log(`✅ Enrollment ${id} rejected successfully`);
 
-      await sendEmail({
-        to: enrollment.student.email,
-        subject: `❌ Enrollment Rejected: ${enrollment.course.title}`,
-        html: htmlContent,
-      });
+    // Send email async (don't wait)
+    const htmlContent = courseEnrollmentRejected({
+      studentName: enrollment.student.name,
+      courseTitle: enrollment.course.title,
+    });
 
-      console.log(`📧 Enrollment rejection email sent to ${enrollment.student.email}`);
-    } catch (emailErr) {
-      console.warn(
-        "⚠️ Enrollment rejected but failed to send email:",
-        emailErr.message
-      );
-    }
+    sendEmailAsync({
+      to: enrollment.student.email,
+      subject: `❌ Enrollment Rejected: ${enrollment.course.title}`,
+      html: htmlContent,
+    }).then(success => {
+      if (success) {
+        console.log(`📧 Enrollment rejection email sent to ${enrollment.student.email}`);
+      }
+    });
 
     return res.json({
       success: true,
-      message: "Enrollment rejected successfully and email sent.",
+      message: "Enrollment rejected successfully.",
       enrollment,
     });
   } catch (err) {

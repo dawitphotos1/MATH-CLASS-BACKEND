@@ -342,7 +342,6 @@
 
 
 
-
 // controllers/enrollmentController.js
 import db from "../models/index.js";
 import sendEmail from "../utils/sendEmail.js";
@@ -351,8 +350,20 @@ import courseEnrollmentRejected from "../utils/emails/courseEnrollmentRejected.j
 
 const { Enrollment, User, Course } = db;
 
+// Helper function for async email sending
+const sendEmailAsync = async (emailData) => {
+  try {
+    await sendEmail(emailData);
+    console.log(`📧 Email sent successfully to ${emailData.to}`);
+    return true;
+  } catch (error) {
+    console.warn(`⚠️ Failed to send email to ${emailData.to}:`, error.message);
+    return false;
+  }
+};
+
 /* ======================================================
-   Create new enrollment request (manual, stays pending)
+   Create new enrollment request
 ====================================================== */
 export const createEnrollment = async (req, res) => {
   try {
@@ -388,7 +399,7 @@ export const createEnrollment = async (req, res) => {
 };
 
 /* ======================================================
-   Confirm enrollment after successful payment (auto-approved)
+   Confirm enrollment after successful payment
 ====================================================== */
 export const confirmEnrollmentAfterPayment = async (req, res) => {
   try {
@@ -426,7 +437,7 @@ export const confirmEnrollmentAfterPayment = async (req, res) => {
 };
 
 /* ======================================================
-   Get all enrollments by status (admin use)
+   Get all enrollments by status
 ====================================================== */
 export const getEnrollments = async (req, res) => {
   try {
@@ -450,7 +461,7 @@ export const getEnrollments = async (req, res) => {
 };
 
 /* ======================================================
-   Approve enrollment (manual admin/teacher action) + SEND EMAIL
+   Approve enrollment + SEND EMAIL
 ====================================================== */
 export const approveEnrollment = async (req, res) => {
   try {
@@ -469,31 +480,26 @@ export const approveEnrollment = async (req, res) => {
     enrollment.approval_status = "approved";
     await enrollment.save();
 
-    // ✅ Send enrollment approval email
-    try {
-      const htmlContent = courseEnrollmentApproved({
-        studentName: enrollment.student.name,
-        courseTitle: enrollment.course.title,
-        coursePrice: enrollment.course.price,
-      });
+    // Send email async (don't wait)
+    const htmlContent = courseEnrollmentApproved({
+      studentName: enrollment.student.name,
+      courseTitle: enrollment.course.title,
+      coursePrice: enrollment.course.price,
+    });
 
-      await sendEmail({
-        to: enrollment.student.email,
-        subject: `✅ Enrollment Approved: ${enrollment.course.title}`,
-        html: htmlContent,
-      });
-
-      console.log(`📧 Enrollment approval email sent to ${enrollment.student.email}`);
-    } catch (emailErr) {
-      console.warn(
-        "⚠️ Enrollment approved but failed to send email:",
-        emailErr.message
-      );
-    }
+    sendEmailAsync({
+      to: enrollment.student.email,
+      subject: `✅ Enrollment Approved: ${enrollment.course.title}`,
+      html: htmlContent,
+    }).then(success => {
+      if (success) {
+        console.log(`📧 Enrollment approval email sent to ${enrollment.student.email}`);
+      }
+    });
 
     res.json({ 
       success: true, 
-      message: "Enrollment approved and email sent successfully",
+      message: "Enrollment approved successfully.",
       enrollment 
     });
   } catch (err) {
@@ -522,30 +528,25 @@ export const rejectEnrollment = async (req, res) => {
     enrollment.approval_status = "rejected";
     await enrollment.save();
 
-    // ✅ Send enrollment rejection email
-    try {
-      const htmlContent = courseEnrollmentRejected({
-        studentName: enrollment.student.name,
-        courseTitle: enrollment.course.title,
-      });
+    // Send email async (don't wait)
+    const htmlContent = courseEnrollmentRejected({
+      studentName: enrollment.student.name,
+      courseTitle: enrollment.course.title,
+    });
 
-      await sendEmail({
-        to: enrollment.student.email,
-        subject: `❌ Enrollment Rejected: ${enrollment.course.title}`,
-        html: htmlContent,
-      });
-
-      console.log(`📧 Enrollment rejection email sent to ${enrollment.student.email}`);
-    } catch (emailErr) {
-      console.warn(
-        "⚠️ Enrollment rejected but failed to send email:",
-        emailErr.message
-      );
-    }
+    sendEmailAsync({
+      to: enrollment.student.email,
+      subject: `❌ Enrollment Rejected: ${enrollment.course.title}`,
+      html: htmlContent,
+    }).then(success => {
+      if (success) {
+        console.log(`📧 Enrollment rejection email sent to ${enrollment.student.email}`);
+      }
+    });
 
     res.json({ 
       success: true, 
-      message: "Enrollment rejected and email sent successfully",
+      message: "Enrollment rejected successfully.",
       enrollment 
     });
   } catch (err) {
@@ -582,7 +583,7 @@ export const checkEnrollment = async (req, res) => {
 };
 
 /* ======================================================
-   Get enrollments of logged-in user (includes course info)
+   Get enrollments of logged-in user
 ====================================================== */
 export const getMyEnrollments = async (req, res) => {
   try {
@@ -616,7 +617,7 @@ export const getMyEnrollments = async (req, res) => {
 };
 
 /* ======================================================
-   Get my courses (supports ?status=approved|pending)
+   Get my courses
 ====================================================== */
 export const getMyCourses = async (req, res) => {
   try {
@@ -661,7 +662,7 @@ export const getMyCourses = async (req, res) => {
 };
 
 /* ======================================================
-   Get pending enrollments (admin use)
+   Get pending enrollments
 ====================================================== */
 export const getPendingEnrollments = async (req, res) => {
   try {
@@ -682,7 +683,7 @@ export const getPendingEnrollments = async (req, res) => {
 };
 
 /* ======================================================
-   Get approved enrollments (admin use)
+   Get approved enrollments
 ====================================================== */
 export const getApprovedEnrollments = async (req, res) => {
   try {
