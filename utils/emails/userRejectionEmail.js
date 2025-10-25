@@ -1,8 +1,7 @@
-
-// // utils/emails/courseEnrollmentApproved.js
-// export default (user, course) => {
+// // utils/emails/userRejectionEmail.js
+// const userRejectionEmail = (user) => {
 //   return {
-//     subject: `🎉 Enrollment Confirmed: ${course.title}`,
+//     subject: "❌ Your Math Class Account Application",
 //     html: `
 //       <!DOCTYPE html>
 //       <html>
@@ -18,7 +17,7 @@
 //             padding: 20px;
 //           }
 //           .header { 
-//             background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+//             background: linear-gradient(135deg, #e74c3c 0%, #c0392b 100%);
 //             color: white; 
 //             padding: 30px; 
 //             text-align: center; 
@@ -29,16 +28,17 @@
 //             background: #f9f9f9; 
 //             border-radius: 0 0 10px 10px;
 //           }
-//           .course-card {
+//           .info-card {
 //             background: white;
 //             border-radius: 8px;
 //             padding: 20px;
 //             margin: 20px 0;
 //             box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+//             border-left: 4px solid #e74c3c;
 //           }
 //           .button {
 //             display: inline-block;
-//             background: #667eea;
+//             background: #3498db;
 //             color: white;
 //             padding: 12px 30px;
 //             text-decoration: none;
@@ -55,43 +55,35 @@
 //       </head>
 //       <body>
 //         <div class="header">
-//           <h1>🎉 Enrollment Confirmed!</h1>
-//           <p>You're officially enrolled in your MathClass course</p>
+//           <h1>Account Application Update</h1>
 //         </div>
         
 //         <div class="content">
 //           <h2>Hello ${user.name},</h2>
           
-//           <p>Great news! Your enrollment in <strong>${course.title}</strong> has been confirmed and your payment was processed successfully.</p>
+//           <p>Thank you for your interest in Math Class Platform.</p>
           
-//           <div class="course-card">
-//             <h3>${course.title}</h3>
-//             <p>${course.description || 'Learn mathematics with expert guidance'}</p>
-//             <p><strong>Enrollment Date:</strong> ${new Date().toLocaleDateString()}</p>
-//             <p><strong>Amount Paid:</strong> $${parseFloat(course.price).toFixed(2)}</p>
+//           <div class="info-card">
+//             <p>After careful review, we regret to inform you that your account application has not been approved at this time.</p>
+            
+//             <p style="color: #666; font-size: 14px; margin-top: 15px;">
+//               If you believe this is an error or would like more information, please contact our support team.
+//             </p>
 //           </div>
           
-//           <p>You now have full access to all course materials, including:</p>
-//           <ul>
-//             <li>📚 All lessons and units</li>
-//             <li>🎥 Video lectures</li>
-//             <li>📝 Practice exercises</li>
-//             <li>📊 Progress tracking</li>
-//           </ul>
+//           <p>We appreciate your understanding and encourage you to reach out if you have any questions.</p>
           
 //           <p>
-//             <a href="${process.env.FRONTEND_URL}/my-courses" class="button">
-//               Start Learning Now
+//             <a href="mailto:support@matheclass.com" class="button">
+//               Contact Support
 //             </a>
 //           </p>
           
-//           <p>If you have any questions or need assistance, don't hesitate to contact our support team.</p>
-          
 //           <div class="footer">
-//             <p>Happy Learning!<br>The MathClass Team</p>
+//             <p>Best regards,<br><strong>The Math Class Team</strong></p>
 //             <p>
 //               <a href="${process.env.FRONTEND_URL}">MathClass Platform</a> | 
-//               <a href="${process.env.FRONTEND_URL}/contact">Contact Support</a>
+//               <a href="mailto:support@matheclass.com">Contact Support</a>
 //             </p>
 //           </div>
 //         </div>
@@ -101,13 +93,15 @@
 //   };
 // };
 
+// export default userRejectionEmail;
 
 
 
-// utils/emails/courseEnrollmentApproved.js
-export default ({ studentName, courseTitle, coursePrice }) => {
+
+// utils/emails/userRejectionEmail.js
+const userRejectionEmail = (user) => {
   return {
-    subject: `🎉 Enrollment Confirmed: ${courseTitle}`,
+    subject: "❌ Your Math Class Account Application",
     html: `
       <!DOCTYPE html>
       <html>
@@ -123,7 +117,7 @@ export default ({ studentName, courseTitle, coursePrice }) => {
             padding: 20px;
           }
           .header { 
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            background: linear-gradient(135deg, #e74c3c 0%, #c0392b 100%);
             color: white; 
             padding: 30px; 
             text-align: center; 
@@ -134,16 +128,17 @@ export default ({ studentName, courseTitle, coursePrice }) => {
             background: #f9f9f9; 
             border-radius: 0 0 10px 10px;
           }
-          .course-card {
+          .info-card {
             background: white;
             border-radius: 8px;
             padding: 20px;
             margin: 20px 0;
             box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+            border-left: 4px solid #e74c3c;
           }
           .button {
             display: inline-block;
-            background: #667eea;
+            background: #3498db;
             color: white;
             padding: 12px 30px;
             text-decoration: none;
@@ -160,39 +155,32 @@ export default ({ studentName, courseTitle, coursePrice }) => {
       </head>
       <body>
         <div class="header">
-          <h1>🎉 Enrollment Confirmed!</h1>
-          <p>You're officially enrolled in your MathClass course</p>
+          <h1>Account Application Update</h1>
         </div>
         
         <div class="content">
-          <h2>Hello ${studentName},</h2>
+          <h2>Hello ${user.name},</h2>
           
-          <p>Great news! Your enrollment in <strong>${courseTitle}</strong> has been confirmed and your payment was processed successfully.</p>
+          <p>Thank you for your interest in Math Class Platform.</p>
           
-          <div class="course-card">
-            <h3>${courseTitle}</h3>
-            <p><strong>Enrollment Date:</strong> ${new Date().toLocaleDateString()}</p>
-            ${coursePrice ? `<p><strong>Amount Paid:</strong> $${parseFloat(coursePrice).toFixed(2)}</p>` : ''}
+          <div class="info-card">
+            <p>After careful review, we regret to inform you that your account application has not been approved at this time.</p>
+            
+            <p style="color: #666; font-size: 14px; margin-top: 15px;">
+              If you believe this is an error or would like more information, please contact our support team.
+            </p>
           </div>
           
-          <p>You now have full access to all course materials, including:</p>
-          <ul>
-            <li>📚 All lessons and units</li>
-            <li>🎥 Video lectures</li>
-            <li>📝 Practice exercises</li>
-            <li>📊 Progress tracking</li>
-          </ul>
+          <p>We appreciate your understanding and encourage you to reach out if you have any questions.</p>
           
           <p>
-            <a href="${process.env.FRONTEND_URL}/my-courses" class="button">
-              Start Learning Now
+            <a href="mailto:support@matheclass.com" class="button">
+              Contact Support
             </a>
           </p>
           
-          <p>If you have any questions or need assistance, don't hesitate to contact our support team.</p>
-          
           <div class="footer">
-            <p>Happy Learning!<br>The MathClass Team</p>
+            <p>Best regards,<br><strong>The Math Class Team</strong></p>
             <p>
               <a href="${process.env.FRONTEND_URL}">MathClass Platform</a> | 
               <a href="mailto:support@matheclass.com">Contact Support</a>
@@ -204,3 +192,5 @@ export default ({ studentName, courseTitle, coursePrice }) => {
     `,
   };
 };
+
+export default userRejectionEmail;
