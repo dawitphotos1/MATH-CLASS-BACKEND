@@ -3,6 +3,7 @@
 // import db, { sequelize } from "../models/index.js";
 // import sendEmail from "../utils/sendEmail.js";
 // import courseEnrollmentApproved from "../utils/emails/courseEnrollmentApproved.js";
+// import userApprovalEmail from "../utils/emails/userApprovalEmail.js"; // ✅ Added import
 
 // const { User, Enrollment, Course, UserCourseAccess } = db;
 
@@ -39,20 +40,43 @@
 //   }
 // };
 
+// /* ============================================================
+//    ✅ APPROVE STUDENT + SEND EMAIL
+// ============================================================ */
 // export const approveStudent = async (req, res) => {
 //   try {
 //     const { id } = req.params;
 //     const student = await User.findByPk(id);
+
 //     if (!student || student.role !== "student") {
 //       return res.status(404).json({ error: "Student not found" });
 //     }
 
+//     // Update approval status
 //     student.approval_status = "approved";
 //     await student.save();
 
+//     // ✅ Send confirmation email
+//     try {
+//       const { subject, html } = userApprovalEmail({
+//         name: student.name,
+//         email: student.email,
+//       });
+
+//       await sendEmail({
+//         to: student.email,
+//         subject,
+//         html,
+//       });
+
+//       console.log(`📧 Approval email sent to ${student.email}`);
+//     } catch (emailErr) {
+//       console.warn("⚠️ Approved student but failed to send email:", emailErr.message);
+//     }
+
 //     return res.json({
 //       success: true,
-//       message: "Student approved successfully",
+//       message: "Student approved successfully and email sent.",
 //       student,
 //     });
 //   } catch (err) {
@@ -63,6 +87,9 @@
 //   }
 // };
 
+// /* ============================================================
+//    ❌ REJECT STUDENT
+// ============================================================ */
 // export const rejectStudent = async (req, res) => {
 //   try {
 //     const { id } = req.params;
@@ -183,7 +210,7 @@
 //     // ✅ Commit DB transaction
 //     await transaction.commit();
 
-//     // ✅ Send confirmation email
+//     // ✅ Send enrollment approval email
 //     try {
 //       const htmlContent = courseEnrollmentApproved({
 //         studentName: enrollment.student.name,
@@ -196,12 +223,11 @@
 //         html: htmlContent,
 //       });
 
-//       console.log(`📧 Email sent to ${enrollment.student.email}`);
+//       console.log(`📧 Enrollment approval email sent to ${enrollment.student.email}`);
 //     } catch (emailErr) {
 //       console.warn("⚠️ Enrollment approved but failed to send email:", emailErr.message);
 //     }
 
-//     // ✅ Success response
 //     return res.json({
 //       success: true,
 //       message: `Enrollment for ${enrollment.student.name} approved successfully.`,
@@ -247,13 +273,11 @@
 
 
 
-
-
 // controllers/adminController.js
 import db, { sequelize } from "../models/index.js";
 import sendEmail from "../utils/sendEmail.js";
 import courseEnrollmentApproved from "../utils/emails/courseEnrollmentApproved.js";
-import userApprovalEmail from "../utils/emails/userApprovalEmail.js"; // ✅ Added import
+import userApprovalEmail from "../utils/emails/userApprovalEmail.js";
 
 const { User, Enrollment, Course, UserCourseAccess } = db;
 
@@ -321,13 +345,21 @@ export const approveStudent = async (req, res) => {
 
       console.log(`📧 Approval email sent to ${student.email}`);
     } catch (emailErr) {
-      console.warn("⚠️ Approved student but failed to send email:", emailErr.message);
+      console.warn(
+        "⚠️ Approved student but failed to send email:",
+        emailErr.message
+      );
     }
 
     return res.json({
       success: true,
       message: "Student approved successfully and email sent.",
-      student,
+      student: {
+        id: student.id,
+        name: student.name,
+        email: student.email,
+        approval_status: student.approval_status,
+      },
     });
   } catch (err) {
     console.error("❌ Error approving student:", err);
@@ -354,7 +386,12 @@ export const rejectStudent = async (req, res) => {
     return res.json({
       success: true,
       message: "Student rejected successfully",
-      student,
+      student: {
+        id: student.id,
+        name: student.name,
+        email: student.email,
+        approval_status: student.approval_status,
+      },
     });
   } catch (err) {
     console.error("❌ Error rejecting student:", err);
@@ -473,9 +510,14 @@ export const approveEnrollment = async (req, res) => {
         html: htmlContent,
       });
 
-      console.log(`📧 Enrollment approval email sent to ${enrollment.student.email}`);
+      console.log(
+        `📧 Enrollment approval email sent to ${enrollment.student.email}`
+      );
     } catch (emailErr) {
-      console.warn("⚠️ Enrollment approved but failed to send email:", emailErr.message);
+      console.warn(
+        "⚠️ Enrollment approved but failed to send email:",
+        emailErr.message
+      );
     }
 
     return res.json({
