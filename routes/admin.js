@@ -63,6 +63,7 @@
 // export default router;
 
 
+
 // routes/admin.js
 import express from "express";
 import {
@@ -100,7 +101,7 @@ router.patch("/enrollments/:id/approve", approveEnrollment);
 router.patch("/enrollments/:id/reject", rejectEnrollment);
 
 /* ========================================================
-   ✉️ MANUAL EMAIL ROUTES (Separate - Admin can send later)
+   ✉️ MANUAL EMAIL ROUTES (Separate - Yahoo Mail)
 ======================================================== */
 router.post("/students/:id/send-approval-email", sendStudentApprovalEmail);
 router.post("/students/:id/send-rejection-email", sendStudentRejectionEmail);

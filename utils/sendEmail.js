@@ -50,55 +50,60 @@
 
 // export default sendEmail;
 
-
 // utils/sendEmail.js
 import nodemailer from 'nodemailer';
 
 const sendEmail = async ({ to, subject, html }) => {
   try {
-    console.log('📧 Creating email transporter...');
-    console.log('📧 Email service:', process.env.EMAIL_SERVICE);
-    console.log('📧 Email username:', process.env.EMAIL_USERNAME);
+    console.log('📧 Creating Yahoo Mail transporter...');
     
     // Check if email credentials exist
-    if (!process.env.EMAIL_USERNAME || !process.env.EMAIL_PASSWORD) {
-      throw new Error('Email credentials are missing. Check EMAIL_USERNAME and EMAIL_PASSWORD environment variables.');
+    if (!process.env.MAIL_USER || !process.env.MAIL_PASS) {
+      throw new Error('Yahoo Mail credentials are missing. Check MAIL_USER and MAIL_PASS environment variables.');
     }
 
-    // Create transporter
+    console.log('📧 Yahoo Mail user:', process.env.MAIL_USER);
+    
+    // Create Yahoo Mail transporter
     const transporter = nodemailer.createTransport({
-      service: process.env.EMAIL_SERVICE || 'gmail',
+      host: process.env.MAIL_HOST || 'smtp.mail.yahoo.com',
+      port: process.env.MAIL_PORT || 465,
+      secure: true, // Use SSL
       auth: {
-        user: process.env.EMAIL_USERNAME,
-        pass: process.env.EMAIL_PASSWORD,
+        user: process.env.MAIL_USER,
+        pass: process.env.MAIL_PASS,
       },
     });
 
     console.log('📧 Sending email to:', to);
     
+    // Verify connection first
+    await transporter.verify();
+    console.log('✅ Yahoo Mail server connection verified');
+
     // Send email
     const result = await transporter.sendMail({
-      from: process.env.EMAIL_FROM || process.env.EMAIL_USERNAME,
+      from: process.env.EMAIL_FROM || process.env.MAIL_USER,
       to,
       subject,
       html,
     });
 
-    console.log('✅ Email sent successfully. Message ID:', result.messageId);
+    console.log('✅ Yahoo Mail sent successfully. Message ID:', result.messageId);
     console.log('✅ Response:', result.response);
     
     return result;
     
   } catch (error) {
-    console.error('❌ Email sending failed:');
+    console.error('❌ Yahoo Mail sending failed:');
     console.error('❌ Error message:', error.message);
     console.error('❌ Error code:', error.code);
     
-    // More specific error messages
+    // More specific error messages for Yahoo
     if (error.code === 'EAUTH') {
-      throw new Error('Email authentication failed. Check your email credentials and App Password.');
+      throw new Error('Yahoo Mail authentication failed. Check your email credentials and App Password.');
     } else if (error.code === 'ECONNECTION') {
-      throw new Error('Cannot connect to email service. Check your network and email service configuration.');
+      throw new Error('Cannot connect to Yahoo Mail. Check your network connection.');
     }
     
     throw new Error(`Email sending failed: ${error.message}`);
