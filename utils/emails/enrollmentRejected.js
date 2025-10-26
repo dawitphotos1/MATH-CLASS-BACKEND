@@ -1,3 +1,5 @@
+
+//utils/emails/enrollmentRejected.js
 module.exports = (user, course) => {
   return {
     subject: `Enrollment Rejected: ${course.title}`,

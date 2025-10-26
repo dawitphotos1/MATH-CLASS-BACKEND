@@ -294,14 +294,18 @@
 // controllers/adminController.js
 import db, { sequelize } from "../models/index.js";
 import sendEmail from "../utils/sendEmail.js";
-import courseEnrollmentApproved from "../utils/emails/courseEnrollmentApproved.js";
+
+// Email templates
 import userApprovalEmail from "../utils/emails/userApprovalEmail.js";
 import userRejectionEmail from "../utils/emails/userRejectionEmail.js";
+import courseEnrollmentApproved from "../utils/emails/courseEnrollmentApproved.js";
 import courseEnrollmentRejected from "../utils/emails/courseEnrollmentRejected.js";
 
 const { User, Enrollment, Course, UserCourseAccess } = db;
 
-// Helper function for async email sending
+/* ============================================================
+   ✉️ Helper for async email sending with logging
+============================================================ */
 const sendEmailAsync = async (emailData) => {
   try {
     await sendEmail(emailData);
@@ -326,28 +330,19 @@ export const getStudentsByStatus = async (req, res) => {
 
     const students = await User.findAll({
       where: { role: "student", approval_status: status },
-      attributes: [
-        "id",
-        "name",
-        "email",
-        "subject",
-        "approval_status",
-        "updatedAt",
-      ],
+      attributes: ["id", "name", "email", "subject", "approval_status", "updatedAt"],
       order: [["createdAt", "DESC"]],
     });
 
     return res.json({ success: true, students });
   } catch (err) {
     console.error("❌ Error fetching students:", err);
-    return res
-      .status(500)
-      .json({ success: false, error: "Failed to fetch students" });
+    return res.status(500).json({ success: false, error: "Failed to fetch students" });
   }
 };
 
 /* ============================================================
-   ✅ APPROVE STUDENT + SEND EMAIL
+   ✅ APPROVE STUDENT + SEND EMAIL (Student + Admin)
 ============================================================ */
 export const approveStudent = async (req, res) => {
   try {
@@ -361,49 +356,49 @@ export const approveStudent = async (req, res) => {
     student.approval_status = "approved";
     await student.save();
 
-    // Send email async (don't wait)
+    // === Send Student Email ===
     const { subject, html } = userApprovalEmail({
       id: student.id,
       name: student.name,
       email: student.email,
     });
 
+    sendEmailAsync({ to: student.email, subject, html });
+
+    // === Send Admin Notification ===
+    const adminEmail = process.env.ADMIN_EMAIL || process.env.MAIL_USER;
     sendEmailAsync({
-      to: student.email,
-      subject,
-      html,
-    }).then(success => {
-      if (success) {
-        console.log(`📧 Approval email sent to ${student.email}`);
-      }
+      to: adminEmail,
+      subject: `✅ Student Approved: ${student.name}`,
+      html: `
+        <div style="font-family:Arial,sans-serif;padding:20px;">
+          <h2>Student Approved</h2>
+          <p><strong>Name:</strong> ${student.name}</p>
+          <p><strong>Email:</strong> ${student.email}</p>
+          <p>The student has been approved successfully.</p>
+        </div>
+      `,
     });
 
     return res.json({
       success: true,
-      message: "Student approved successfully.",
-      student: {
-        id: student.id,
-        name: student.name,
-        email: student.email,
-        approval_status: student.approval_status,
-      },
+      message: "Student approved successfully and email sent.",
+      student,
     });
   } catch (err) {
     console.error("❌ Error approving student:", err);
-    return res
-      .status(500)
-      .json({ success: false, error: "Failed to approve student" });
+    return res.status(500).json({ success: false, error: "Failed to approve student" });
   }
 };
 
 /* ============================================================
-   ❌ REJECT STUDENT + SEND EMAIL
+   ❌ REJECT STUDENT + SEND EMAIL (Student + Admin)
 ============================================================ */
 export const rejectStudent = async (req, res) => {
   try {
     const { id } = req.params;
     const student = await User.findByPk(id);
-    
+
     if (!student || student.role !== "student") {
       return res.status(404).json({ error: "Student not found" });
     }
@@ -411,37 +406,37 @@ export const rejectStudent = async (req, res) => {
     student.approval_status = "rejected";
     await student.save();
 
-    // Send email async (don't wait)
+    // === Send Student Email ===
     const { subject, html } = userRejectionEmail({
       name: student.name,
       email: student.email,
     });
 
+    sendEmailAsync({ to: student.email, subject, html });
+
+    // === Send Admin Notification ===
+    const adminEmail = process.env.ADMIN_EMAIL || process.env.MAIL_USER;
     sendEmailAsync({
-      to: student.email,
-      subject,
-      html,
-    }).then(success => {
-      if (success) {
-        console.log(`📧 Rejection email sent to ${student.email}`);
-      }
+      to: adminEmail,
+      subject: `❌ Student Rejected: ${student.name}`,
+      html: `
+        <div style="font-family:Arial,sans-serif;padding:20px;">
+          <h2>Student Rejected</h2>
+          <p><strong>Name:</strong> ${student.name}</p>
+          <p><strong>Email:</strong> ${student.email}</p>
+          <p>The student's registration was rejected.</p>
+        </div>
+      `,
     });
 
     return res.json({
       success: true,
-      message: "Student rejected successfully.",
-      student: {
-        id: student.id,
-        name: student.name,
-        email: student.email,
-        approval_status: student.approval_status,
-      },
+      message: "Student rejected successfully and email sent.",
+      student,
     });
   } catch (err) {
     console.error("❌ Error rejecting student:", err);
-    return res
-      .status(500)
-      .json({ success: false, error: "Failed to reject student" });
+    return res.status(500).json({ success: false, error: "Failed to reject student" });
   }
 };
 
@@ -451,8 +446,8 @@ export const rejectStudent = async (req, res) => {
 export const getEnrollmentsByStatus = async (req, res) => {
   try {
     const { status } = req.query;
-
     const whereCondition = {};
+
     if (status && ["pending", "approved", "rejected"].includes(status)) {
       whereCondition.approval_status = status;
     }
@@ -460,11 +455,7 @@ export const getEnrollmentsByStatus = async (req, res) => {
     const enrollments = await Enrollment.findAll({
       where: whereCondition,
       include: [
-        {
-          model: User,
-          as: "student",
-          attributes: ["id", "name", "email", "approval_status"],
-        },
+        { model: User, as: "student", attributes: ["id", "name", "email", "approval_status"] },
         { model: Course, as: "course", attributes: ["id", "title", "price"] },
       ],
       order: [["createdAt", "DESC"]],
@@ -473,28 +464,21 @@ export const getEnrollmentsByStatus = async (req, res) => {
     return res.json({ success: true, enrollments });
   } catch (err) {
     console.error("❌ Error fetching enrollments:", err);
-    return res
-      .status(500)
-      .json({ success: false, error: "Failed to fetch enrollments" });
+    return res.status(500).json({ success: false, error: "Failed to fetch enrollments" });
   }
 };
 
 /* ============================================================
-   ✅ APPROVE ENROLLMENT + SEND EMAIL
+   ✅ APPROVE ENROLLMENT + SEND EMAIL (Student + Admin)
 ============================================================ */
 export const approveEnrollment = async (req, res) => {
   const transaction = await sequelize.transaction();
   try {
     const { id } = req.params;
-    console.log(`🔄 Approving enrollment ID: ${id}`);
 
     const enrollment = await Enrollment.findByPk(id, {
       include: [
-        {
-          model: User,
-          as: "student",
-          attributes: ["id", "name", "email", "approval_status"],
-        },
+        { model: User, as: "student", attributes: ["id", "name", "email", "approval_status"] },
         { model: Course, as: "course", attributes: ["id", "title", "price"] },
       ],
       transaction,
@@ -502,23 +486,14 @@ export const approveEnrollment = async (req, res) => {
 
     if (!enrollment) {
       await transaction.rollback();
-      return res
-        .status(404)
-        .json({ success: false, error: "Enrollment not found" });
-    }
-
-    if (enrollment.approval_status === "approved") {
-      await transaction.rollback();
-      return res
-        .status(400)
-        .json({ success: false, error: "Enrollment already approved" });
+      return res.status(404).json({ success: false, error: "Enrollment not found" });
     }
 
     if (enrollment.student?.approval_status !== "approved") {
       await transaction.rollback();
       return res.status(400).json({
         success: false,
-        error: "Cannot approve enrollment: student account not approved",
+        error: "Cannot approve enrollment: student not approved",
       });
     }
 
@@ -538,9 +513,7 @@ export const approveEnrollment = async (req, res) => {
 
     await transaction.commit();
 
-    console.log(`✅ Enrollment ${id} approved successfully`);
-
-    // Send email async (don't wait)
+    // === Send Student Email ===
     const htmlContent = courseEnrollmentApproved({
       studentName: enrollment.student.name,
       courseTitle: enrollment.course.title,
@@ -551,10 +524,22 @@ export const approveEnrollment = async (req, res) => {
       to: enrollment.student.email,
       subject: `✅ Enrollment Approved: ${enrollment.course.title}`,
       html: htmlContent,
-    }).then(success => {
-      if (success) {
-        console.log(`📧 Enrollment approval email sent to ${enrollment.student.email}`);
-      }
+    });
+
+    // === Send Admin Notification ===
+    const adminEmail = process.env.ADMIN_EMAIL || process.env.MAIL_USER;
+    sendEmailAsync({
+      to: adminEmail,
+      subject: `✅ Payment Approved: ${enrollment.student.name}`,
+      html: `
+        <div style="font-family:Arial,sans-serif;padding:20px;">
+          <h2>Payment Approved</h2>
+          <p><strong>Student:</strong> ${enrollment.student.name}</p>
+          <p><strong>Email:</strong> ${enrollment.student.email}</p>
+          <p><strong>Course:</strong> ${enrollment.course.title}</p>
+          <p><strong>Price:</strong> $${enrollment.course.price}</p>
+        </div>
+      `,
     });
 
     return res.json({
@@ -565,41 +550,31 @@ export const approveEnrollment = async (req, res) => {
   } catch (err) {
     await transaction.rollback();
     console.error("❌ Error approving enrollment:", err);
-    return res
-      .status(500)
-      .json({ success: false, error: "Failed to approve enrollment" });
+    return res.status(500).json({ success: false, error: "Failed to approve enrollment" });
   }
 };
 
 /* ============================================================
-   ❌ REJECT ENROLLMENT + SEND EMAIL
+   ❌ REJECT ENROLLMENT + SEND EMAIL (Student + Admin)
 ============================================================ */
 export const rejectEnrollment = async (req, res) => {
   try {
     const { id } = req.params;
     const enrollment = await Enrollment.findByPk(id, {
       include: [
-        {
-          model: User,
-          as: "student",
-          attributes: ["id", "name", "email"],
-        },
+        { model: User, as: "student", attributes: ["id", "name", "email"] },
         { model: Course, as: "course", attributes: ["id", "title"] },
       ],
     });
-    
+
     if (!enrollment) {
-      return res
-        .status(404)
-        .json({ success: false, error: "Enrollment not found" });
+      return res.status(404).json({ success: false, error: "Enrollment not found" });
     }
 
     enrollment.approval_status = "rejected";
     await enrollment.save();
 
-    console.log(`✅ Enrollment ${id} rejected successfully`);
-
-    // Send email async (don't wait)
+    // === Send Student Email ===
     const htmlContent = courseEnrollmentRejected({
       studentName: enrollment.student.name,
       courseTitle: enrollment.course.title,
@@ -609,21 +584,30 @@ export const rejectEnrollment = async (req, res) => {
       to: enrollment.student.email,
       subject: `❌ Enrollment Rejected: ${enrollment.course.title}`,
       html: htmlContent,
-    }).then(success => {
-      if (success) {
-        console.log(`📧 Enrollment rejection email sent to ${enrollment.student.email}`);
-      }
+    });
+
+    // === Send Admin Notification ===
+    const adminEmail = process.env.ADMIN_EMAIL || process.env.MAIL_USER;
+    sendEmailAsync({
+      to: adminEmail,
+      subject: `❌ Payment Rejected: ${enrollment.student.name}`,
+      html: `
+        <div style="font-family:Arial,sans-serif;padding:20px;">
+          <h2>Payment Rejected</h2>
+          <p><strong>Student:</strong> ${enrollment.student.name}</p>
+          <p><strong>Email:</strong> ${enrollment.student.email}</p>
+          <p><strong>Course:</strong> ${enrollment.course.title}</p>
+        </div>
+      `,
     });
 
     return res.json({
       success: true,
-      message: "Enrollment rejected successfully.",
+      message: "Enrollment rejected successfully and email sent.",
       enrollment,
     });
   } catch (err) {
     console.error("❌ Error rejecting enrollment:", err);
-    return res
-      .status(500)
-      .json({ success: false, error: "Failed to reject enrollment" });
+    return res.status(500).json({ success: false, error: "Failed to reject enrollment" });
   }
 };
