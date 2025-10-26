@@ -64,7 +64,6 @@
 
 
 
-
 // routes/admin.js
 import express from "express";
 import {
@@ -86,45 +85,36 @@ const router = express.Router();
 router.use(authenticateToken, isAdmin);
 
 /* ========================================================
-   👩‍🎓 Student Management (INSTANT - No Email)
+   👩‍🎓 Student Management
 ======================================================== */
 router.get("/students", getStudentsByStatus);
 router.patch("/students/:id/approve", approveStudent);
 router.patch("/students/:id/reject", rejectStudent);
 
 /* ========================================================
-   🧾 Enrollment Management (INSTANT - No Email)
+   🧾 Enrollment Management
 ======================================================== */
 router.get("/enrollments", getEnrollmentsByStatus);
 router.patch("/enrollments/:id/approve", approveEnrollment);
 router.patch("/enrollments/:id/reject", rejectEnrollment);
 
 /* ========================================================
-   ✉️ Manual Email Routes (Separate - Admin can use later)
+   ✉️ MANUAL EMAIL ROUTES (Admin can send emails manually)
 ======================================================== */
-// CHANGED: Use :id instead of :studentId to match frontend
 router.post("/students/:id/send-approval-email", sendStudentApprovalEmail);
 router.post("/students/:id/send-rejection-email", sendStudentRejectionEmail);
 router.post("/students/:id/send-welcome-email", sendStudentWelcomeEmail);
 
 /* ========================================================
-   🏥 Health Check for Admin
+   🏥 Health Check
 ======================================================== */
 router.get("/health", async (req, res) => {
-  try {
-    res.json({
-      status: "ok",
-      message: "Admin routes are working",
-      timestamp: new Date().toISOString(),
-      user: {
-        id: req.user.id,
-        email: req.user.email,
-        role: req.user.role,
-      },
-    });
-  } catch (error) {
-    res.status(500).json({ success: false, error: error.message });
-  }
+  res.json({
+    status: "ok",
+    message: "Admin routes are working",
+    timestamp: new Date().toISOString(),
+    user: req.user
+  });
 });
 
 export default router;

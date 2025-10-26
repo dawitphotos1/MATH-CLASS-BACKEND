@@ -12,7 +12,7 @@ import listEndpoints from "express-list-endpoints";
 import sequelize from "./config/db.js";
 
 import authRoutes from "./routes/authRoutes.js";
-import adminRoutes from "./routes/adminRoutes.js";
+import adminRoutes from "./routes/admin.js"; // ✅ Use the complete version
 import courseRoutes from "./routes/courses.js";
 import lessonRoutes from "./routes/lessonRoutes.js";
 import enrollmentRoutes from "./routes/enrollmentRoutes.js";

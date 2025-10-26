@@ -387,13 +387,12 @@
 
 
 
-
 // controllers/adminController.js
 import db, { sequelize } from "../models/index.js";
 const { User, Enrollment, Course, UserCourseAccess } = db;
 
 /* ============================================================
-   👩‍🎓 STUDENTS - INSTANT APPROVAL (No Email Dependencies)
+   👩‍🎓 STUDENT MANAGEMENT
 ============================================================ */
 export const getStudentsByStatus = async (req, res) => {
   try {
@@ -416,9 +415,6 @@ export const getStudentsByStatus = async (req, res) => {
   }
 };
 
-/* ============================================================
-   ✅ APPROVE STUDENT - INSTANT RESPONSE (No Email)
-============================================================ */
 export const approveStudent = async (req, res) => {
   try {
     const { id } = req.params;
@@ -428,16 +424,14 @@ export const approveStudent = async (req, res) => {
       return res.status(404).json({ error: "Student not found" });
     }
 
-    // Update student status only - SUPER FAST
     student.approval_status = "approved";
     await student.save();
 
-    console.log(`✅ Student ${student.name} (${student.email}) approved instantly`);
+    console.log(`✅ Student ${student.name} (${student.email}) approved`);
 
-    // 🚀 INSTANT RESPONSE - No email delays
     return res.json({
       success: true,
-      message: "Student approved successfully! The student can now log in.",
+      message: "Student approved successfully!",
       student: {
         id: student.id,
         name: student.name,
@@ -455,9 +449,6 @@ export const approveStudent = async (req, res) => {
   }
 };
 
-/* ============================================================
-   ❌ REJECT STUDENT - INSTANT RESPONSE (No Email)
-============================================================ */
 export const rejectStudent = async (req, res) => {
   try {
     const { id } = req.params;
@@ -470,7 +461,7 @@ export const rejectStudent = async (req, res) => {
     student.approval_status = "rejected";
     await student.save();
 
-    console.log(`❌ Student ${student.name} (${student.email}) rejected instantly`);
+    console.log(`❌ Student ${student.name} (${student.email}) rejected`);
 
     return res.json({
       success: true,
@@ -490,7 +481,7 @@ export const rejectStudent = async (req, res) => {
 };
 
 /* ============================================================
-   🎓 ENROLLMENTS - INSTANT APPROVAL (No Email)
+   🎓 ENROLLMENT MANAGEMENT
 ============================================================ */
 export const getEnrollmentsByStatus = async (req, res) => {
   try {
@@ -521,9 +512,6 @@ export const getEnrollmentsByStatus = async (req, res) => {
   }
 };
 
-/* ============================================================
-   ✅ APPROVE ENROLLMENT - INSTANT RESPONSE (No Email)
-============================================================ */
 export const approveEnrollment = async (req, res) => {
   const transaction = await sequelize.transaction();
   try {
@@ -560,11 +548,9 @@ export const approveEnrollment = async (req, res) => {
       });
     }
 
-    // ✅ Update enrollment status
     enrollment.approval_status = "approved";
     await enrollment.save({ transaction });
 
-    // ✅ Ensure UserCourseAccess record exists or update it
     await UserCourseAccess.upsert(
       {
         user_id: enrollment.user_id,
@@ -576,10 +562,9 @@ export const approveEnrollment = async (req, res) => {
       { transaction }
     );
 
-    // ✅ Commit DB transaction
     await transaction.commit();
 
-    console.log(`✅ Enrollment ${id} approved instantly for student ${enrollment.student.name}`);
+    console.log(`✅ Enrollment ${id} approved for student ${enrollment.student.name}`);
 
     return res.json({
       success: true,
@@ -594,9 +579,6 @@ export const approveEnrollment = async (req, res) => {
   }
 };
 
-/* ============================================================
-   ❌ REJECT ENROLLMENT - INSTANT RESPONSE
-============================================================ */
 export const rejectEnrollment = async (req, res) => {
   try {
     const { id } = req.params;
@@ -609,7 +591,7 @@ export const rejectEnrollment = async (req, res) => {
     enrollment.approval_status = "rejected";
     await enrollment.save();
 
-    console.log(`❌ Enrollment ${id} rejected instantly`);
+    console.log(`❌ Enrollment ${id} rejected`);
 
     return res.json({
       success: true,
@@ -623,18 +605,19 @@ export const rejectEnrollment = async (req, res) => {
 };
 
 /* ============================================================
-   ✉️ MANUAL EMAIL ENDPOINTS (Separate - Admin can use later)
+   ✉️ MANUAL EMAIL FUNCTIONS (Admin can send manually)
 ============================================================ */
 export const sendStudentApprovalEmail = async (req, res) => {
   try {
-    const { id } = req.params; // CHANGED: from studentId to id
+    const { id } = req.params;
+    console.log(`📧 Sending approval email for student ID: ${id}`);
+    
     const student = await User.findByPk(id);
-
     if (!student) {
       return res.status(404).json({ error: "Student not found" });
     }
 
-    // Import email dependencies only when needed
+    // Dynamic import to avoid circular dependencies
     const sendEmail = (await import("../utils/sendEmail.js")).default;
     
     const approvalHtml = `
@@ -656,30 +639,32 @@ export const sendStudentApprovalEmail = async (req, res) => {
       html: approvalHtml,
     });
 
+    console.log(`✅ Approval email sent to ${student.email}`);
+
     return res.json({
       success: true,
       message: `Approval email sent to ${student.email}`
     });
 
   } catch (error) {
-    console.error("❌ Manual email error:", error);
+    console.error("❌ Manual approval email error:", error);
     return res.status(500).json({
       success: false,
-      error: "Failed to send email: " + error.message
+      error: "Failed to send approval email: " + error.message
     });
   }
 };
 
 export const sendStudentRejectionEmail = async (req, res) => {
   try {
-    const { id } = req.params; // CHANGED: from studentId to id
+    const { id } = req.params;
+    console.log(`📧 Sending rejection email for student ID: ${id}`);
+    
     const student = await User.findByPk(id);
-
     if (!student) {
       return res.status(404).json({ error: "Student not found" });
     }
 
-    // Import email dependencies only when needed
     const sendEmail = (await import("../utils/sendEmail.js")).default;
 
     const rejectionHtml = `
@@ -700,33 +685,32 @@ export const sendStudentRejectionEmail = async (req, res) => {
       html: rejectionHtml,
     });
 
+    console.log(`✅ Rejection email sent to ${student.email}`);
+
     return res.json({
       success: true,
       message: `Rejection email sent to ${student.email}`
     });
 
   } catch (error) {
-    console.error("❌ Manual email error:", error);
+    console.error("❌ Manual rejection email error:", error);
     return res.status(500).json({
       success: false,
-      error: "Failed to send email: " + error.message
+      error: "Failed to send rejection email: " + error.message
     });
   }
 };
 
-/* ============================================================
-   🎉 WELCOME EMAIL ENDPOINT (Additional email option)
-============================================================ */
 export const sendStudentWelcomeEmail = async (req, res) => {
   try {
-    const { id } = req.params; // CHANGED: from studentId to id
+    const { id } = req.params;
+    console.log(`📧 Sending welcome email for student ID: ${id}`);
+    
     const student = await User.findByPk(id);
-
     if (!student) {
       return res.status(404).json({ error: "Student not found" });
     }
 
-    // Import email dependencies only when needed
     const sendEmail = (await import("../utils/sendEmail.js")).default;
     
     const welcomeHtml = `
@@ -758,6 +742,8 @@ export const sendStudentWelcomeEmail = async (req, res) => {
       subject: "🎓 Welcome to Math Class Platform!",
       html: welcomeHtml,
     });
+
+    console.log(`✅ Welcome email sent to ${student.email}`);
 
     return res.json({
       success: true,
