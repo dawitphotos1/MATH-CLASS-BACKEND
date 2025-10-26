@@ -176,31 +176,17 @@
 
 
 
-
 // controllers/emailController.js
 import db from "../models/index.js";
+import sendEmail from "../utils/sendEmail.js"; // ✅ Real email import
+
 const { User } = db;
 
 /* ============================================================
    ✉️ MANUAL EMAIL SENDING (Separate from approval process)
 ============================================================ */
 
-// Simple mock email function for immediate testing
-const mockSendEmail = async ({ to, subject, html }) => {
-  console.log('📧 [MOCK] Would send email to:', to);
-  console.log('📧 [MOCK] Subject:', subject);
-  
-  // Simulate very short delay (100ms instead of 1000ms)
-  await new Promise(resolve => setTimeout(resolve, 100));
-  
-  return {
-    messageId: 'mock-message-id',
-    response: '250 Mock email sent successfully'
-  };
-};
-
-// Use mock for now - replace with real email later
-const sendEmail = mockSendEmail;
+// ❌ REMOVED mock function - using real email now
 
 export const sendStudentApprovalEmail = async (req, res) => {
   try {
@@ -212,7 +198,7 @@ export const sendStudentApprovalEmail = async (req, res) => {
       return res.status(404).json({ error: "Student not found" });
     }
 
-    console.log(`📧 Sending approval email to: ${student.email}`);
+    console.log(`📧 Sending REAL approval email to: ${student.email}`);
 
     const approvalHtml = `
       <div style="font-family:Arial,sans-serif;padding:20px;background:#f8f9fa;border-radius:8px;">
@@ -233,7 +219,7 @@ export const sendStudentApprovalEmail = async (req, res) => {
       html: approvalHtml,
     });
 
-    console.log("✅ Manual approval email sent successfully");
+    console.log("✅ REAL approval email sent successfully:", emailResult);
 
     return res.json({
       success: true,
@@ -242,7 +228,8 @@ export const sendStudentApprovalEmail = async (req, res) => {
     });
 
   } catch (error) {
-    console.error("❌ Manual approval email error:", error);
+    console.error("❌ REAL approval email error:", error);
+    console.error("❌ Full error details:", error.stack);
     return res.status(500).json({
       success: false,
       error: "Failed to send approval email: " + error.message
@@ -260,7 +247,7 @@ export const sendStudentWelcomeEmail = async (req, res) => {
       return res.status(404).json({ error: "Student not found" });
     }
 
-    console.log(`📧 Sending welcome email to: ${student.email}`);
+    console.log(`📧 Sending REAL welcome email to: ${student.email}`);
 
     const welcomeHtml = `
       <div style="font-family:Arial,sans-serif;padding:20px;background:#f8f9fa;border-radius:8px;">
@@ -291,7 +278,7 @@ export const sendStudentWelcomeEmail = async (req, res) => {
       html: welcomeHtml,
     });
 
-    console.log("✅ Manual welcome email sent successfully");
+    console.log("✅ REAL welcome email sent successfully:", emailResult);
 
     return res.json({
       success: true,
@@ -300,7 +287,8 @@ export const sendStudentWelcomeEmail = async (req, res) => {
     });
 
   } catch (error) {
-    console.error("❌ Manual welcome email error:", error);
+    console.error("❌ REAL welcome email error:", error);
+    console.error("❌ Full error details:", error.stack);
     return res.status(500).json({
       success: false,
       error: "Failed to send welcome email: " + error.message
@@ -318,7 +306,7 @@ export const sendStudentRejectionEmail = async (req, res) => {
       return res.status(404).json({ error: "Student not found" });
     }
 
-    console.log(`📧 Sending rejection email to: ${student.email}`);
+    console.log(`📧 Sending REAL rejection email to: ${student.email}`);
 
     const rejectionHtml = `
       <div style="font-family:Arial,sans-serif;padding:20px;background:#f8f9fa;border-radius:8px;">
@@ -338,7 +326,7 @@ export const sendStudentRejectionEmail = async (req, res) => {
       html: rejectionHtml,
     });
 
-    console.log("✅ Manual rejection email sent successfully");
+    console.log("✅ REAL rejection email sent successfully:", emailResult);
 
     return res.json({
       success: true,
@@ -347,7 +335,8 @@ export const sendStudentRejectionEmail = async (req, res) => {
     });
 
   } catch (error) {
-    console.error("❌ Manual rejection email error:", error);
+    console.error("❌ REAL rejection email error:", error);
+    console.error("❌ Full error details:", error.stack);
     return res.status(500).json({
       success: false,
       error: "Failed to send rejection email: " + error.message

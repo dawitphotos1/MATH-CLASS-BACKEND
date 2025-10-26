@@ -51,7 +51,6 @@
 // export default sendEmail;
 
 
-
 // utils/sendEmail.js
 import nodemailer from 'nodemailer';
 
@@ -66,41 +65,25 @@ const sendEmail = async ({ to, subject, html }) => {
       throw new Error('Email credentials are missing. Check EMAIL_USERNAME and EMAIL_PASSWORD environment variables.');
     }
 
-    // Create transporter with timeout
+    // Create transporter
     const transporter = nodemailer.createTransport({
       service: process.env.EMAIL_SERVICE || 'gmail',
       auth: {
         user: process.env.EMAIL_USERNAME,
         pass: process.env.EMAIL_PASSWORD,
       },
-      // Add timeout settings
-      connectionTimeout: 10000, // 10 seconds
-      socketTimeout: 10000,     // 10 seconds
-      greetingTimeout: 10000,   // 10 seconds
     });
 
-    console.log('📧 Transporter created, sending email to:', to);
+    console.log('📧 Sending email to:', to);
     
-    // Verify connection first
-    await transporter.verify();
-    console.log('✅ Email server connection verified');
-
-    // Send email with timeout
-    const mailOptions = {
+    // Send email
+    const result = await transporter.sendMail({
       from: process.env.EMAIL_FROM || process.env.EMAIL_USERNAME,
       to,
       subject,
       html,
-    };
-
-    console.log('📧 Sending email with options:', { 
-      to, 
-      subject, 
-      from: mailOptions.from 
     });
-    
-    const result = await transporter.sendMail(mailOptions);
-    
+
     console.log('✅ Email sent successfully. Message ID:', result.messageId);
     console.log('✅ Response:', result.response);
     
@@ -110,15 +93,12 @@ const sendEmail = async ({ to, subject, html }) => {
     console.error('❌ Email sending failed:');
     console.error('❌ Error message:', error.message);
     console.error('❌ Error code:', error.code);
-    console.error('❌ Error stack:', error.stack);
     
     // More specific error messages
     if (error.code === 'EAUTH') {
       throw new Error('Email authentication failed. Check your email credentials and App Password.');
     } else if (error.code === 'ECONNECTION') {
       throw new Error('Cannot connect to email service. Check your network and email service configuration.');
-    } else if (error.code === 'ETIMEDOUT') {
-      throw new Error('Email connection timed out. The email service might be down or blocked.');
     }
     
     throw new Error(`Email sending failed: ${error.message}`);
