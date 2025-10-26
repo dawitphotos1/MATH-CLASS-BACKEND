@@ -64,6 +64,7 @@
 
 
 
+
 // routes/admin.js
 import express from "express";
 import {
@@ -74,7 +75,8 @@ import {
   approveEnrollment,
   rejectEnrollment,
   sendStudentApprovalEmail,
-  sendStudentRejectionEmail
+  sendStudentRejectionEmail,
+  sendStudentWelcomeEmail
 } from "../controllers/adminController.js";
 import { authenticateToken, isAdmin } from "../middleware/authMiddleware.js";
 
@@ -102,6 +104,7 @@ router.patch("/enrollments/:id/reject", rejectEnrollment);
 ======================================================== */
 router.post("/students/:studentId/send-approval-email", sendStudentApprovalEmail);
 router.post("/students/:studentId/send-rejection-email", sendStudentRejectionEmail);
+router.post("/students/:studentId/send-welcome-email", sendStudentWelcomeEmail);
 
 /* ========================================================
    🏥 Health Check for Admin

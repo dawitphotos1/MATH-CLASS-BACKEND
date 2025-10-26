@@ -646,3 +646,62 @@ export const sendStudentRejectionEmail = async (req, res) => {
     });
   }
 };
+
+/* ============================================================
+   🎉 WELCOME EMAIL ENDPOINT (Additional email option)
+============================================================ */
+export const sendStudentWelcomeEmail = async (req, res) => {
+  try {
+    const { studentId } = req.params;
+    const student = await User.findByPk(studentId);
+
+    if (!student) {
+      return res.status(404).json({ error: "Student not found" });
+    }
+
+    // Import email dependencies only when needed
+    const sendEmail = (await import("../utils/sendEmail.js")).default;
+    
+    const welcomeHtml = `
+      <div style="font-family:Arial,sans-serif;padding:20px;background:#f8f9fa;border-radius:8px;">
+        <h2 style="color:#6f42c1;">🎓 Welcome to Math Class Platform!</h2>
+        <div style="background:white;padding:20px;border-radius:8px;margin:15px 0;">
+          <p>Hello <strong>${student.name}</strong>,</p>
+          <p>Welcome to our Math Class Platform! We're excited to have you join our learning community.</p>
+          
+          <div style="background:#f0f8ff;padding:15px;border-radius:5px;margin:15px 0;">
+            <h3 style="color:#6f42c1;margin-top:0;">What's Next?</h3>
+            <ul style="margin-bottom:0;">
+              <li>📚 Explore available courses</li>
+              <li>🎥 Watch video lessons</li>
+              <li>📝 Complete practice exercises</li>
+              <li>📊 Track your progress</li>
+            </ul>
+          </div>
+          
+          <p><strong>Get Started:</strong> <a href="${process.env.FRONTEND_URL}/courses" style="color:#6f42c1;font-weight:bold;">Browse Courses</a></p>
+          <p><strong>Need Help?</strong> Contact our support team anytime.</p>
+        </div>
+        <p style="color:#6c757d;font-size:14px;">We're excited to help you achieve your math goals! 🚀</p>
+      </div>
+    `;
+
+    await sendEmail({
+      to: student.email,
+      subject: "🎓 Welcome to Math Class Platform!",
+      html: welcomeHtml,
+    });
+
+    return res.json({
+      success: true,
+      message: `Welcome email sent to ${student.email}`
+    });
+
+  } catch (error) {
+    console.error("❌ Welcome email error:", error);
+    return res.status(500).json({
+      success: false,
+      error: "Failed to send welcome email: " + error.message
+    });
+  }
+};
