@@ -390,7 +390,7 @@ import db, { sequelize } from "../models/index.js";
 const { User, Enrollment, Course, UserCourseAccess } = db;
 
 /* ============================================================
-   👩‍🎓 STUDENT MANAGEMENT
+   👩‍🎓 STUDENT MANAGEMENT - INSTANT APPROVAL (NO EMAIL)
 ============================================================ */
 export const getStudentsByStatus = async (req, res) => {
   try {
@@ -422,14 +422,15 @@ export const approveStudent = async (req, res) => {
       return res.status(404).json({ error: "Student not found" });
     }
 
+    // INSTANT APPROVAL - No email delays
     student.approval_status = "approved";
     await student.save();
 
-    console.log(`✅ Student ${student.name} (${student.email}) approved`);
+    console.log(`✅ Student ${student.name} (${student.email}) approved instantly`);
 
     return res.json({
       success: true,
-      message: "Student approved successfully!",
+      message: "Student approved successfully! The student can now log in.",
       student: {
         id: student.id,
         name: student.name,
@@ -459,7 +460,7 @@ export const rejectStudent = async (req, res) => {
     student.approval_status = "rejected";
     await student.save();
 
-    console.log(`❌ Student ${student.name} (${student.email}) rejected`);
+    console.log(`❌ Student ${student.name} (${student.email}) rejected instantly`);
 
     return res.json({
       success: true,
@@ -479,7 +480,7 @@ export const rejectStudent = async (req, res) => {
 };
 
 /* ============================================================
-   🎓 ENROLLMENT MANAGEMENT
+   🎓 ENROLLMENT MANAGEMENT - INSTANT APPROVAL (NO EMAIL)
 ============================================================ */
 export const getEnrollmentsByStatus = async (req, res) => {
   try {
@@ -546,6 +547,7 @@ export const approveEnrollment = async (req, res) => {
       });
     }
 
+    // INSTANT APPROVAL - No email delays
     enrollment.approval_status = "approved";
     await enrollment.save({ transaction });
 
@@ -562,7 +564,7 @@ export const approveEnrollment = async (req, res) => {
 
     await transaction.commit();
 
-    console.log(`✅ Enrollment ${id} approved for student ${enrollment.student.name}`);
+    console.log(`✅ Enrollment ${id} approved instantly for student ${enrollment.student.name}`);
 
     return res.json({
       success: true,
@@ -589,7 +591,7 @@ export const rejectEnrollment = async (req, res) => {
     enrollment.approval_status = "rejected";
     await enrollment.save();
 
-    console.log(`❌ Enrollment ${id} rejected`);
+    console.log(`❌ Enrollment ${id} rejected instantly`);
 
     return res.json({
       success: true,
@@ -599,183 +601,5 @@ export const rejectEnrollment = async (req, res) => {
   } catch (err) {
     console.error("❌ Error rejecting enrollment:", err);
     return res.status(500).json({ success: false, error: "Failed to reject enrollment" });
-  }
-};
-
-/* ============================================================
-   ✉️ MANUAL EMAIL FUNCTIONS (Admin can send manually)
-============================================================ */
-export const sendStudentApprovalEmail = async (req, res) => {
-  try {
-    const { id } = req.params;
-    console.log(`📧 Sending approval email for student ID: ${id}`);
-    
-    const student = await User.findByPk(id);
-    if (!student) {
-      console.log("❌ Student not found");
-      return res.status(404).json({ error: "Student not found" });
-    }
-
-    console.log(`📧 Found student: ${student.name} (${student.email})`);
-
-    // Dynamic import to avoid circular dependencies
-    const sendEmail = (await import("../utils/sendEmail.js")).default;
-    console.log("✅ Email module loaded");
-    
-    const approvalHtml = `
-      <div style="font-family:Arial,sans-serif;padding:20px;background:#f8f9fa;border-radius:8px;">
-        <h2 style="color:#28a745;">🎉 Account Approved!</h2>
-        <div style="background:white;padding:15px;border-radius:5px;margin:10px 0;">
-          <p>Hello <strong>${student.name}</strong>,</p>
-          <p>Great news! Your Math Class Platform account has been approved.</p>
-          <p>You can now log in and access all available courses.</p>
-          <p><strong>Login URL:</strong> <a href="${process.env.FRONTEND_URL}/login">${process.env.FRONTEND_URL}/login</a></p>
-        </div>
-        <p style="color:#6c757d;font-size:14px;">Happy Learning! 🎓</p>
-      </div>
-    `;
-
-    console.log(`📧 Attempting to send email to: ${student.email}`);
-    
-    const emailResult = await sendEmail({
-      to: student.email,
-      subject: "🎉 Your Math Class Account Has Been Approved!",
-      html: approvalHtml,
-    });
-
-    console.log("✅ Email sent successfully:", emailResult);
-
-    return res.json({
-      success: true,
-      message: `Approval email sent to ${student.email}`
-    });
-
-  } catch (error) {
-    console.error("❌ Manual approval email error:", error);
-    console.error("❌ Full error details:", error.stack);
-    return res.status(500).json({
-      success: false,
-      error: "Failed to send email: " + error.message
-    });
-  }
-};
-
-export const sendStudentRejectionEmail = async (req, res) => {
-  try {
-    const { id } = req.params;
-    console.log(`📧 Sending rejection email for student ID: ${id}`);
-    
-    const student = await User.findByPk(id);
-    if (!student) {
-      console.log("❌ Student not found");
-      return res.status(404).json({ error: "Student not found" });
-    }
-
-    console.log(`📧 Found student: ${student.name} (${student.email})`);
-
-    const sendEmail = (await import("../utils/sendEmail.js")).default;
-    console.log("✅ Email module loaded");
-
-    const rejectionHtml = `
-      <div style="font-family:Arial,sans-serif;padding:20px;background:#f8f9fa;border-radius:8px;">
-        <h2 style="color:#dc3545;">Account Not Approved</h2>
-        <div style="background:white;padding:15px;border-radius:5px;margin:10px 0;">
-          <p>Hello ${student.name},</p>
-          <p>We regret to inform you that your Math Class Platform account application has not been approved.</p>
-          <p>If you believe this is a mistake, please contact our support team.</p>
-        </div>
-        <p style="color:#6c757d;font-size:14px;">Thank you for your interest in our platform.</p>
-      </div>
-    `;
-
-    console.log(`📧 Attempting to send rejection email to: ${student.email}`);
-    
-    const emailResult = await sendEmail({
-      to: student.email,
-      subject: "Math Class Platform - Account Not Approved",
-      html: rejectionHtml,
-    });
-
-    console.log("✅ Rejection email sent successfully:", emailResult);
-
-    console.log(`✅ Rejection email sent to ${student.email}`);
-
-    return res.json({
-      success: true,
-      message: `Rejection email sent to ${student.email}`
-    });
-
-  } catch (error) {
-    console.error("❌ Manual rejection email error:", error);
-    console.error("❌ Full error details:", error.stack);
-    return res.status(500).json({
-      success: false,
-      error: "Failed to send rejection email: " + error.message
-    });
-  }
-};
-
-export const sendStudentWelcomeEmail = async (req, res) => {
-  try {
-    const { id } = req.params;
-    console.log(`📧 Sending welcome email for student ID: ${id}`);
-    
-    const student = await User.findByPk(id);
-    if (!student) {
-      console.log("❌ Student not found");
-      return res.status(404).json({ error: "Student not found" });
-    }
-
-    console.log(`📧 Found student: ${student.name} (${student.email})`);
-
-    const sendEmail = (await import("../utils/sendEmail.js")).default;
-    console.log("✅ Email module loaded");
-    
-    const welcomeHtml = `
-      <div style="font-family:Arial,sans-serif;padding:20px;background:#f8f9fa;border-radius:8px;">
-        <h2 style="color:#6f42c1;">🎓 Welcome to Math Class Platform!</h2>
-        <div style="background:white;padding:20px;border-radius:8px;margin:15px 0;">
-          <p>Hello <strong>${student.name}</strong>,</p>
-          <p>Welcome to our Math Class Platform! We're excited to have you join our learning community.</p>
-          
-          <div style="background:#f0f8ff;padding:15px;border-radius:5px;margin:15px 0;">
-            <h3 style="color:#6f42c1;margin-top:0;">What's Next?</h3>
-            <ul style="margin-bottom:0;">
-              <li>📚 Explore available courses</li>
-              <li>🎥 Watch video lessons</li>
-              <li>📝 Complete practice exercises</li>
-              <li>📊 Track your progress</li>
-            </ul>
-          </div>
-          
-          <p><strong>Get Started:</strong> <a href="${process.env.FRONTEND_URL}/courses" style="color:#6f42c1;font-weight:bold;">Browse Courses</a></p>
-          <p><strong>Need Help?</strong> Contact our support team anytime.</p>
-        </div>
-        <p style="color:#6c757d;font-size:14px;">We're excited to help you achieve your math goals! 🚀</p>
-      </div>
-    `;
-
-    console.log(`📧 Attempting to send welcome email to: ${student.email}`);
-    
-    const emailResult = await sendEmail({
-      to: student.email,
-      subject: "🎓 Welcome to Math Class Platform!",
-      html: welcomeHtml,
-    });
-
-    console.log("✅ Welcome email sent successfully:", emailResult);
-
-    return res.json({
-      success: true,
-      message: `Welcome email sent to ${student.email}`
-    });
-
-  } catch (error) {
-    console.error("❌ Welcome email error:", error);
-    console.error("❌ Full error details:", error.stack);
-    return res.status(500).json({
-      success: false,
-      error: "Failed to send welcome email: " + error.message
-    });
   }
 };
