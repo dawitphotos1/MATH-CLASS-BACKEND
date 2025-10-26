@@ -177,13 +177,45 @@
 
 // controllers/emailController.js
 import db from "../models/index.js";
-import sendEmail from "../utils/sendEmail.js"; // ✅ Real Yahoo Mail
-
 const { User } = db;
 
 /* ============================================================
    ✉️ MANUAL EMAIL SENDING (Separate from approval process)
 ============================================================ */
+
+// Mock email function for fallback
+const mockSendEmail = async ({ to, subject, html }) => {
+  console.log('📧 [MOCK] Would send email to:', to);
+  console.log('📧 [MOCK] Subject:', subject);
+  
+  await new Promise(resolve => setTimeout(resolve, 500));
+  
+  return {
+    messageId: 'mock-message-id',
+    response: '250 Mock email sent successfully'
+  };
+};
+
+// Smart email sender with fallback
+const sendEmailWithFallback = async (emailOptions) => {
+  try {
+    // Dynamic import to avoid loading issues
+    const sendEmail = (await import("../utils/sendEmail.js")).default;
+    console.log("✅ Attempting to send via Yahoo Mail...");
+    
+    // Set a timeout for the email operation
+    const emailPromise = sendEmail(emailOptions);
+    const timeoutPromise = new Promise((_, reject) => 
+      setTimeout(() => reject(new Error('Email operation timed out after 8 seconds')), 8000)
+    );
+    
+    return await Promise.race([emailPromise, timeoutPromise]);
+    
+  } catch (error) {
+    console.log("⚠️ Yahoo Mail failed, using mock fallback:", error.message);
+    return await mockSendEmail(emailOptions);
+  }
+};
 
 export const sendStudentApprovalEmail = async (req, res) => {
   try {
@@ -195,7 +227,7 @@ export const sendStudentApprovalEmail = async (req, res) => {
       return res.status(404).json({ error: "Student not found" });
     }
 
-    console.log(`📧 Sending Yahoo approval email to: ${student.email}`);
+    console.log(`📧 Sending to: ${student.email}`);
 
     const approvalHtml = `
       <div style="font-family:Arial,sans-serif;padding:20px;background:#f8f9fa;border-radius:8px;">
@@ -210,22 +242,24 @@ export const sendStudentApprovalEmail = async (req, res) => {
       </div>
     `;
 
-    const emailResult = await sendEmail({
+    const emailResult = await sendEmailWithFallback({
       to: student.email,
       subject: "🎉 Your Math Class Account Has Been Approved!",
       html: approvalHtml,
     });
 
-    console.log("✅ Yahoo approval email sent successfully");
+    const isMock = emailResult.response.includes('Mock');
+    
+    console.log(`✅ ${isMock ? 'MOCK' : 'REAL'} approval email sent successfully`);
 
     return res.json({
       success: true,
-      message: `Approval email sent to ${student.email}`,
-      emailResult
+      message: `Approval email ${isMock ? '(Mock) ' : ''}sent to ${student.email}`,
+      isMock: isMock
     });
 
   } catch (error) {
-    console.error("❌ Yahoo approval email error:", error);
+    console.error("❌ Approval email error:", error);
     return res.status(500).json({
       success: false,
       error: "Failed to send approval email: " + error.message
@@ -243,7 +277,7 @@ export const sendStudentWelcomeEmail = async (req, res) => {
       return res.status(404).json({ error: "Student not found" });
     }
 
-    console.log(`📧 Sending Yahoo welcome email to: ${student.email}`);
+    console.log(`📧 Sending to: ${student.email}`);
 
     const welcomeHtml = `
       <div style="font-family:Arial,sans-serif;padding:20px;background:#f8f9fa;border-radius:8px;">
@@ -268,22 +302,24 @@ export const sendStudentWelcomeEmail = async (req, res) => {
       </div>
     `;
 
-    const emailResult = await sendEmail({
+    const emailResult = await sendEmailWithFallback({
       to: student.email,
       subject: "🎓 Welcome to Math Class Platform!",
       html: welcomeHtml,
     });
 
-    console.log("✅ Yahoo welcome email sent successfully");
+    const isMock = emailResult.response.includes('Mock');
+    
+    console.log(`✅ ${isMock ? 'MOCK' : 'REAL'} welcome email sent successfully`);
 
     return res.json({
       success: true,
-      message: `Welcome email sent to ${student.email}`,
-      emailResult
+      message: `Welcome email ${isMock ? '(Mock) ' : ''}sent to ${student.email}`,
+      isMock: isMock
     });
 
   } catch (error) {
-    console.error("❌ Yahoo welcome email error:", error);
+    console.error("❌ Welcome email error:", error);
     return res.status(500).json({
       success: false,
       error: "Failed to send welcome email: " + error.message
@@ -301,7 +337,7 @@ export const sendStudentRejectionEmail = async (req, res) => {
       return res.status(404).json({ error: "Student not found" });
     }
 
-    console.log(`📧 Sending Yahoo rejection email to: ${student.email}`);
+    console.log(`📧 Sending to: ${student.email}`);
 
     const rejectionHtml = `
       <div style="font-family:Arial,sans-serif;padding:20px;background:#f8f9fa;border-radius:8px;">
@@ -315,22 +351,24 @@ export const sendStudentRejectionEmail = async (req, res) => {
       </div>
     `;
 
-    const emailResult = await sendEmail({
+    const emailResult = await sendEmailWithFallback({
       to: student.email,
       subject: "Math Class Platform - Account Not Approved",
       html: rejectionHtml,
     });
 
-    console.log("✅ Yahoo rejection email sent successfully");
+    const isMock = emailResult.response.includes('Mock');
+    
+    console.log(`✅ ${isMock ? 'MOCK' : 'REAL'} rejection email sent successfully`);
 
     return res.json({
       success: true,
-      message: `Rejection email sent to ${student.email}`,
-      emailResult
+      message: `Rejection email ${isMock ? '(Mock) ' : ''}sent to ${student.email}`,
+      isMock: isMock
     });
 
   } catch (error) {
-    console.error("❌ Yahoo rejection email error:", error);
+    console.error("❌ Rejection email error:", error);
     return res.status(500).json({
       success: false,
       error: "Failed to send rejection email: " + error.message
