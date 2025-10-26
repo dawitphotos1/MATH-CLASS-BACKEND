@@ -51,74 +51,38 @@
 // export default sendEmail;
 
 
-
 // utils/sendEmail.js
-import nodemailer from "nodemailer";
+import nodemailer from 'nodemailer';
 
 const sendEmail = async ({ to, subject, html }) => {
-  console.log("📨 Preparing to send email...");
-  
-  // Validate environment variables
-  if (!process.env.MAIL_HOST || !process.env.MAIL_USER || !process.env.MAIL_PASS) {
-    const error = "❌ Missing email environment variables";
-    console.error(error);
-    throw new Error(error);
-  }
-
   try {
-    // Simplified transporter - no pooling for better reliability
+    console.log('📧 Creating email transporter...');
+    
+    // Create transporter
     const transporter = nodemailer.createTransport({
-      host: process.env.MAIL_HOST,
-      port: parseInt(process.env.MAIL_PORT) || 465,
-      secure: true,
+      service: process.env.EMAIL_SERVICE || 'gmail',
       auth: {
-        user: process.env.MAIL_USER,
-        pass: process.env.MAIL_PASS,
+        user: process.env.EMAIL_USERNAME,
+        pass: process.env.EMAIL_PASSWORD, // Use App Password for Gmail
       },
-      // Reduced timeout for faster failure
-      connectionTimeout: 10000,
-      greetingTimeout: 10000,
-      socketTimeout: 10000,
     });
 
-    console.log("🔄 Testing SMTP connection...");
+    console.log('📧 Sending email to:', to);
     
-    // Quick connection test
-    await transporter.verify();
-    console.log("✅ SMTP connection verified");
+    // Send email
+    const result = await transporter.sendMail({
+      from: process.env.EMAIL_FROM,
+      to,
+      subject,
+      html,
+    });
 
-    const mailOptions = {
-      from: `"Math Class Platform" <${process.env.EMAIL_FROM}>`,
-      to: to,
-      subject: subject,
-      html: html,
-    };
-
-    console.log("📤 Sending email to:", to);
+    console.log('✅ Email sent successfully:', result.messageId);
+    return result;
     
-    const info = await transporter.sendMail(mailOptions);
-    
-    console.log("✅ Email sent successfully!");
-    console.log("📫 Message ID:", info.messageId);
-    
-    return {
-      success: true,
-      messageId: info.messageId,
-    };
-
   } catch (error) {
-    console.error("❌ Email sending failed:", error.message);
-    
-    // Simplified error handling
-    let userFriendlyError = "Failed to send email";
-    
-    if (error.code === 'EAUTH') {
-      userFriendlyError = "Email authentication failed";
-    } else if (error.code === 'ECONNECTION') {
-      userFriendlyError = "Cannot connect to email server";
-    }
-
-    throw new Error(userFriendlyError);
+    console.error('❌ Email sending failed:', error);
+    throw new Error(`Email sending failed: ${error.message}`);
   }
 };
 

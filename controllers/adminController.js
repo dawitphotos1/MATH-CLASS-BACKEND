@@ -385,8 +385,6 @@
 // };
 
 
-
-
 // controllers/adminController.js
 import db, { sequelize } from "../models/index.js";
 const { User, Enrollment, Course, UserCourseAccess } = db;
@@ -614,11 +612,15 @@ export const sendStudentApprovalEmail = async (req, res) => {
     
     const student = await User.findByPk(id);
     if (!student) {
+      console.log("❌ Student not found");
       return res.status(404).json({ error: "Student not found" });
     }
 
+    console.log(`📧 Found student: ${student.name} (${student.email})`);
+
     // Dynamic import to avoid circular dependencies
     const sendEmail = (await import("../utils/sendEmail.js")).default;
+    console.log("✅ Email module loaded");
     
     const approvalHtml = `
       <div style="font-family:Arial,sans-serif;padding:20px;background:#f8f9fa;border-radius:8px;">
@@ -633,13 +635,15 @@ export const sendStudentApprovalEmail = async (req, res) => {
       </div>
     `;
 
-    await sendEmail({
+    console.log(`📧 Attempting to send email to: ${student.email}`);
+    
+    const emailResult = await sendEmail({
       to: student.email,
       subject: "🎉 Your Math Class Account Has Been Approved!",
       html: approvalHtml,
     });
 
-    console.log(`✅ Approval email sent to ${student.email}`);
+    console.log("✅ Email sent successfully:", emailResult);
 
     return res.json({
       success: true,
@@ -648,9 +652,10 @@ export const sendStudentApprovalEmail = async (req, res) => {
 
   } catch (error) {
     console.error("❌ Manual approval email error:", error);
+    console.error("❌ Full error details:", error.stack);
     return res.status(500).json({
       success: false,
-      error: "Failed to send approval email: " + error.message
+      error: "Failed to send email: " + error.message
     });
   }
 };
@@ -662,10 +667,14 @@ export const sendStudentRejectionEmail = async (req, res) => {
     
     const student = await User.findByPk(id);
     if (!student) {
+      console.log("❌ Student not found");
       return res.status(404).json({ error: "Student not found" });
     }
 
+    console.log(`📧 Found student: ${student.name} (${student.email})`);
+
     const sendEmail = (await import("../utils/sendEmail.js")).default;
+    console.log("✅ Email module loaded");
 
     const rejectionHtml = `
       <div style="font-family:Arial,sans-serif;padding:20px;background:#f8f9fa;border-radius:8px;">
@@ -679,11 +688,15 @@ export const sendStudentRejectionEmail = async (req, res) => {
       </div>
     `;
 
-    await sendEmail({
+    console.log(`📧 Attempting to send rejection email to: ${student.email}`);
+    
+    const emailResult = await sendEmail({
       to: student.email,
       subject: "Math Class Platform - Account Not Approved",
       html: rejectionHtml,
     });
+
+    console.log("✅ Rejection email sent successfully:", emailResult);
 
     console.log(`✅ Rejection email sent to ${student.email}`);
 
@@ -694,6 +707,7 @@ export const sendStudentRejectionEmail = async (req, res) => {
 
   } catch (error) {
     console.error("❌ Manual rejection email error:", error);
+    console.error("❌ Full error details:", error.stack);
     return res.status(500).json({
       success: false,
       error: "Failed to send rejection email: " + error.message
@@ -708,10 +722,14 @@ export const sendStudentWelcomeEmail = async (req, res) => {
     
     const student = await User.findByPk(id);
     if (!student) {
+      console.log("❌ Student not found");
       return res.status(404).json({ error: "Student not found" });
     }
 
+    console.log(`📧 Found student: ${student.name} (${student.email})`);
+
     const sendEmail = (await import("../utils/sendEmail.js")).default;
+    console.log("✅ Email module loaded");
     
     const welcomeHtml = `
       <div style="font-family:Arial,sans-serif;padding:20px;background:#f8f9fa;border-radius:8px;">
@@ -737,13 +755,15 @@ export const sendStudentWelcomeEmail = async (req, res) => {
       </div>
     `;
 
-    await sendEmail({
+    console.log(`📧 Attempting to send welcome email to: ${student.email}`);
+    
+    const emailResult = await sendEmail({
       to: student.email,
       subject: "🎓 Welcome to Math Class Platform!",
       html: welcomeHtml,
     });
 
-    console.log(`✅ Welcome email sent to ${student.email}`);
+    console.log("✅ Welcome email sent successfully:", emailResult);
 
     return res.json({
       success: true,
@@ -752,6 +772,7 @@ export const sendStudentWelcomeEmail = async (req, res) => {
 
   } catch (error) {
     console.error("❌ Welcome email error:", error);
+    console.error("❌ Full error details:", error.stack);
     return res.status(500).json({
       success: false,
       error: "Failed to send welcome email: " + error.message
