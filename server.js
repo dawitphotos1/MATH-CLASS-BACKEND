@@ -20,7 +20,7 @@ import paymentRoutes from "./routes/paymentRoutes.js";
 import { handleStripeWebhook } from "./controllers/paymentController.js";
 
 
-import testEmailRoutes from "./routes/testEmail.js";
+
 
 const app = express();
 app.set("trust proxy", 1);
@@ -156,7 +156,9 @@ app.use("/api/v1/lessons", lessonRoutes);
 app.use("/api/v1/enrollments", enrollmentRoutes);
 app.use("/api/v1/payments", paymentRoutes);
 
+import testEmailRoutes from "./routes/testEmail.js";
 app.use("/api/v1/test-email", testEmailRoutes);
+
 
 /* ========================================================
    💓 Health Check
