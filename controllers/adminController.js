@@ -321,55 +321,12 @@
 
 
 
-
-
-
 // controllers/adminController.js
 import db, { sequelize } from "../models/index.js";
-import sendEmail from "../utils/sendEmail.js";
-import courseEnrollmentApproved from "../utils/emails/courseEnrollmentApproved.js";
-import userApprovalEmail from "../utils/emails/userApprovalEmail.js";
-
 const { User, Enrollment, Course, UserCourseAccess } = db;
 
 /* ============================================================
-   ✉️ Enhanced email helper with detailed logging
-============================================================ */
-const sendEmailWithRetry = async (emailData, maxRetries = 2) => {
-  for (let attempt = 1; attempt <= maxRetries; attempt++) {
-    try {
-      console.log(`📧 Email attempt ${attempt}/${maxRetries} to: ${emailData.to}`);
-      
-      const result = await sendEmail(emailData);
-      
-      console.log(`✅ Email sent successfully to ${emailData.to} (attempt ${attempt})`);
-      return {
-        success: true,
-        attempt: attempt,
-        messageId: result.messageId
-      };
-      
-    } catch (error) {
-      console.error(`❌ Email attempt ${attempt} failed for ${emailData.to}:`, error.message);
-      
-      if (attempt === maxRetries) {
-        return {
-          success: false,
-          attempt: attempt,
-          error: error.message
-        };
-      }
-      
-      // Wait before retry (exponential backoff)
-      const waitTime = Math.pow(2, attempt) * 1000;
-      console.log(`⏳ Waiting ${waitTime}ms before retry...`);
-      await new Promise(resolve => setTimeout(resolve, waitTime));
-    }
-  }
-};
-
-/* ============================================================
-   👩‍🎓 STUDENTS
+   👩‍🎓 STUDENTS - INSTANT APPROVAL (No Email Dependencies)
 ============================================================ */
 export const getStudentsByStatus = async (req, res) => {
   try {
@@ -393,7 +350,7 @@ export const getStudentsByStatus = async (req, res) => {
 };
 
 /* ============================================================
-   ✅ APPROVE STUDENT + SEND EMAIL (Enhanced)
+   ✅ APPROVE STUDENT - INSTANT RESPONSE (No Email)
 ============================================================ */
 export const approveStudent = async (req, res) => {
   try {
@@ -404,87 +361,21 @@ export const approveStudent = async (req, res) => {
       return res.status(404).json({ error: "Student not found" });
     }
 
-    // Update student status
+    // Update student status only - SUPER FAST
     student.approval_status = "approved";
     await student.save();
 
-    console.log(`✅ Student ${student.name} (${student.email}) approved`);
+    console.log(`✅ Student ${student.name} (${student.email}) approved instantly`);
 
-    // Email results tracking
-    const emailResults = {
-      studentEmail: null,
-      adminEmail: null
-    };
-
-    // === Send Student Approval Email ===
-    try {
-      const { subject, html } = userApprovalEmail({
-        name: student.name,
-        email: student.email,
-      });
-
-      emailResults.studentEmail = await sendEmailWithRetry({
-        to: student.email,
-        subject,
-        html,
-      });
-
-    } catch (emailError) {
-      console.error(`❌ Failed to send student approval email:`, emailError);
-      emailResults.studentEmail = { success: false, error: emailError.message };
-    }
-
-    // === Send Admin Notification ===
-    try {
-      const adminEmail = process.env.ADMIN_EMAIL || process.env.MAIL_USER;
-      
-      emailResults.adminEmail = await sendEmailWithRetry({
-        to: adminEmail,
-        subject: `✅ Student Approved: ${student.name}`,
-        html: `
-          <div style="font-family:Arial,sans-serif;padding:20px;background:#f8f9fa;border-radius:8px;">
-            <h2 style="color:#28a745;">🎓 Student Approved</h2>
-            <div style="background:white;padding:15px;border-radius:5px;margin:10px 0;">
-              <p><strong>Name:</strong> ${student.name}</p>
-              <p><strong>Email:</strong> ${student.email}</p>
-              <p><strong>Subject:</strong> ${student.subject || 'Not specified'}</p>
-              <p><strong>Approved At:</strong> ${new Date().toLocaleString()}</p>
-            </div>
-            <p style="color:#6c757d;font-size:14px;">This student can now log in and access the platform.</p>
-          </div>
-        `,
-      });
-
-    } catch (adminEmailError) {
-      console.error(`❌ Failed to send admin notification:`, adminEmailError);
-      emailResults.adminEmail = { success: false, error: adminEmailError.message };
-    }
-
-    // Prepare response
-    const allEmailsSent = emailResults.studentEmail?.success && emailResults.adminEmail?.success;
-    const someEmailsSent = emailResults.studentEmail?.success || emailResults.adminEmail?.success;
-
-    let message = "Student approved successfully";
-    if (allEmailsSent) {
-      message += " and all emails sent";
-    } else if (someEmailsSent) {
-      message += " but some emails failed to send";
-    } else {
-      message += " but email notifications failed";
-    }
-
+    // 🚀 INSTANT RESPONSE - No email delays
     return res.json({
       success: true,
-      message: message,
+      message: "Student approved successfully! The student can now log in.",
       student: {
         id: student.id,
         name: student.name,
         email: student.email,
         approval_status: student.approval_status,
-      },
-      emailResults: {
-        student: emailResults.studentEmail,
-        admin: emailResults.adminEmail
       }
     });
 
@@ -498,7 +389,7 @@ export const approveStudent = async (req, res) => {
 };
 
 /* ============================================================
-   ❌ REJECT STUDENT + SEND EMAIL (Enhanced)
+   ❌ REJECT STUDENT - INSTANT RESPONSE (No Email)
 ============================================================ */
 export const rejectStudent = async (req, res) => {
   try {
@@ -512,80 +403,16 @@ export const rejectStudent = async (req, res) => {
     student.approval_status = "rejected";
     await student.save();
 
-    console.log(`❌ Student ${student.name} (${student.email}) rejected`);
-
-    // Email results tracking
-    const emailResults = {
-      studentEmail: null,
-      adminEmail: null
-    };
-
-    // === Send Student Rejection Email ===
-    try {
-      const rejectionHtml = `
-        <div style="font-family:Arial,sans-serif;padding:20px;background:#f8f9fa;border-radius:8px;">
-          <h2 style="color:#dc3545;">Account Not Approved</h2>
-          <div style="background:white;padding:15px;border-radius:5px;margin:10px 0;">
-            <p>Hello ${student.name},</p>
-            <p>We regret to inform you that your Math Class Platform account application has not been approved.</p>
-            <p>If you believe this is a mistake, please contact our support team.</p>
-          </div>
-          <p style="color:#6c757d;font-size:14px;">Thank you for your interest in our platform.</p>
-        </div>
-      `;
-
-      emailResults.studentEmail = await sendEmailWithRetry({
-        to: student.email,
-        subject: "Math Class Platform - Account Not Approved",
-        html: rejectionHtml,
-      });
-
-    } catch (emailError) {
-      console.error(`❌ Failed to send student rejection email:`, emailError);
-      emailResults.studentEmail = { success: false, error: emailError.message };
-    }
-
-    // === Send Admin Notification ===
-    try {
-      const adminEmail = process.env.ADMIN_EMAIL || process.env.MAIL_USER;
-      
-      emailResults.adminEmail = await sendEmailWithRetry({
-        to: adminEmail,
-        subject: `❌ Student Rejected: ${student.name}`,
-        html: `
-          <div style="font-family:Arial,sans-serif;padding:20px;background:#f8f9fa;border-radius:8px;">
-            <h2 style="color:#dc3545;">🚫 Student Rejected</h2>
-            <div style="background:white;padding:15px;border-radius:5px;margin:10px 0;">
-              <p><strong>Name:</strong> ${student.name}</p>
-              <p><strong>Email:</strong> ${student.email}</p>
-              <p><strong>Subject:</strong> ${student.subject || 'Not specified'}</p>
-              <p><strong>Rejected At:</strong> ${new Date().toLocaleString()}</p>
-            </div>
-          </div>
-        `,
-      });
-
-    } catch (adminEmailError) {
-      console.error(`❌ Failed to send admin notification:`, adminEmailError);
-      emailResults.adminEmail = { success: false, error: adminEmailError.message };
-    }
-
-    const message = emailResults.studentEmail?.success ? 
-      "Student rejected successfully and email sent" : 
-      "Student rejected successfully but email failed to send";
+    console.log(`❌ Student ${student.name} (${student.email}) rejected instantly`);
 
     return res.json({
       success: true,
-      message: message,
+      message: "Student rejected successfully.",
       student: {
         id: student.id,
         name: student.name,
         email: student.email,
         approval_status: student.approval_status,
-      },
-      emailResults: {
-        student: emailResults.studentEmail,
-        admin: emailResults.adminEmail
       }
     });
 
@@ -596,7 +423,7 @@ export const rejectStudent = async (req, res) => {
 };
 
 /* ============================================================
-   🎓 ENROLLMENTS
+   🎓 ENROLLMENTS - INSTANT APPROVAL (No Email)
 ============================================================ */
 export const getEnrollmentsByStatus = async (req, res) => {
   try {
@@ -628,7 +455,7 @@ export const getEnrollmentsByStatus = async (req, res) => {
 };
 
 /* ============================================================
-   ✅ APPROVE ENROLLMENT + SEND EMAIL
+   ✅ APPROVE ENROLLMENT - INSTANT RESPONSE (No Email)
 ============================================================ */
 export const approveEnrollment = async (req, res) => {
   const transaction = await sequelize.transaction();
@@ -685,33 +512,12 @@ export const approveEnrollment = async (req, res) => {
     // ✅ Commit DB transaction
     await transaction.commit();
 
-    // ✅ Send enrollment approval email
-    const emailResults = {
-      studentEmail: null
-    };
-
-    try {
-      const htmlContent = courseEnrollmentApproved({
-        studentName: enrollment.student.name,
-        courseTitle: enrollment.course.title,
-      });
-
-      emailResults.studentEmail = await sendEmailWithRetry({
-        to: enrollment.student.email,
-        subject: `✅ Enrollment Approved: ${enrollment.course.title}`,
-        html: htmlContent,
-      });
-
-    } catch (emailErr) {
-      console.warn("⚠️ Enrollment approved but failed to send email:", emailErr.message);
-      emailResults.studentEmail = { success: false, error: emailErr.message };
-    }
+    console.log(`✅ Enrollment ${id} approved instantly for student ${enrollment.student.name}`);
 
     return res.json({
       success: true,
       message: `Enrollment for ${enrollment.student.name} approved successfully.`,
-      enrollment,
-      emailResults
+      enrollment
     });
 
   } catch (err) {
@@ -722,7 +528,7 @@ export const approveEnrollment = async (req, res) => {
 };
 
 /* ============================================================
-   ❌ REJECT ENROLLMENT
+   ❌ REJECT ENROLLMENT - INSTANT RESPONSE
 ============================================================ */
 export const rejectEnrollment = async (req, res) => {
   try {
@@ -736,6 +542,8 @@ export const rejectEnrollment = async (req, res) => {
     enrollment.approval_status = "rejected";
     await enrollment.save();
 
+    console.log(`❌ Enrollment ${id} rejected instantly`);
+
     return res.json({
       success: true,
       message: "Enrollment rejected successfully",
@@ -744,5 +552,97 @@ export const rejectEnrollment = async (req, res) => {
   } catch (err) {
     console.error("❌ Error rejecting enrollment:", err);
     return res.status(500).json({ success: false, error: "Failed to reject enrollment" });
+  }
+};
+
+/* ============================================================
+   ✉️ MANUAL EMAIL ENDPOINTS (Separate - Admin can use later)
+============================================================ */
+export const sendStudentApprovalEmail = async (req, res) => {
+  try {
+    const { studentId } = req.params;
+    const student = await User.findByPk(studentId);
+
+    if (!student) {
+      return res.status(404).json({ error: "Student not found" });
+    }
+
+    // Import email dependencies only when needed
+    const sendEmail = (await import("../utils/sendEmail.js")).default;
+    
+    const approvalHtml = `
+      <div style="font-family:Arial,sans-serif;padding:20px;background:#f8f9fa;border-radius:8px;">
+        <h2 style="color:#28a745;">🎉 Account Approved!</h2>
+        <div style="background:white;padding:15px;border-radius:5px;margin:10px 0;">
+          <p>Hello <strong>${student.name}</strong>,</p>
+          <p>Great news! Your Math Class Platform account has been approved.</p>
+          <p>You can now log in and access all available courses.</p>
+          <p><strong>Login URL:</strong> <a href="${process.env.FRONTEND_URL}/login">${process.env.FRONTEND_URL}/login</a></p>
+        </div>
+        <p style="color:#6c757d;font-size:14px;">Happy Learning! 🎓</p>
+      </div>
+    `;
+
+    await sendEmail({
+      to: student.email,
+      subject: "🎉 Your Math Class Account Has Been Approved!",
+      html: approvalHtml,
+    });
+
+    return res.json({
+      success: true,
+      message: `Approval email sent to ${student.email}`
+    });
+
+  } catch (error) {
+    console.error("❌ Manual email error:", error);
+    return res.status(500).json({
+      success: false,
+      error: "Failed to send email: " + error.message
+    });
+  }
+};
+
+export const sendStudentRejectionEmail = async (req, res) => {
+  try {
+    const { studentId } = req.params;
+    const student = await User.findByPk(studentId);
+
+    if (!student) {
+      return res.status(404).json({ error: "Student not found" });
+    }
+
+    // Import email dependencies only when needed
+    const sendEmail = (await import("../utils/sendEmail.js")).default;
+
+    const rejectionHtml = `
+      <div style="font-family:Arial,sans-serif;padding:20px;background:#f8f9fa;border-radius:8px;">
+        <h2 style="color:#dc3545;">Account Not Approved</h2>
+        <div style="background:white;padding:15px;border-radius:5px;margin:10px 0;">
+          <p>Hello ${student.name},</p>
+          <p>We regret to inform you that your Math Class Platform account application has not been approved.</p>
+          <p>If you believe this is a mistake, please contact our support team.</p>
+        </div>
+        <p style="color:#6c757d;font-size:14px;">Thank you for your interest in our platform.</p>
+      </div>
+    `;
+
+    await sendEmail({
+      to: student.email,
+      subject: "Math Class Platform - Account Not Approved",
+      html: rejectionHtml,
+    });
+
+    return res.json({
+      success: true,
+      message: `Rejection email sent to ${student.email}`
+    });
+
+  } catch (error) {
+    console.error("❌ Manual email error:", error);
+    return res.status(500).json({
+      success: false,
+      error: "Failed to send email: " + error.message
+    });
   }
 };
