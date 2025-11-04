@@ -553,3 +553,32 @@ export const sendEnrollmentApprovalEmail = async (req, res) => {
     return res.status(500).json({ success: false, error: "Failed to send enrollment approval email" });
   }
 };
+
+/* ============================================================
+   📚 ADMIN: MANAGE COURSES & USERS
+============================================================ */
+export const getAllCourses = async (req, res) => {
+  try {
+    const courses = await Course.findAll({
+      attributes: ["id", "title", "price", "createdAt", "updatedAt"],
+      order: [["createdAt", "DESC"]],
+    });
+    res.json({ success: true, courses });
+  } catch (error) {
+    console.error("❌ Error fetching all courses:", error);
+    res.status(500).json({ success: false, error: "Failed to fetch courses" });
+  }
+};
+
+export const getAllUsers = async (req, res) => {
+  try {
+    const users = await User.findAll({
+      attributes: ["id", "name", "email", "role", "approval_status", "createdAt"],
+      order: [["createdAt", "DESC"]],
+    });
+    res.json({ success: true, users });
+  } catch (error) {
+    console.error("❌ Error fetching all users:", error);
+    res.status(500).json({ success: false, error: "Failed to fetch users" });
+  }
+};
