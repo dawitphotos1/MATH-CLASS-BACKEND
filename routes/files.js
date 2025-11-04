@@ -80,14 +80,16 @@
 
 
 //routes/files.js
-const express = require("express");
-const path = require("path");
-const fs = require("fs").promises;
-const multer = require("multer");
-const {
-  authenticateToken,
-  isAdmin,
-} = require("../middleware/authMiddleware.js");
+
+import express from "express";
+import path from "path";
+import fs from "fs/promises";
+import multer from "multer";
+import { authenticateToken, isAdmin } from "../middleware/authMiddleware.js";
+import { fileURLToPath } from "url";
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
 const router = express.Router();
 
@@ -395,4 +397,4 @@ function formatFileSize(bytes) {
   return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + " " + sizes[i];
 }
 
-module.exports = router;
+export default router;
