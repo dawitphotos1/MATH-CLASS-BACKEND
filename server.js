@@ -244,7 +244,6 @@
 
 
 
-
 // server.js — Render-Safe Backend with Warmup + Static Uploads
 import dotenv from "dotenv";
 dotenv.config();
@@ -256,6 +255,7 @@ import cookieParser from "cookie-parser";
 import rateLimit from "express-rate-limit";
 import listEndpoints from "express-list-endpoints";
 import path from "path";
+import { fileURLToPath } from "url";
 import sequelize from "./config/db.js";
 
 // ✅ Import all routes
@@ -280,8 +280,12 @@ console.log("🔗 BACKEND_URL:", process.env.BACKEND_URL);
 /* ========================================================
    🖼️ STATIC FILES — Logo & Email Assets
 ======================================================== */
-app.use("/uploads", express.static("public/uploads"));
-// Example: https://mathe-class-website-backend-1.onrender.com/uploads/mathlogo2.jpg
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+
+// ✅ Serve static uploads (example: /uploads/mathlogo2.jpg)
+app.use("/uploads", express.static(path.join(__dirname, "public/uploads")));
+// Example full URL: https://mathe-class-website-backend-1.onrender.com/uploads/mathlogo2.jpg
 
 /* ========================================================
    💳 STRIPE WEBHOOK (MUST BE RAW)
@@ -358,7 +362,7 @@ app.options("*", (req, res) => {
   res.status(200).end();
 });
 
-// ✅ Explicit PATCH preflight for Render (important)
+// ✅ Explicit PATCH preflight for Render
 app.options("/api/v1/admin/students/:id/approve", (req, res) => {
   res.header("Access-Control-Allow-Origin", req.headers.origin || "*");
   res.header("Access-Control-Allow-Credentials", "true");
