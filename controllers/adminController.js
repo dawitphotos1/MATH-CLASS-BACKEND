@@ -203,22 +203,20 @@
 // };
 
 // /* ============================================================
-//    📧 EMAIL MANAGEMENT (Yahoo Mail)
+//    📧 EMAIL MANAGEMENT (with Static Logo)
 // ============================================================ */
 // export const sendApprovalEmail = async (req, res) => {
 //   try {
 //     const { id } = req.params;
 //     const student = await User.findByPk(id);
-
-//     if (!student || student.role !== "student") {
+//     if (!student || student.role !== "student")
 //       return res.status(404).json({ success: false, error: "Student not found" });
-//     }
 
+//     const logoUrl = `${process.env.BACKEND_URL}/uploads/mathlogo2.jpg`;
 //     const subject = "✅ Your MatheClass Account Has Been Approved!";
-//     const html = approvalEmailTemplate(student.name);
+//     const html = approvalEmailTemplate(student.name, logoUrl);
 
 //     await sendEmail({ to: student.email, subject, html });
-
 //     console.log(`📧 Approval email sent to ${student.email}`);
 //     return res.json({ success: true, message: `Approval email sent to ${student.email}` });
 //   } catch (error) {
@@ -231,16 +229,14 @@
 //   try {
 //     const { id } = req.params;
 //     const student = await User.findByPk(id);
-
-//     if (!student || student.role !== "student") {
+//     if (!student || student.role !== "student")
 //       return res.status(404).json({ success: false, error: "Student not found" });
-//     }
 
-//     const subject = "🎉 Welcome to MatheClass!";
-//     const html = welcomeEmailTemplate(student.name);
+//     const logoUrl = `${process.env.BACKEND_URL}/uploads/mathlogo2.jpg`;
+//     const subject = "🎓 Welcome to Math Class Platform!";
+//     const html = welcomeEmailTemplate(student.name, logoUrl);
 
 //     await sendEmail({ to: student.email, subject, html });
-
 //     console.log(`📧 Welcome email sent to ${student.email}`);
 //     return res.json({ success: true, message: `Welcome email sent to ${student.email}` });
 //   } catch (error) {
@@ -249,13 +245,45 @@
 //   }
 // };
 
+// /* ============================================================
+//    📚 ADMIN: MANAGE COURSES & USERS
+// ============================================================ */
+// export const getAllCourses = async (req, res) => {
+//   try {
+//     const courses = await Course.findAll({
+//       attributes: ["id", "title", "price", "createdAt", "updatedAt"],
+//       order: [["createdAt", "DESC"]],
+//     });
+//     res.json({ success: true, courses });
+//   } catch (error) {
+//     console.error("❌ Error fetching all courses:", error);
+//     res.status(500).json({ success: false, error: "Failed to fetch courses" });
+//   }
+// };
+
+// export const getAllUsers = async (req, res) => {
+//   try {
+//     const users = await User.findAll({
+//       attributes: ["id", "name", "email", "role", "approval_status", "createdAt"],
+//       order: [["createdAt", "DESC"]],
+//     });
+//     res.json({ success: true, users });
+//   } catch (error) {
+//     console.error("❌ Error fetching all users:", error);
+//     res.status(500).json({ success: false, error: "Failed to fetch users" });
+//   }
+// };
+
 
 
 // controllers/adminController.js
 import db, { sequelize } from "../models/index.js";
 import sendEmail from "../utils/sendEmail.js";
+
+// ✅ Import all email templates
 import { approvalEmailTemplate } from "../utils/emailTemplates/approvalEmailTemplate.js";
 import { welcomeEmailTemplate } from "../utils/emailTemplates/welcomeEmailTemplate.js";
+import { enrollmentApprovalEmailTemplate } from "../utils/emailTemplates/enrollmentApprovalEmailTemplate.js";
 
 const { User, Enrollment, Course, UserCourseAccess } = db;
 
@@ -265,6 +293,7 @@ const { User, Enrollment, Course, UserCourseAccess } = db;
 export const getStudentsByStatus = async (req, res) => {
   try {
     const { status } = req.query;
+
     if (!status || !["pending", "approved", "rejected"].includes(status)) {
       return res.status(400).json({ error: "Invalid or missing status" });
     }
@@ -294,12 +323,17 @@ export const approveStudent = async (req, res) => {
     student.approval_status = "approved";
     await student.save();
 
-    console.log(`✅ Student ${student.name} (${student.email}) approved`);
+    console.log(`✅ Student ${student.name} (${student.email}) approved instantly`);
 
     return res.json({
       success: true,
-      message: "Student approved successfully",
-      student,
+      message: "Student approved successfully!",
+      student: {
+        id: student.id,
+        name: student.name,
+        email: student.email,
+        approval_status: student.approval_status,
+      },
     });
   } catch (err) {
     console.error("❌ Error approving student:", err);
@@ -319,12 +353,17 @@ export const rejectStudent = async (req, res) => {
     student.approval_status = "rejected";
     await student.save();
 
-    console.log(`❌ Student ${student.name} (${student.email}) rejected`);
+    console.log(`❌ Student ${student.name} (${student.email}) rejected instantly`);
 
     return res.json({
       success: true,
-      message: "Student rejected successfully",
-      student,
+      message: "Student rejected successfully.",
+      student: {
+        id: student.id,
+        name: student.name,
+        email: student.email,
+        approval_status: student.approval_status,
+      },
     });
   } catch (err) {
     console.error("❌ Error rejecting student:", err);
@@ -347,11 +386,7 @@ export const getEnrollmentsByStatus = async (req, res) => {
     const enrollments = await Enrollment.findAll({
       where: whereCondition,
       include: [
-        {
-          model: User,
-          as: "student",
-          attributes: ["id", "name", "email", "approval_status"],
-        },
+        { model: User, as: "student", attributes: ["id", "name", "email", "approval_status"] },
         { model: Course, as: "course", attributes: ["id", "title", "price"] },
       ],
       order: [["createdAt", "DESC"]],
@@ -391,7 +426,7 @@ export const approveEnrollment = async (req, res) => {
       await transaction.rollback();
       return res.status(400).json({
         success: false,
-        error: "Cannot approve enrollment: student not approved",
+        error: "Cannot approve enrollment: student account not approved",
       });
     }
 
@@ -412,7 +447,12 @@ export const approveEnrollment = async (req, res) => {
     await transaction.commit();
 
     console.log(`✅ Enrollment ${id} approved for ${enrollment.student.name}`);
-    return res.json({ success: true, message: "Enrollment approved", enrollment });
+
+    return res.json({
+      success: true,
+      message: `Enrollment for ${enrollment.student.name} approved successfully.`,
+      enrollment,
+    });
   } catch (err) {
     await transaction.rollback();
     console.error("❌ Error approving enrollment:", err);
@@ -432,8 +472,8 @@ export const rejectEnrollment = async (req, res) => {
     enrollment.approval_status = "rejected";
     await enrollment.save();
 
-    console.log(`❌ Enrollment ${id} rejected`);
-    return res.json({ success: true, message: "Enrollment rejected", enrollment });
+    console.log(`❌ Enrollment ${id} rejected instantly`);
+    return res.json({ success: true, message: "Enrollment rejected successfully", enrollment });
   } catch (err) {
     console.error("❌ Error rejecting enrollment:", err);
     return res.status(500).json({ success: false, error: "Failed to reject enrollment" });
@@ -441,7 +481,7 @@ export const rejectEnrollment = async (req, res) => {
 };
 
 /* ============================================================
-   📧 EMAIL MANAGEMENT (Backend-hosted logo)
+   📧 EMAIL MANAGEMENT (Yahoo Mail)
 ============================================================ */
 export const sendApprovalEmail = async (req, res) => {
   try {
@@ -452,13 +492,12 @@ export const sendApprovalEmail = async (req, res) => {
       return res.status(404).json({ success: false, error: "Student not found" });
     }
 
-    const logoUrl = `${process.env.BACKEND_URL}/uploads/mathlogo2.jpg`;
     const subject = "✅ Your MatheClass Account Has Been Approved!";
-    const html = approvalEmailTemplate(student.name, logoUrl);
+    const html = approvalEmailTemplate(student.name);
 
     await sendEmail({ to: student.email, subject, html });
-
     console.log(`📧 Approval email sent to ${student.email}`);
+
     return res.json({ success: true, message: `Approval email sent to ${student.email}` });
   } catch (error) {
     console.error("❌ Error sending approval email:", error);
@@ -475,16 +514,42 @@ export const sendWelcomeEmail = async (req, res) => {
       return res.status(404).json({ success: false, error: "Student not found" });
     }
 
-    const logoUrl = `${process.env.BACKEND_URL}/uploads/mathlogo2.jpg`;
     const subject = "🎉 Welcome to MatheClass!";
-    const html = welcomeEmailTemplate(student.name, logoUrl);
+    const html = welcomeEmailTemplate(student.name);
 
     await sendEmail({ to: student.email, subject, html });
-
     console.log(`📧 Welcome email sent to ${student.email}`);
+
     return res.json({ success: true, message: `Welcome email sent to ${student.email}` });
   } catch (error) {
     console.error("❌ Error sending welcome email:", error);
     return res.status(500).json({ success: false, error: "Failed to send welcome email" });
+  }
+};
+
+export const sendEnrollmentApprovalEmail = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const enrollment = await Enrollment.findByPk(id, {
+      include: [{ model: User, as: "student" }, { model: Course, as: "course" }],
+    });
+
+    if (!enrollment) {
+      return res.status(404).json({ success: false, error: "Enrollment not found" });
+    }
+
+    const subject = `🎓 Enrollment Approved - ${enrollment.course.title}`;
+    const html = enrollmentApprovalEmailTemplate(enrollment.student.name, enrollment.course.title);
+
+    await sendEmail({ to: enrollment.student.email, subject, html });
+    console.log(`📧 Enrollment approval email sent to ${enrollment.student.email}`);
+
+    return res.json({
+      success: true,
+      message: `Enrollment approval email sent to ${enrollment.student.email}`,
+    });
+  } catch (error) {
+    console.error("❌ Error sending enrollment approval email:", error);
+    return res.status(500).json({ success: false, error: "Failed to send enrollment approval email" });
   }
 };
