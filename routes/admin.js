@@ -33,27 +33,34 @@
 
 
 
-
 // routes/admin.js
 import express from "express";
 import {
+  // 👩‍🎓 Student management
   getStudentsByStatus,
   approveStudent,
   rejectStudent,
+
+  // 🎓 Enrollment management
   getEnrollmentsByStatus,
   approveEnrollment,
   rejectEnrollment,
+
+  // ✉️ Email sending
   sendApprovalEmail,
   sendWelcomeEmail,
+  sendEnrollmentApprovalEmail,
+
+  // 📚 Admin dashboard
   getAllCourses,
-  getAllUsers
+  getAllUsers,
 } from "../controllers/adminController.js";
 
 import { authenticateToken, isAdmin } from "../middleware/authMiddleware.js";
 
 const router = express.Router();
 
-// 🔐 Protect all admin routes
+// 🔐 All admin routes are protected
 router.use(authenticateToken, isAdmin);
 
 /* ========================================================
@@ -64,7 +71,7 @@ router.patch("/students/:id/approve", approveStudent);
 router.patch("/students/:id/reject", rejectStudent);
 
 /* ========================================================
-   🧾 ENROLLMENT MANAGEMENT
+   🎓 ENROLLMENT MANAGEMENT
 ======================================================== */
 router.get("/enrollments", getEnrollmentsByStatus);
 router.patch("/enrollments/:id/approve", approveEnrollment);
@@ -75,6 +82,10 @@ router.patch("/enrollments/:id/reject", rejectEnrollment);
 ======================================================== */
 router.post("/students/:id/send-approval-email", sendApprovalEmail);
 router.post("/students/:id/send-welcome-email", sendWelcomeEmail);
+router.post(
+  "/enrollments/:id/send-approval-email",
+  sendEnrollmentApprovalEmail
+);
 
 /* ========================================================
    📚 ADMIN MANAGEMENT (Manage Courses & Users)

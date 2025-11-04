@@ -79,9 +79,11 @@
 
 
 
-
 // utils/emailTemplates/enrollmentApprovalEmailTemplate.js
-export const enrollmentApprovalEmailTemplate = (name = "Student", courseTitle = "your course") => {
+export const enrollmentApprovalEmailTemplate = (
+  studentName = "Student",
+  courseTitle = "Your Course"
+) => {
   const logoUrl = `${process.env.BACKEND_URL}/uploads/mathlogo2.jpg`;
 
   return `
@@ -89,7 +91,7 @@ export const enrollmentApprovalEmailTemplate = (name = "Student", courseTitle = 
 <html>
 <head>
   <meta charset="UTF-8">
-  <title>MatheClass - Enrollment Approved</title>
+  <title>MatheClass - Course Enrollment Approved</title>
   <style>
     body {
       font-family: Arial, sans-serif;
@@ -112,14 +114,18 @@ export const enrollmentApprovalEmailTemplate = (name = "Student", courseTitle = 
     .logo img {
       width: 120px;
     }
+    h2 {
+      color: #1e3a8a;
+    }
     .btn {
       display: inline-block;
-      padding: 10px 20px;
+      padding: 12px 20px;
       background-color: #2563eb;
       color: #fff;
       text-decoration: none;
       border-radius: 6px;
       margin-top: 20px;
+      font-weight: bold;
     }
     .footer {
       margin-top: 30px;
@@ -134,14 +140,14 @@ export const enrollmentApprovalEmailTemplate = (name = "Student", courseTitle = 
     <div class="logo">
       <img src="${logoUrl}" alt="MatheClass Logo" />
     </div>
+    <h2>Hi ${studentName},</h2>
 
-    <h2>Hi ${name},</h2>
-    <p>🎉 Great news! Your enrollment in <strong>${courseTitle}</strong> has been <strong>approved</strong>.</p>
-    <p>You now have full access to all course materials, exercises, and lessons.</p>
+    <p>🎉 Great news! Your enrollment for <strong>${courseTitle}</strong> has been approved.</p>
+    <p>You now have full access to all course materials, lessons, and instructor support.</p>
 
-    <a href="${process.env.FRONTEND_URL}/my-courses" class="btn" target="_blank">Go to My Courses</a>
+    <a href="${process.env.FRONTEND_URL}/my-courses" class="btn" target="_blank">Start Learning</a>
 
-    <p>We’re excited to see your progress and help you master new skills!</p>
+    <p>Thank you for continuing your learning journey with <strong>MatheClass</strong>!</p>
 
     <div class="footer">
       <p>&copy; ${new Date().getFullYear()} MatheClass. All rights reserved.</p>
