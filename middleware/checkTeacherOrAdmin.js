@@ -22,7 +22,6 @@
 
 
 
-
 // middleware/checkTeacherOrAdmin.js
 const checkTeacherOrAdmin = (req, res, next) => {
   try {

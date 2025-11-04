@@ -66,7 +66,7 @@
 
 
 
-
+// middleware/authMiddleware.js
 import jwt from "jsonwebtoken";
 import db from "../models/index.js";
 const { User } = db;
@@ -90,7 +90,7 @@ export const authenticateToken = async (req, res, next) => {
 
     const decoded = jwt.verify(token, process.env.JWT_SECRET);
     const user = await User.findByPk(decoded.id, {
-      attributes: { exclude: ["password"] },
+      attributes: { exclude: ["password"] }
     });
 
     if (!user) {
@@ -103,7 +103,7 @@ export const authenticateToken = async (req, res, next) => {
       name: user.name,
       email: user.email,
       role: user.role,
-      approval_status: user.approval_status,
+      approval_status: user.approval_status
     };
 
     next();
@@ -145,9 +145,7 @@ export const isStudent = (req, res, next) => {
 // Combined middleware for teacher or admin
 export const isTeacherOrAdmin = (req, res, next) => {
   if (req.user?.role !== "teacher" && req.user?.role !== "admin") {
-    return res
-      .status(403)
-      .json({ success: false, error: "Teacher or admin access required" });
+    return res.status(403).json({ success: false, error: "Teacher or admin access required" });
   }
   next();
 };

@@ -44,6 +44,7 @@
 
 
 
+
 import express from "express";
 import {
   createCourse,
@@ -56,6 +57,7 @@ import {
 import authenticateToken from "../middleware/authenticateToken.js";
 import checkTeacherOrAdmin from "../middleware/checkTeacherOrAdmin.js";
 import { isTeacher, isAdmin } from "../middleware/authMiddleware.js";
+import { uploadCourseFiles } from "../middleware/uploadMiddleware.js";
 import db from "../models/index.js";
 
 const { Course, User, Lesson } = db;
@@ -82,8 +84,21 @@ router.get("/:courseId/lessons", getLessonsByCourse);
    🔐 PROTECTED ROUTES --- restricted to teachers/admins
 ======================================================== */
 
-// Create a new course (requires teacher/admin)
-router.post("/", authenticateToken, checkTeacherOrAdmin, createCourse);
+// Create a new course (requires teacher/admin) - BOTH ROUTES FOR COMPATIBILITY
+router.post(
+  "/",
+  authenticateToken,
+  checkTeacherOrAdmin,
+  uploadCourseFiles,
+  createCourse
+);
+router.post(
+  "/create",
+  authenticateToken,
+  checkTeacherOrAdmin,
+  uploadCourseFiles,
+  createCourse
+);
 
 // Delete a course (requires teacher/admin)
 router.delete("/:id", authenticateToken, checkTeacherOrAdmin, deleteCourse);
