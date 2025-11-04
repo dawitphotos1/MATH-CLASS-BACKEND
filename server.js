@@ -249,6 +249,8 @@
 
 // export default app;
 
+
+
 // server.js — Render-Safe Backend with Warmup + Static Uploads
 import dotenv from "dotenv";
 dotenv.config();
@@ -306,13 +308,21 @@ app.post(
 );
 
 /* ========================================================
-   📦 Enable JSON after webhook
+   📦 MIDDLEWARE SETUP - CRITICAL FIX FOR FILE UPLOADS
 ======================================================== */
+// Apply JSON middleware to all routes EXCEPT webhook and file upload routes
 app.use((req, res, next) => {
-  if (req.originalUrl.startsWith("/api/v1/payments/webhook")) return next();
-  express.json()(req, res, next);
+  // Skip JSON parsing for webhook and file upload routes
+  if (req.originalUrl.startsWith("/api/v1/payments/webhook") || 
+      req.originalUrl.startsWith("/api/v1/courses/create") ||
+      req.originalUrl.startsWith("/api/v1/courses/")) {
+    return next();
+  }
+  express.json({ limit: '50mb' })(req, res, next);
 });
-app.use(express.urlencoded({ extended: true }));
+
+// URL-encoded middleware for form data
+app.use(express.urlencoded({ extended: true, limit: '50mb' }));
 
 /* ========================================================
    🧰 SECURITY & CORS
@@ -408,6 +418,7 @@ app.use((req, res, next) => {
   console.log(`📥 [${req.method}] ${req.originalUrl}`, {
     origin: req.headers.origin,
     time: new Date().toISOString(),
+    'content-type': req.headers['content-type']
   });
   next();
 });

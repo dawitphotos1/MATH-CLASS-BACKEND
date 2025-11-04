@@ -1,4 +1,3 @@
-
 // // middleware/checkTeacherOrAdmin.js
 // const checkTeacherOrAdmin = (req, res, next) => {
 //   try {
@@ -19,9 +18,6 @@
 
 // export default checkTeacherOrAdmin;
 
-
-
-
 // middleware/checkTeacherOrAdmin.js
 const checkTeacherOrAdmin = (req, res, next) => {
   try {
@@ -36,7 +32,9 @@ const checkTeacherOrAdmin = (req, res, next) => {
     next();
   } catch (err) {
     console.error("❌ checkTeacherOrAdmin error:", err.message);
-    return res.status(500).json({ success: false, error: "Internal Server Error" });
+    return res
+      .status(500)
+      .json({ success: false, error: "Internal Server Error" });
   }
 };
 

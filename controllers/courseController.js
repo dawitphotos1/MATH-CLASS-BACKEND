@@ -258,16 +258,29 @@ const __dirname = path.dirname(__filename);
 ============================================================ */
 export const createCourse = async (req, res) => {
   try {
-    const { title, slug, description, price } = req.body;
-    const teacherId = req.user?.id;
-
-    console.log("📝 Creating course with data:", { title, slug, description, price, teacherId });
+    // Log the incoming request for debugging
+    console.log("📝 Request body:", req.body);
     console.log("📁 Uploaded files:", req.files);
+    console.log("👤 User:", req.user);
 
+    // Extract form data - handle both JSON and form-data
+    const { 
+      title, 
+      slug, 
+      description, 
+      price,
+      teacher_id 
+    } = req.body;
+
+    const teacherId = req.user?.id || teacher_id;
+
+    // Validate required fields
     if (!title || !slug) {
+      console.log("❌ Missing required fields:", { title, slug });
       return res.status(400).json({
         success: false,
-        error: "Title and slug are required"
+        error: "Title and slug are required",
+        received: { title, slug, description, price, teacherId }
       });
     }
 
@@ -275,51 +288,58 @@ export const createCourse = async (req, res) => {
     let thumbnailPath = null;
     let attachmentPaths = [];
 
-    // Process thumbnail if uploaded
-    if (req.files && req.files.thumbnail) {
-      const thumbnail = req.files.thumbnail[0];
-      const uploadsDir = path.join(__dirname, "../Uploads");
-      
-      // Ensure uploads directory exists
-      if (!fs.existsSync(uploadsDir)) {
-        fs.mkdirSync(uploadsDir, { recursive: true });
-      }
+    // Ensure Uploads directory exists
+    const uploadsDir = path.join(__dirname, "../Uploads");
+    if (!fs.existsSync(uploadsDir)) {
+      fs.mkdirSync(uploadsDir, { recursive: true });
+      console.log("✅ Created Uploads directory");
+    }
 
-      const thumbnailFilename = `thumbnail-${Date.now()}-${thumbnail.originalname}`;
-      thumbnailPath = path.join(uploadsDir, thumbnailFilename);
+    // Process thumbnail if uploaded
+    if (req.files && req.files.thumbnail && req.files.thumbnail[0]) {
+      const thumbnail = req.files.thumbnail[0];
+      const thumbnailFilename = `thumbnail-${Date.now()}-${thumbnail.originalname.replace(/\s+/g, '-')}`;
+      const thumbnailFullPath = path.join(uploadsDir, thumbnailFilename);
       
-      fs.writeFileSync(thumbnailPath, thumbnail.buffer);
+      fs.writeFileSync(thumbnailFullPath, thumbnail.buffer);
       thumbnailPath = `/Uploads/${thumbnailFilename}`;
+      console.log("✅ Thumbnail saved:", thumbnailPath);
     }
 
     // Process attachments if uploaded
     if (req.files && req.files.attachments) {
-      const uploadsDir = path.join(__dirname, "../Uploads");
-      
-      if (!fs.existsSync(uploadsDir)) {
-        fs.mkdirSync(uploadsDir, { recursive: true });
-      }
-
       for (const file of req.files.attachments) {
-        const filename = `attachment-${Date.now()}-${file.originalname}`;
+        const filename = `attachment-${Date.now()}-${file.originalname.replace(/\s+/g, '-')}`;
         const filePath = path.join(uploadsDir, filename);
         
         fs.writeFileSync(filePath, file.buffer);
         attachmentPaths.push(`/Uploads/${filename}`);
       }
+      console.log("✅ Attachments saved:", attachmentPaths.length);
+    }
+
+    // Check if course with same slug already exists
+    const existingCourse = await Course.findOne({ where: { slug } });
+    if (existingCourse) {
+      return res.status(400).json({
+        success: false,
+        error: "A course with this slug already exists"
+      });
     }
 
     // Create the course
-    const course = await Course.create({
-      title,
-      slug,
-      description: description || "",
+    const courseData = {
+      title: title.trim(),
+      slug: slug.trim().toLowerCase().replace(/\s+/g, '-'),
+      description: (description || "").trim(),
       teacher_id: teacherId,
       price: price ? parseFloat(price) : 0,
-      thumbnail: thumbnailPath,
-      // If you have an attachments field in your Course model:
-      // attachments: attachmentPaths
-    });
+      thumbnail: thumbnailPath
+    };
+
+    console.log("📊 Creating course with data:", courseData);
+
+    const course = await Course.create(courseData);
 
     console.log("✅ Course created successfully:", course.id);
 
@@ -333,18 +353,28 @@ export const createCourse = async (req, res) => {
         description: course.description,
         price: course.price,
         thumbnail: course.thumbnail,
-        teacher_id: course.teacher_id
+        teacher_id: course.teacher_id,
+        created_at: course.created_at
       }
     });
 
   } catch (error) {
     console.error("❌ Error creating course:", error);
     
-    // Handle duplicate slug error
+    // Handle specific errors
     if (error.name === 'SequelizeUniqueConstraintError') {
       return res.status(400).json({
         success: false,
         error: "A course with this slug already exists"
+      });
+    }
+
+    if (error.name === 'SequelizeValidationError') {
+      const errors = error.errors.map(err => err.message);
+      return res.status(400).json({
+        success: false,
+        error: "Validation failed",
+        details: errors
       });
     }
 

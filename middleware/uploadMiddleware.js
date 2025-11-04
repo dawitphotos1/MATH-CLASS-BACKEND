@@ -15,11 +15,6 @@
 
 // middleware/uploadMiddleware.js
 import multer from "multer";
-import path from "path";
-import { fileURLToPath } from "url";
-
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
 
 // Configure multer for memory storage
 const storage = multer.memoryStorage();
@@ -49,5 +44,24 @@ export const uploadCourseFiles = upload.fields([
   { name: 'thumbnail', maxCount: 1 },
   { name: 'attachments', maxCount: 10 }
 ]);
+
+// Error handling middleware for multer
+export const handleUploadError = (error, req, res, next) => {
+  if (error instanceof multer.MulterError) {
+    if (error.code === 'LIMIT_FILE_SIZE') {
+      return res.status(400).json({
+        success: false,
+        error: 'File too large. Maximum size is 10MB.'
+      });
+    }
+    if (error.code === 'LIMIT_FILE_COUNT') {
+      return res.status(400).json({
+        success: false,
+        error: 'Too many files.'
+      });
+    }
+  }
+  next(error);
+};
 
 export default upload;
