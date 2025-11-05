@@ -10,7 +10,7 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 /* ============================================================
-   Create a new course (with file upload support)
+   Create a new course (with file upload support) - SIMPLE CREATION
 ============================================================ */
 export const createCourse = async (req, res) => {
   try {
@@ -116,6 +116,168 @@ export const createCourse = async (req, res) => {
 
   } catch (error) {
     console.error("❌ Error creating course:", error);
+    
+    // Handle specific errors
+    if (error.name === 'SequelizeUniqueConstraintError') {
+      return res.status(400).json({
+        success: false,
+        error: "A course with this slug already exists"
+      });
+    }
+
+    if (error.name === 'SequelizeValidationError') {
+      const errors = error.errors.map(err => err.message);
+      return res.status(400).json({
+        success: false,
+        error: "Validation failed",
+        details: errors
+      });
+    }
+
+    res.status(500).json({
+      success: false,
+      error: "Failed to create course",
+      details: process.env.NODE_ENV === "development" ? error.message : undefined
+    });
+  }
+};
+
+/* ============================================================
+   Create a new course with units and lessons - ADVANCED CREATION
+============================================================ */
+export const createCourseWithUnits = async (req, res) => {
+  try {
+    console.log("🎯 Advanced course creation requested");
+    console.log("📝 Request body:", req.body);
+    console.log("📁 Uploaded files:", req.files);
+    console.log("👤 User:", req.user);
+
+    // Extract form data
+    const { 
+      title, 
+      slug, 
+      description, 
+      price,
+      teacher_id,
+      units = [] // Array of units with lessons
+    } = req.body;
+
+    const teacherId = req.user?.id || teacher_id;
+
+    // Validate required fields
+    if (!title || !slug) {
+      return res.status(400).json({
+        success: false,
+        error: "Title and slug are required"
+      });
+    }
+
+    // Handle file uploads
+    let thumbnailPath = null;
+
+    // Ensure Uploads directory exists
+    const uploadsDir = path.join(__dirname, "../Uploads");
+    if (!fs.existsSync(uploadsDir)) {
+      fs.mkdirSync(uploadsDir, { recursive: true });
+    }
+
+    // Process thumbnail if uploaded
+    if (req.files && req.files.thumbnail && req.files.thumbnail[0]) {
+      const thumbnail = req.files.thumbnail[0];
+      const thumbnailFilename = `thumbnail-${Date.now()}-${thumbnail.originalname.replace(/\s+/g, '-')}`;
+      const thumbnailFullPath = path.join(uploadsDir, thumbnailFilename);
+      
+      fs.writeFileSync(thumbnailFullPath, thumbnail.buffer);
+      thumbnailPath = `/Uploads/${thumbnailFilename}`;
+      console.log("✅ Thumbnail saved:", thumbnailPath);
+    }
+
+    // Check if course with same slug already exists
+    const existingCourse = await Course.findOne({ where: { slug } });
+    if (existingCourse) {
+      return res.status(400).json({
+        success: false,
+        error: "A course with this slug already exists"
+      });
+    }
+
+    // Create the course
+    const courseData = {
+      title: title.trim(),
+      slug: slug.trim().toLowerCase().replace(/\s+/g, '-'),
+      description: (description || "").trim(),
+      teacher_id: teacherId,
+      price: price ? parseFloat(price) : 0,
+      thumbnail: thumbnailPath
+    };
+
+    console.log("📊 Creating advanced course with data:", courseData);
+
+    const course = await Course.create(courseData);
+    console.log("✅ Course created successfully:", course.id);
+
+    // Create units and lessons if provided
+    let createdUnits = [];
+    let createdLessons = [];
+
+    if (units && Array.isArray(units) && units.length > 0) {
+      console.log(`📚 Creating ${units.length} units with lessons...`);
+
+      for (const unit of units) {
+        if (unit.title && unit.lessons && Array.isArray(unit.lessons)) {
+          // Create unit header as a lesson with special type
+          const unitLesson = await Lesson.create({
+            course_id: course.id,
+            title: unit.title,
+            content: unit.description || '',
+            order_index: unit.order_index || 0,
+            content_type: 'unit_header',
+            is_preview: false
+          });
+          createdUnits.push(unitLesson);
+
+          // Create lessons for this unit
+          for (const lessonData of unit.lessons) {
+            if (lessonData.title) {
+              const lesson = await Lesson.create({
+                course_id: course.id,
+                title: lessonData.title,
+                content: lessonData.content || '',
+                video_url: lessonData.video_url || null,
+                order_index: lessonData.order_index || 0,
+                content_type: lessonData.content_type || 'text',
+                is_preview: lessonData.is_preview || false
+              });
+              createdLessons.push(lesson);
+            }
+          }
+        }
+      }
+
+      console.log(`✅ Created ${createdUnits.length} units and ${createdLessons.length} lessons`);
+    }
+
+    res.status(201).json({
+      success: true,
+      message: "Course created successfully with structure",
+      course: {
+        id: course.id,
+        title: course.title,
+        slug: course.slug,
+        description: course.description,
+        price: course.price,
+        thumbnail: course.thumbnail,
+        teacher_id: course.teacher_id,
+        created_at: course.created_at
+      },
+      structure: {
+        units: createdUnits.length,
+        lessons: createdLessons.length
+      }
+    });
+
+  } catch (error) {
+    console.error("❌ Error creating advanced course:", error);
     
     // Handle specific errors
     if (error.name === 'SequelizeUniqueConstraintError') {

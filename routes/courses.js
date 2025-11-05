@@ -1,4 +1,3 @@
-
 // routes/courses.js
 import express from "express";
 import {
@@ -8,7 +7,7 @@ import {
   getLessonsByCourse,
   deleteCourse,
   getCourseById,
-  createCourseWithUnits, // ✅ NEW - for advanced course creation
+  createCourseWithUnits, // ✅ NOW THIS WILL WORK
 } from "../controllers/courseController.js";
 import authenticateToken from "../middleware/authenticateToken.js";
 import checkTeacherOrAdmin from "../middleware/checkTeacherOrAdmin.js";
