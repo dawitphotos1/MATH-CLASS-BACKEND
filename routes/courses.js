@@ -1,49 +1,5 @@
-// //routes/courses.js
-// import express from "express";
-// import {
-//   createCourse,
-//   getCourses,
-//   getPublicCourseBySlug,
-//   getLessonsByCourse,
-//   deleteCourse,
-//   getCourseById,
-// } from "../controllers/courseController.js";
-// import authenticateToken from "../middleware/authenticateToken.js";
-// import checkTeacherOrAdmin from "../middleware/checkTeacherOrAdmin.js";
 
-// const router = express.Router();
-
-// /* ========================================================
-//    🟢 PUBLIC ROUTES --- accessible without login
-// ======================================================== */
-
-// // View all courses (public)
-// router.get("/", getCourses);
-
-// // View a specific course by slug (public)
-// router.get("/:slug", getPublicCourseBySlug);
-
-// // ✅ Get course by ID (public)
-// router.get("/id/:id", getCourseById);
-
-// // View lessons by course (public)
-// router.get("/:courseId/lessons", getLessonsByCourse);
-
-// /* ========================================================
-//    🔐 PROTECTED ROUTES --- restricted to teachers/admins
-// ======================================================== */
-
-// // Create a new course (requires teacher/admin)
-// router.post("/", authenticateToken, checkTeacherOrAdmin, createCourse);
-
-// // Delete a course (requires teacher/admin)
-// router.delete("/:id", authenticateToken, checkTeacherOrAdmin, deleteCourse);
-
-// export default router;
-
-
-
-
+// routes/courses.js
 import express from "express";
 import {
   createCourse,
@@ -52,6 +8,7 @@ import {
   getLessonsByCourse,
   deleteCourse,
   getCourseById,
+  createCourseWithUnits, // ✅ NEW - for advanced course creation
 } from "../controllers/courseController.js";
 import authenticateToken from "../middleware/authenticateToken.js";
 import checkTeacherOrAdmin from "../middleware/checkTeacherOrAdmin.js";
@@ -83,7 +40,7 @@ router.get("/:courseId/lessons", getLessonsByCourse);
    🔐 PROTECTED ROUTES --- restricted to teachers/admins
 ======================================================== */
 
-// Create a new course (requires teacher/admin) - BOTH ROUTES FOR COMPATIBILITY
+// Create a new course (requires teacher/admin) - SIMPLE CREATION
 router.post(
   "/",
   authenticateToken,
@@ -91,12 +48,14 @@ router.post(
   uploadCourseFiles,
   createCourse
 );
+
+// Create a new course with units (requires teacher/admin) - ADVANCED CREATION
 router.post(
-  "/create",
+  "/create-with-units",
   authenticateToken,
   checkTeacherOrAdmin,
   uploadCourseFiles,
-  createCourse
+  createCourseWithUnits
 );
 
 // Delete a course (requires teacher/admin)
