@@ -83,78 +83,44 @@
 
 
 
-// routes/lessonRoutes.js
+
 import express from "express";
 import {
   createLesson,
   getLessonsByCourse,
+  getLessonsByUnit,
   getLessonById,
   updateLesson,
   deleteLesson,
 } from "../controllers/lessonController.js";
-import { authenticateToken, isTeacher } from "../middleware/authMiddleware.js";
-import { uploadLessonFiles } from "../middleware/uploadMiddleware.js";
+import { authenticate, authorizeTeacher } from "../middleware/auth.js";
+import upload from "../middleware/upload.js";
 
 const router = express.Router();
 
-// All routes are protected
-router.use(authenticateToken);
-
-/* ============================================================
-   📚 LESSON ROUTES
-============================================================ */
-
-/**
- * ✅ Create a new lesson - SUPPORT BOTH URL PATTERNS
- * POST /api/v1/lessons
- * POST /api/v1/lessons/course/:courseId/lessons (for frontend compatibility)
- */
+// Lesson routes
 router.post(
-  "/",
-  isTeacher,
-  uploadLessonFiles,
+  "/courses/:courseId/lessons",
+  authenticate,
+  authorizeTeacher,
+  upload,
   createLesson
 );
-
-// ✅ ADD THIS ROUTE for frontend compatibility
-router.post(
-  "/course/:courseId/lessons",
-  isTeacher,
-  uploadLessonFiles,
-  createLesson
-);
-
-/**
- * ✅ Get lessons by course ID - SUPPORT BOTH URL PATTERNS
- * GET /api/v1/lessons/course/:courseId
- * GET /api/v1/lessons/course/:courseId/units (for frontend compatibility)
- */
-router.get("/course/:courseId", getLessonsByCourse);
-
-// ✅ ADD THIS ROUTE for frontend compatibility
-router.get("/course/:courseId/units", getLessonsByCourse);
-
-/**
- * ✅ Get a single lesson by ID
- * GET /api/v1/lessons/:lessonId
- */
-router.get("/:lessonId", getLessonById);
-
-/**
- * ✅ Update a lesson
- * PUT /api/v1/lessons/:lessonId
- */
+router.get("/courses/:courseId/lessons", authenticate, getLessonsByCourse);
+router.get("/units/:unitId/lessons", authenticate, getLessonsByUnit);
+router.get("/lessons/:lessonId", authenticate, getLessonById);
 router.put(
-  "/:lessonId",
-  isTeacher,
-  uploadLessonFiles,
+  "/lessons/:lessonId",
+  authenticate,
+  authorizeTeacher,
+  upload,
   updateLesson
 );
-
-/**
- * ✅ Delete a lesson
- * DELETE /api/v1/lessons/:lessonId
- */
-router.delete("/:lessonId", isTeacher, deleteLesson);
+router.delete(
+  "/lessons/:lessonId",
+  authenticate,
+  authorizeTeacher,
+  deleteLesson
+);
 
 export default router;
