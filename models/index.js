@@ -118,14 +118,18 @@
 // export default models;
 
 
-
-import { Sequelize } from "sequelize";
+// models/index.js
+import { Sequelize, DataTypes } from "sequelize";
 import config from "../config/config.js";
+
+import UserModel from "./User.js";
+import CourseModel from "./Course.js";
+import UnitModel from "./Unit.js";
+import LessonModel from "./Lesson.js";
 
 const env = process.env.NODE_ENV || "development";
 const dbConfig = config[env];
 
-// Create sequelize instance
 const sequelize = new Sequelize(
   dbConfig.database,
   dbConfig.username,
@@ -137,57 +141,20 @@ const sequelize = new Sequelize(
   }
 );
 
-const db = {
-  sequelize,
-  Sequelize,
-};
-
-// Import models
-import Course from "./Course.js";
-import Unit from "./Unit.js";
-import Lesson from "./Lesson.js";
-import User from "./User.js"; // Make sure you have this
+const db = { sequelize, Sequelize, DataTypes };
 
 // Initialize models
-db.Course = Course;
-db.Unit = Unit;
-db.Lesson = Lesson;
-db.User = User;
+db.User = UserModel(sequelize, DataTypes);
+db.Course = CourseModel(sequelize, DataTypes);
+db.Unit = UnitModel(sequelize, DataTypes);
+db.Lesson = LessonModel(sequelize, DataTypes);
 
-// Associations
-Course.hasMany(Unit, {
-  foreignKey: "course_id",
-  as: "units",
-  onDelete: "CASCADE",
+// Run associations
+Object.values(db).forEach((model) => {
+  if (model.associate) {
+    model.associate(db);
+  }
 });
 
-Course.hasMany(Lesson, {
-  foreignKey: "course_id",
-  as: "lessons",
-  onDelete: "CASCADE",
-});
-
-Unit.belongsTo(Course, {
-  foreignKey: "course_id",
-  as: "course",
-});
-
-Unit.hasMany(Lesson, {
-  foreignKey: "unit_id",
-  as: "lessons",
-  onDelete: "CASCADE",
-});
-
-Lesson.belongsTo(Course, {
-  foreignKey: "course_id",
-  as: "course",
-});
-
-Lesson.belongsTo(Unit, {
-  foreignKey: "unit_id",
-  as: "unit",
-});
-
-// Export both default and named exports
-export { sequelize, Course, Unit, Lesson, User };
 export default db;
+export { sequelize, db };
