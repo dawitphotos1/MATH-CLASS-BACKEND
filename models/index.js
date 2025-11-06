@@ -119,6 +119,9 @@
 
 
 
+// models/index.js
+
+// models/index.js
 import { Sequelize, DataTypes } from "sequelize";
 import config from "../config/config.js";
 
@@ -131,13 +134,16 @@ import LessonCompletionModel from "./LessonCompletion.js";
 const env = process.env.NODE_ENV || "development";
 const dbConfig = config[env];
 
+// Initialize Sequelize
 const sequelize = new Sequelize(dbConfig.url, {
   dialect: dbConfig.dialect,
   logging: dbConfig.logging || false,
-  dialectOptions: dbConfig.dialectOptions,
+  dialectOptions: dbConfig.dialectOptions || {},
 });
 
-const db = { sequelize, Sequelize, DataTypes };
+const db = {};
+db.sequelize = sequelize;
+db.Sequelize = Sequelize;
 
 // Initialize models
 db.User = UserModel(sequelize, DataTypes);
@@ -148,11 +154,9 @@ db.LessonCompletion = LessonCompletionModel(sequelize, DataTypes);
 
 // Run associations
 Object.values(db).forEach((model) => {
-  if (model.associate) {
-    model.associate(db);
-  }
+  if (model.associate) model.associate(db);
 });
 
-// Named exports for direct import
-export { db, sequelize, db as models, db.User, db.Course, db.Unit, db.Lesson, db.LessonCompletion };
+// ✅ Correct exports only
 export default db;
+export { sequelize };
