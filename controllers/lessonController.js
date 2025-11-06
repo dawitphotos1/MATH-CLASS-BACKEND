@@ -1,4 +1,3 @@
-
 // // controllers/lessonController.js
 // import db from "../models/index.js";
 
@@ -106,9 +105,6 @@
 //   }
 // };
 
-
-
-
 // controllers/lessonController.js
 import db from "../models/index.js";
 import path from "path";
@@ -128,6 +124,7 @@ export const createLesson = async (req, res) => {
     console.log("📝 Creating lesson - Request body:", req.body);
     console.log("📁 Uploaded files:", req.files);
     console.log("🔗 URL params:", req.params);
+    console.log("👤 User:", req.user);
 
     // Get courseId from either body or URL params (for compatibility)
     let { courseId, title, content, contentType, orderIndex, videoUrl } = req.body;
@@ -137,11 +134,21 @@ export const createLesson = async (req, res) => {
       courseId = req.params.courseId;
     }
 
+    console.log("🔍 Extracted courseId:", courseId);
+
     // Validate required fields
-    if (!courseId || !title) {
+    if (!courseId) {
       return res.status(400).json({
         success: false,
-        error: "Course ID and title are required",
+        error: "Course ID is required",
+        received: { courseId, title }
+      });
+    }
+
+    if (!title) {
+      return res.status(400).json({
+        success: false,
+        error: "Lesson title is required",
         received: { courseId, title }
       });
     }
@@ -151,9 +158,11 @@ export const createLesson = async (req, res) => {
     if (!course) {
       return res.status(404).json({
         success: false,
-        error: "Course not found"
+        error: `Course with ID ${courseId} not found`
       });
     }
+
+    console.log("✅ Course found:", course.title);
 
     // Check if user is the course teacher or admin
     if (req.user.role !== "admin" && course.teacher_id !== req.user.id) {
@@ -171,6 +180,7 @@ export const createLesson = async (req, res) => {
     const uploadsDir = path.join(__dirname, "../Uploads");
     if (!fs.existsSync(uploadsDir)) {
       fs.mkdirSync(uploadsDir, { recursive: true });
+      console.log("✅ Created Uploads directory");
     }
 
     // Process video if uploaded
@@ -206,6 +216,8 @@ export const createLesson = async (req, res) => {
       orderIndexValue = lastLesson ? lastLesson.order_index + 1 : 1;
     }
 
+    console.log("📊 Order index:", orderIndexValue);
+
     // Create the lesson
     const lessonData = {
       course_id: courseId,
@@ -217,6 +229,16 @@ export const createLesson = async (req, res) => {
     };
 
     console.log("📊 Creating lesson with data:", lessonData);
+
+    // Validate lesson data before creating
+    if (!lessonData.course_id || !lessonData.title) {
+      return res.status(400).json({
+        success: false,
+        error: "Missing required fields for lesson creation",
+        required: ["course_id", "title"],
+        received: lessonData
+      });
+    }
 
     const lesson = await Lesson.create(lessonData);
 
@@ -239,13 +261,38 @@ export const createLesson = async (req, res) => {
 
   } catch (error) {
     console.error("❌ Error creating lesson:", error);
+    console.error("❌ Error details:", {
+      name: error.name,
+      message: error.message,
+      stack: error.stack
+    });
     
+    // Handle specific errors
+    if (error.name === 'SequelizeUniqueConstraintError') {
+      return res.status(400).json({
+        success: false,
+        error: "A lesson with similar data already exists",
+        details: error.errors?.map(err => err.message)
+      });
+    }
+
     if (error.name === 'SequelizeValidationError') {
-      const errors = error.errors.map(err => err.message);
+      const errors = error.errors.map(err => ({
+        field: err.path,
+        message: err.message,
+        value: err.value
+      }));
       return res.status(400).json({
         success: false,
         error: "Validation failed",
         details: errors
+      });
+    }
+
+    if (error.name === 'SequelizeForeignKeyConstraintError') {
+      return res.status(400).json({
+        success: false,
+        error: "Invalid course ID - course does not exist"
       });
     }
 
@@ -263,6 +310,7 @@ export const createLesson = async (req, res) => {
 export const getLessonsByCourse = async (req, res) => {
   try {
     const { courseId } = req.params;
+    console.log("📚 Fetching lessons for course:", courseId);
 
     const lessons = await Lesson.findAll({
       where: { course_id: courseId },
@@ -277,6 +325,8 @@ export const getLessonsByCourse = async (req, res) => {
         "created_at"
       ]
     });
+
+    console.log(`✅ Found ${lessons.length} lessons for course ${courseId}`);
 
     res.json({
       success: true,
