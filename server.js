@@ -285,8 +285,8 @@ import path from "path";
 import { fileURLToPath } from "url";
 import sequelize from "./config/db.js";
 
-// ✅ Import all routes
-import authRoutes from "./routes/authRoutes.js";
+// ✅ Import all routes - USING YOUR EXISTING FILES
+import authRoutes from "./routes/authRoutes.js"; // You have this file
 import adminRoutes from "./routes/admin.js";
 import courseRoutes from "./routes/courses.js";
 import lessonRoutes from "./routes/lessonRoutes.js";

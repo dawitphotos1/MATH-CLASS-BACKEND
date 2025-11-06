@@ -83,7 +83,6 @@
 
 
 
-
 import express from "express";
 import {
   createLesson,
@@ -93,8 +92,9 @@ import {
   updateLesson,
   deleteLesson,
 } from "../controllers/lessonController.js";
-import { authenticate, authorizeTeacher } from "../middleware/auth.js";
-import upload from "../middleware/upload.js";
+import { authenticate } from "../middleware/authMiddleware.js"; // Use your existing file
+import { checkTeacherOrAdmin } from "../middleware/checkTeacherOrAdmin.js"; // Use your existing file
+import upload from "../middleware/uploadMiddleware.js"; // Use your existing file
 
 const router = express.Router();
 
@@ -102,7 +102,7 @@ const router = express.Router();
 router.post(
   "/courses/:courseId/lessons",
   authenticate,
-  authorizeTeacher,
+  checkTeacherOrAdmin,
   upload,
   createLesson
 );
@@ -112,14 +112,14 @@ router.get("/lessons/:lessonId", authenticate, getLessonById);
 router.put(
   "/lessons/:lessonId",
   authenticate,
-  authorizeTeacher,
+  checkTeacherOrAdmin,
   upload,
   updateLesson
 );
 router.delete(
   "/lessons/:lessonId",
   authenticate,
-  authorizeTeacher,
+  checkTeacherOrAdmin,
   deleteLesson
 );
 
