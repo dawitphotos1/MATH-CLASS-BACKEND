@@ -15,53 +15,63 @@
 
 // middleware/uploadMiddleware.js
 import multer from "multer";
+import path from "path";
+import fs from "fs";
 
-// Configure multer for memory storage
+// Ensure Uploads directory exists
+const uploadsDir = path.join(process.cwd(), "Uploads");
+if (!fs.existsSync(uploadsDir)) {
+  fs.mkdirSync(uploadsDir, { recursive: true });
+}
+
+// Memory storage for file uploads
 const storage = multer.memoryStorage();
 
+// File filter
 const fileFilter = (req, file, cb) => {
-  // Allow images and PDFs
-  if (file.mimetype.startsWith('image/') || 
-      file.mimetype === 'application/pdf' ||
-      file.mimetype === 'application/msword' ||
-      file.mimetype === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document') {
+  // Allow images, videos, PDFs, and documents
+  const allowedMimes = [
+    'image/jpeg',
+    'image/jpg', 
+    'image/png',
+    'image/gif',
+    'video/mp4',
+    'video/mpeg',
+    'video/quicktime',
+    'application/pdf',
+    'application/msword',
+    'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
+  ];
+
+  if (allowedMimes.includes(file.mimetype)) {
     cb(null, true);
   } else {
-    cb(new Error('Invalid file type. Only images, PDFs, and Word documents are allowed.'), false);
+    cb(new Error(`File type ${file.mimetype} not allowed`), false);
   }
 };
 
-const upload = multer({
-  storage: storage,
-  fileFilter: fileFilter,
+// Course file upload configuration
+export const uploadCourseFiles = multer({
+  storage,
+  fileFilter,
   limits: {
-    fileSize: 10 * 1024 * 1024, // 10MB limit
+    fileSize: 100 * 1024 * 1024, // 100MB limit
   }
-});
-
-// Middleware for course creation with file uploads
-export const uploadCourseFiles = upload.fields([
+}).fields([
   { name: 'thumbnail', maxCount: 1 },
   { name: 'attachments', maxCount: 10 }
 ]);
 
-// Error handling middleware for multer
-export const handleUploadError = (error, req, res, next) => {
-  if (error instanceof multer.MulterError) {
-    if (error.code === 'LIMIT_FILE_SIZE') {
-      return res.status(400).json({
-        success: false,
-        error: 'File too large. Maximum size is 10MB.'
-      });
-    }
-    if (error.code === 'LIMIT_FILE_COUNT') {
-      return res.status(400).json({
-        success: false,
-        error: 'Too many files.'
-      });
-    }
+// Lesson file upload configuration
+export const uploadLessonFiles = multer({
+  storage,
+  fileFilter,
+  limits: {
+    fileSize: 100 * 1024 * 1024, // 100MB limit
   }
-  next(error);
-};
+}).fields([
+  { name: 'video', maxCount: 1 },
+  { name: 'attachments', maxCount: 10 }
+]);
 
-export default upload;
+export default uploadCourseFiles;
