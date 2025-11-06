@@ -105,8 +105,9 @@ router.use(authenticateToken);
 ============================================================ */
 
 /**
- * ✅ Create a new lesson
+ * ✅ Create a new lesson - SUPPORT BOTH URL PATTERNS
  * POST /api/v1/lessons
+ * POST /api/v1/lessons/course/:courseId/lessons (for frontend compatibility)
  */
 router.post(
   "/",
@@ -115,11 +116,23 @@ router.post(
   createLesson
 );
 
+// ✅ ADD THIS ROUTE for frontend compatibility
+router.post(
+  "/course/:courseId/lessons",
+  isTeacher,
+  uploadLessonFiles,
+  createLesson
+);
+
 /**
- * ✅ Get lessons by course ID
+ * ✅ Get lessons by course ID - SUPPORT BOTH URL PATTERNS
  * GET /api/v1/lessons/course/:courseId
+ * GET /api/v1/lessons/course/:courseId/units (for frontend compatibility)
  */
 router.get("/course/:courseId", getLessonsByCourse);
+
+// ✅ ADD THIS ROUTE for frontend compatibility
+router.get("/course/:courseId/units", getLessonsByCourse);
 
 /**
  * ✅ Get a single lesson by ID

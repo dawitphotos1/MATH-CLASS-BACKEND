@@ -127,14 +127,22 @@ export const createLesson = async (req, res) => {
   try {
     console.log("📝 Creating lesson - Request body:", req.body);
     console.log("📁 Uploaded files:", req.files);
+    console.log("🔗 URL params:", req.params);
 
-    const { courseId, title, content, contentType, orderIndex, videoUrl } = req.body;
+    // Get courseId from either body or URL params (for compatibility)
+    let { courseId, title, content, contentType, orderIndex, videoUrl } = req.body;
+    
+    // If courseId comes from URL params (like /lessons/course/22/lessons)
+    if (!courseId && req.params.courseId) {
+      courseId = req.params.courseId;
+    }
 
     // Validate required fields
     if (!courseId || !title) {
       return res.status(400).json({
         success: false,
-        error: "Course ID and title are required"
+        error: "Course ID and title are required",
+        received: { courseId, title }
       });
     }
 
