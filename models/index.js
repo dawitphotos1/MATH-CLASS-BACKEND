@@ -119,13 +119,13 @@
 
 
 
-
 import { Sequelize } from "sequelize";
 import config from "../config/config.js";
 
 const env = process.env.NODE_ENV || "development";
 const dbConfig = config[env];
 
+// Create sequelize instance
 const sequelize = new Sequelize(
   dbConfig.database,
   dbConfig.username,
@@ -146,11 +146,13 @@ const db = {
 import Course from "./Course.js";
 import Unit from "./Unit.js";
 import Lesson from "./Lesson.js";
+import User from "./User.js"; // Make sure you have this
 
 // Initialize models
 db.Course = Course;
 db.Unit = Unit;
 db.Lesson = Lesson;
+db.User = User;
 
 // Associations
 Course.hasMany(Unit, {
@@ -186,5 +188,6 @@ Lesson.belongsTo(Unit, {
   as: "unit",
 });
 
-export { Course, Unit, Lesson };
+// Export both default and named exports
+export { sequelize, Course, Unit, Lesson, User };
 export default db;

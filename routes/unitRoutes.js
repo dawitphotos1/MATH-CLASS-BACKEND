@@ -21,6 +21,8 @@
 
 // export default router;
 
+
+
 import express from "express";
 import {
   createUnit,
@@ -29,21 +31,33 @@ import {
   updateUnit,
   deleteUnit,
 } from "../controllers/unitController.js";
-import { authenticate } from "../middleware/authMiddleware.js"; // Use your existing file
-import { checkTeacherOrAdmin } from "../middleware/checkTeacherOrAdmin.js"; // Use your existing file
+
+// ✅ CORRECT IMPORTS
+import { authenticateToken } from "../middleware/authMiddleware.js";
+import checkTeacherOrAdmin from "../middleware/checkTeacherOrAdmin.js"; // Default import
 
 const router = express.Router();
 
 // Unit routes
 router.post(
   "/courses/:courseId/units",
-  authenticate,
+  authenticateToken,
   checkTeacherOrAdmin,
   createUnit
 );
-router.get("/courses/:courseId/units", authenticate, getUnitsByCourse);
-router.get("/units/:unitId", authenticate, getUnitById);
-router.put("/units/:unitId", authenticate, checkTeacherOrAdmin, updateUnit);
-router.delete("/units/:unitId", authenticate, checkTeacherOrAdmin, deleteUnit);
+router.get("/courses/:courseId/units", authenticateToken, getUnitsByCourse);
+router.get("/units/:unitId", authenticateToken, getUnitById);
+router.put(
+  "/units/:unitId",
+  authenticateToken,
+  checkTeacherOrAdmin,
+  updateUnit
+);
+router.delete(
+  "/units/:unitId",
+  authenticateToken,
+  checkTeacherOrAdmin,
+  deleteUnit
+);
 
 export default router;
