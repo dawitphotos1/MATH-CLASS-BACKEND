@@ -28,9 +28,6 @@ export default (sequelize, DataTypes) => {
   );
 
   User.associate = (models) => {
-    // One teacher profile per user
-    User.hasOne(models.Teacher, { foreignKey: "user_id", as: "teacherProfile" });
-
     // A user can create many courses
     User.hasMany(models.Course, { foreignKey: "teacher_id", as: "courses" });
 

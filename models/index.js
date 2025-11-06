@@ -118,7 +118,7 @@
 // export default models;
 
 
-// models/index.js
+
 import { Sequelize, DataTypes } from "sequelize";
 import config from "../config/config.js";
 
@@ -126,20 +126,16 @@ import UserModel from "./User.js";
 import CourseModel from "./Course.js";
 import UnitModel from "./Unit.js";
 import LessonModel from "./Lesson.js";
+import LessonCompletionModel from "./LessonCompletion.js";
 
 const env = process.env.NODE_ENV || "development";
 const dbConfig = config[env];
 
-const sequelize = new Sequelize(
-  dbConfig.database,
-  dbConfig.username,
-  dbConfig.password,
-  {
-    host: dbConfig.host,
-    dialect: dbConfig.dialect,
-    logging: dbConfig.logging || false,
-  }
-);
+const sequelize = new Sequelize(dbConfig.url, {
+  dialect: dbConfig.dialect,
+  logging: dbConfig.logging || false,
+  dialectOptions: dbConfig.dialectOptions,
+});
 
 const db = { sequelize, Sequelize, DataTypes };
 
@@ -148,6 +144,7 @@ db.User = UserModel(sequelize, DataTypes);
 db.Course = CourseModel(sequelize, DataTypes);
 db.Unit = UnitModel(sequelize, DataTypes);
 db.Lesson = LessonModel(sequelize, DataTypes);
+db.LessonCompletion = LessonCompletionModel(sequelize, DataTypes);
 
 // Run associations
 Object.values(db).forEach((model) => {
@@ -156,5 +153,6 @@ Object.values(db).forEach((model) => {
   }
 });
 
+// Named exports for direct import
+export { db, sequelize, db as models, db.User, db.Course, db.Unit, db.Lesson, db.LessonCompletion };
 export default db;
-export { sequelize, db };

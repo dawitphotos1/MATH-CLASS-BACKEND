@@ -270,8 +270,7 @@
 
 
 
-
-// server.js — Render-Safe Backend with Warmup + Static Uploads
+// server.js — Clean Production-Ready Backend
 import dotenv from "dotenv";
 dotenv.config();
 
@@ -285,8 +284,8 @@ import path from "path";
 import { fileURLToPath } from "url";
 import sequelize from "./config/db.js";
 
-// ✅ Import all routes - USING YOUR EXISTING FILES
-import authRoutes from "./routes/authRoutes.js"; // You have this file
+// Routes
+import authRoutes from "./routes/authRoutes.js";
 import adminRoutes from "./routes/admin.js";
 import courseRoutes from "./routes/courses.js";
 import lessonRoutes from "./routes/lessonRoutes.js";
@@ -300,71 +299,41 @@ import { handleStripeWebhook } from "./controllers/paymentController.js";
 const app = express();
 app.set("trust proxy", 1);
 
-console.log("🚀 Starting Math Class Backend...");
-console.log("🌍 NODE_ENV:", process.env.NODE_ENV);
-console.log("🌐 FRONTEND_URL:", process.env.FRONTEND_URL);
-console.log("🔗 BACKEND_URL:", process.env.BACKEND_URL);
-
-/* ========================================================
-   📁 PATH CONFIGURATION
-======================================================== */
+// Path setup
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-/* ========================================================
-   🖼️ STATIC FILES CONFIGURATION
-======================================================== */
-// Serve static uploads for images and files
+// Static files
 app.use("/uploads", express.static(path.join(__dirname, "public/uploads")));
-app.use("/Uploads", express.static(path.join(__dirname, "Uploads")));
+app.use("/uploads_videos", express.static(path.join(__dirname, "Uploads")));
 
-// Example URLs:
-// https://mathe-class-website-backend-1.onrender.com/uploads/mathlogo2.jpg
-// https://mathe-class-website-backend-1.onrender.com/Uploads/video-file.mp4
-
-/* ========================================================
-   💳 STRIPE WEBHOOK (MUST BE RAW - NO JSON PARSING)
-======================================================== */
+// Stripe webhook (raw body)
 app.post(
   "/api/v1/payments/webhook",
   express.raw({ type: "application/json" }),
   handleStripeWebhook
 );
 
-/* ========================================================
-   📦 MIDDLEWARE SETUP
-======================================================== */
-// Custom JSON middleware to handle file upload routes properly
+// JSON middleware (skip for file/webhook routes)
 app.use((req, res, next) => {
-  // Skip JSON parsing for webhook and file upload routes
   const skipJsonRoutes = [
     "/api/v1/payments/webhook",
-    "/api/v1/courses/create",
-    "/api/v1/courses/",
-    "/api/v1/lessons/",
-    "/api/v1/files/upload"
+    "/api/v1/files/upload",
   ];
-  
-  if (skipJsonRoutes.some(route => req.originalUrl.startsWith(route))) {
-    return next();
-  }
-  express.json({ limit: '50mb' })(req, res, next);
+  if (skipJsonRoutes.some((route) => req.originalUrl.startsWith(route))) return next();
+  express.json({ limit: "50mb" })(req, res, next);
 });
+app.use(express.urlencoded({ extended: true, limit: "50mb" }));
 
-// URL-encoded middleware for form data
-app.use(express.urlencoded({ extended: true, limit: '50mb' }));
-
-/* ========================================================
-   🛡️ SECURITY MIDDLEWARE
-======================================================== */
-app.use(helmet({
-  crossOriginResourcePolicy: { policy: "cross-origin" }
-}));
+// Security
+app.use(
+  helmet({
+    crossOriginResourcePolicy: { policy: "cross-origin" },
+  })
+);
 app.use(cookieParser());
 
-/* ========================================================
-   🌐 CORS CONFIGURATION
-======================================================== */
+// CORS setup
 const allowedOrigins = [
   "http://localhost:3000",
   "http://127.0.0.1:3000",
@@ -372,19 +341,15 @@ const allowedOrigins = [
   "https://math-class-platform.netlify.app",
   "https://leafy-semolina-fc0934.netlify.app",
 ];
-
 app.use(
   cors({
-    origin: function (origin, callback) {
-      // Allow requests with no origin (like mobile apps or curl requests)
-      if (!origin) return callback(null, true);
-      
+    origin(origin, callback) {
       if (
+        !origin ||
         origin.includes("localhost") ||
         allowedOrigins.includes(origin) ||
         origin.endsWith(".netlify.app")
       ) {
-        console.log(`✅ Allowing CORS origin: ${origin}`);
         return callback(null, true);
       }
       console.warn("🚫 Blocked CORS origin:", origin);
@@ -402,46 +367,35 @@ app.use(
     ],
   })
 );
-
-// Global OPTIONS preflight handler
 app.options("*", cors());
 
-/* ========================================================
-   ⚡ RATE LIMITING
-======================================================== */
+// Rate limiting (production only)
 if (process.env.NODE_ENV === "production") {
   const limiter = rateLimit({
-    windowMs: 15 * 60 * 1000, // 15 minutes
-    max: 500, // limit each IP to 500 requests per windowMs
-    message: { 
-      success: false, 
-      error: "Too many requests from this IP, please try again later." 
+    windowMs: 15 * 60 * 1000,
+    max: 500,
+    message: {
+      success: false,
+      error: "Too many requests. Try again later.",
     },
     standardHeaders: true,
     legacyHeaders: false,
   });
   app.use("/api", limiter);
-  console.log("✅ Rate limiting enabled for production");
+  console.log("✅ Rate limiting enabled");
 } else {
-  console.log("⚡ Rate limiting disabled (development mode)");
+  console.log("⚡ Rate limiting disabled (development)");
 }
 
-/* ========================================================
-   📊 REQUEST LOGGING MIDDLEWARE
-======================================================== */
-app.use((req, res, next) => {
-  console.log(`📥 [${req.method}] ${req.originalUrl}`, {
-    origin: req.headers.origin,
-    time: new Date().toISOString(),
-    'content-type': req.headers['content-type'],
-    'content-length': req.headers['content-length']
-  });
+// Request logger
+app.use((req, _, next) => {
+  console.log(
+    `📥 [${req.method}] ${req.originalUrl} — Origin: ${req.headers.origin || "N/A"}`
+  );
   next();
 });
 
-/* ========================================================
-   🔗 API ROUTES CONFIGURATION
-======================================================== */
+// Routes
 app.use("/api/v1/auth", authRoutes);
 app.use("/api/v1/admin", adminRoutes);
 app.use("/api/v1/courses", courseRoutes);
@@ -452,9 +406,7 @@ app.use("/api/v1/test-email", testEmailRoutes);
 app.use("/api/v1/files", filesRoutes);
 app.use("/api/v1/units", unitRoutes);
 
-/* ========================================================
-   💓 HEALTH CHECK ENDPOINT
-======================================================== */
+// Health check
 app.get("/api/v1/health", async (req, res) => {
   try {
     await sequelize.authenticate();
@@ -462,176 +414,99 @@ app.get("/api/v1/health", async (req, res) => {
       success: true,
       status: "healthy",
       database: "connected",
-      environment: process.env.NODE_ENV,
+      env: process.env.NODE_ENV,
       timestamp: new Date().toISOString(),
       uptime: process.uptime(),
-      memory: process.memoryUsage(),
     });
   } catch (err) {
     console.error("❌ Health check failed:", err.message);
-    res.status(500).json({ 
-      success: false, 
-      status: "unhealthy", 
-      error: "Database connection failed",
-      details: process.env.NODE_ENV === "development" ? err.message : undefined
-    });
+    res.status(500).json({ success: false, error: "Database disconnected" });
   }
 });
 
-/* ========================================================
-   📋 API INFO ENDPOINT
-======================================================== */
+// API info
 app.get("/api/v1/info", (req, res) => {
   res.json({
     success: true,
-    name: "Math Class Platform API",
+    app: "Math Class Platform API",
     version: "1.0.0",
-    environment: process.env.NODE_ENV,
-    endpoints: listEndpoints(app).map(route => ({
-      path: route.path,
-      methods: route.methods,
+    env: process.env.NODE_ENV,
+    endpoints: listEndpoints(app).map((e) => ({
+      path: e.path,
+      methods: e.methods,
     })),
   });
 });
 
-/* ========================================================
-   🚫 404 NOT FOUND HANDLER
-======================================================== */
+// 404 handler
 app.use((req, res) => {
-  console.warn(`❌ 404 - Route not found: ${req.method} ${req.originalUrl}`);
   res.status(404).json({
     success: false,
     error: "Route not found",
     path: req.originalUrl,
-    method: req.method,
-    suggestion: "Check the API documentation for available endpoints",
   });
 });
 
-/* ========================================================
-   🧱 GLOBAL ERROR HANDLER
-======================================================== */
+// Global error handler
 app.use((err, req, res, next) => {
-  console.error("❌ Global Error Handler:", {
-    message: err.message,
-    stack: err.stack,
-    url: req.originalUrl,
-    method: req.method,
-    ip: req.ip
-  });
+  console.error("❌ Global Error:", err.message);
+  if (err.message.includes("CORS"))
+    return res.status(403).json({ success: false, error: "CORS policy: Origin not allowed" });
 
-  // CORS errors
-  if (err.message.includes("CORS")) {
-    return res.status(403).json({
-      success: false,
-      error: "CORS policy: Origin not allowed",
-      allowedOrigins: allowedOrigins
-    });
-  }
-
-  // Rate limit errors
-  if (err.statusCode === 429) {
-    return res.status(429).json({
-      success: false,
-      error: "Too many requests, please try again later."
-    });
-  }
-
-  // Default error response
-  const errorResponse = {
+  res.status(err.statusCode || 500).json({
     success: false,
-    error: process.env.NODE_ENV === "production" 
-      ? "Internal server error" 
-      : err.message,
-  };
-
-  // Include stack trace in development
-  if (process.env.NODE_ENV === "development") {
-    errorResponse.stack = err.stack;
-  }
-
-  res.status(err.statusCode || 500).json(errorResponse);
+    error:
+      process.env.NODE_ENV === "production"
+        ? "Internal server error"
+        : err.message,
+    ...(process.env.NODE_ENV === "development" && { stack: err.stack }),
+  });
 });
 
-/* ========================================================
-   💤 RENDER KEEP-ALIVE PING (prevent sleep)
-======================================================== */
+// Render keep-alive (production)
 if (process.env.NODE_ENV === "production" && process.env.BACKEND_URL) {
   const keepAlive = () => {
     fetch(`${process.env.BACKEND_URL}/api/v1/health`)
-      .then(response => {
-        if (response.ok) {
-          console.log("💤 Render ping — backend kept awake");
-        } else {
-          console.warn("⚠️ Keep-alive ping failed:", response.status);
-        }
-      })
-      .catch(error => {
-        console.error("❌ Keep-alive ping error:", error.message);
-      });
+      .then((r) => r.ok && console.log("💤 Render ping success"))
+      .catch((err) => console.warn("⚠️ Keep-alive error:", err.message));
   };
-
-  // Ping every 5 minutes to prevent Render from sleeping the service
   setInterval(keepAlive, 5 * 60 * 1000);
-  
-  // Initial ping
   setTimeout(keepAlive, 10000);
-  console.log("✅ Keep-alive service started");
+  console.log("✅ Keep-alive started");
 }
 
-/* ========================================================
-   🚀 SERVER STARTUP
-======================================================== */
+// Server start
 const PORT = process.env.PORT || 5000;
-
 const startServer = async () => {
   try {
-    // Database connection and sync
     await sequelize.authenticate();
-    console.log("✅ Database connection established successfully");
+    console.log("✅ Database connected");
 
-    // Sync database models
-    const syncOptions = process.env.NODE_ENV === 'production' 
-      ? { alter: false } // Be careful with alter in production
-      : { alter: process.env.ALTER_DB === "true" };
-    
+    const syncOptions =
+      process.env.NODE_ENV === "production"
+        ? { alter: false }
+        : { alter: process.env.ALTER_DB === "true" };
     await sequelize.sync(syncOptions);
-    console.log("✅ Database models synchronized");
+    console.log("✅ Models synchronized");
 
-    // Start server
     app.listen(PORT, "0.0.0.0", () => {
-      console.log(`🎉 Server running on port ${PORT}`);
-      console.log(`🌐 Environment: ${process.env.NODE_ENV}`);
-      console.log(`🔗 Backend URL: ${process.env.BACKEND_URL || `http://localhost:${PORT}`}`);
-      console.log(`📚 Available endpoints:`);
-      
-      // Display endpoints in a clean format
-      const endpoints = listEndpoints(app);
-      endpoints.forEach(endpoint => {
-        console.log(`   ${endpoint.methods.join(', ')} ${endpoint.path}`);
-      });
+      console.log(`🚀 Server running on port ${PORT}`);
+      console.log(`🌐 URL: ${process.env.BACKEND_URL || `http://localhost:${PORT}`}`);
     });
-
   } catch (err) {
-    console.error("❌ Server startup failed:", err);
+    console.error("❌ Server startup failed:", err.message);
     process.exit(1);
   }
 };
 
 // Graceful shutdown
-process.on('SIGTERM', async () => {
-  console.log('🛑 SIGTERM received, shutting down gracefully');
-  await sequelize.close();
-  process.exit(0);
-});
+for (const signal of ["SIGTERM", "SIGINT"]) {
+  process.on(signal, async () => {
+    console.log(`🛑 ${signal} received, closing DB...`);
+    await sequelize.close();
+    process.exit(0);
+  });
+}
 
-process.on('SIGINT', async () => {
-  console.log('🛑 SIGINT received, shutting down gracefully');
-  await sequelize.close();
-  process.exit(0);
-});
-
-// Start the server
 startServer();
-
 export default app;
