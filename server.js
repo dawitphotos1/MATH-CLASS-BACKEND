@@ -23,6 +23,8 @@ import testEmailRoutes from "./routes/testEmail.js";
 import filesRoutes from "./routes/files.js";
 import unitRoutes from "./routes/unitRoutes.js";
 import { handleStripeWebhook } from "./controllers/paymentController.js";
+// Add with your other route imports
+import teacherRoutes from "./routes/teacher.js";
 
 const app = express();
 app.set("trust proxy", 1);
@@ -133,6 +135,7 @@ app.use("/api/v1/payments", paymentRoutes);
 app.use("/api/v1/test-email", testEmailRoutes);
 app.use("/api/v1/files", filesRoutes);
 app.use("/api/v1/units", unitRoutes);
+app.use("/api/v1/teacher", teacherRoutes);
 
 // Health check
 app.get("/api/v1/health", async (req, res) => {

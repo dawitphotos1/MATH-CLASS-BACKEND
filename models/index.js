@@ -1,10 +1,54 @@
 
+// // // models/index.js
+// // import { Sequelize, DataTypes } from "sequelize";
+// // import config from "../config/config.js";
+
+// // import UserModel from "./User.js";
+// // import CourseModel from "./Course.js";
+// // import UnitModel from "./Unit.js";
+// // import LessonModel from "./Lesson.js";
+// // import LessonCompletionModel from "./lessonCompletion.js";
+
+// // const env = process.env.NODE_ENV || "development";
+// // const dbConfig = config[env];
+
+// // // Initialize Sequelize
+// // const sequelize = new Sequelize(dbConfig.url, {
+// //   dialect: dbConfig.dialect,
+// //   logging: dbConfig.logging || false,
+// //   dialectOptions: dbConfig.dialectOptions || {},
+// // });
+
+// // const db = {};
+// // db.sequelize = sequelize;
+// // db.Sequelize = Sequelize;
+
+// // // Initialize models
+// // db.User = UserModel(sequelize, DataTypes);
+// // db.Course = CourseModel(sequelize, DataTypes);
+// // db.Unit = UnitModel(sequelize, DataTypes);
+// // db.Lesson = LessonModel(sequelize, DataTypes);
+// // db.LessonCompletion = LessonCompletionModel(sequelize, DataTypes);
+
+// // // Run associations
+// // Object.values(db).forEach((model) => {
+// //   if (model.associate) model.associate(db);
+// // });
+
+// // // ✅ Correct exports only
+// // export default db;
+// // export { sequelize };
+
+
+
+
 // // models/index.js
 // import { Sequelize, DataTypes } from "sequelize";
 // import config from "../config/config.js";
 
 // import UserModel from "./User.js";
 // import CourseModel from "./Course.js";
+// import EnrollmentModel from "./Enrollment.js"; // ✅ ADD THIS IMPORT
 // import UnitModel from "./Unit.js";
 // import LessonModel from "./Lesson.js";
 // import LessonCompletionModel from "./lessonCompletion.js";
@@ -26,6 +70,7 @@
 // // Initialize models
 // db.User = UserModel(sequelize, DataTypes);
 // db.Course = CourseModel(sequelize, DataTypes);
+// db.Enrollment = EnrollmentModel(sequelize, DataTypes); // ✅ ADD THIS LINE
 // db.Unit = UnitModel(sequelize, DataTypes);
 // db.Lesson = LessonModel(sequelize, DataTypes);
 // db.LessonCompletion = LessonCompletionModel(sequelize, DataTypes);
@@ -42,16 +87,19 @@
 
 
 
+
 // models/index.js
 import { Sequelize, DataTypes } from "sequelize";
 import config from "../config/config.js";
 
 import UserModel from "./User.js";
 import CourseModel from "./Course.js";
-import EnrollmentModel from "./Enrollment.js"; // ✅ ADD THIS IMPORT
+import EnrollmentModel from "./Enrollment.js";
 import UnitModel from "./Unit.js";
 import LessonModel from "./Lesson.js";
-import LessonCompletionModel from "./lessonCompletion.js";
+import LessonCompletionModel from "./LessonCompletion.js";
+import UserCourseAccessModel from "./UserCourseAccess.js";
+import PaymentModel from "./Payment.js";
 
 const env = process.env.NODE_ENV || "development";
 const dbConfig = config[env];
@@ -61,6 +109,12 @@ const sequelize = new Sequelize(dbConfig.url, {
   dialect: dbConfig.dialect,
   logging: dbConfig.logging || false,
   dialectOptions: dbConfig.dialectOptions || {},
+  pool: {
+    max: 10,
+    min: 0,
+    acquire: 30000,
+    idle: 10000,
+  },
 });
 
 const db = {};
@@ -70,10 +124,12 @@ db.Sequelize = Sequelize;
 // Initialize models
 db.User = UserModel(sequelize, DataTypes);
 db.Course = CourseModel(sequelize, DataTypes);
-db.Enrollment = EnrollmentModel(sequelize, DataTypes); // ✅ ADD THIS LINE
+db.Enrollment = EnrollmentModel(sequelize, DataTypes);
 db.Unit = UnitModel(sequelize, DataTypes);
 db.Lesson = LessonModel(sequelize, DataTypes);
 db.LessonCompletion = LessonCompletionModel(sequelize, DataTypes);
+db.UserCourseAccess = UserCourseAccessModel(sequelize, DataTypes);
+db.Payment = PaymentModel(sequelize, DataTypes);
 
 // Run associations
 Object.values(db).forEach((model) => {
