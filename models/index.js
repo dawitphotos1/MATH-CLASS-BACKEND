@@ -97,7 +97,7 @@ import CourseModel from "./Course.js";
 import EnrollmentModel from "./Enrollment.js";
 import UnitModel from "./Unit.js";
 import LessonModel from "./Lesson.js";
-import LessonCompletionModel from "./LessonCompletion.js";
+import LessonCompletionModel from "./lessonCompletion.js";
 import UserCourseAccessModel from "./UserCourseAccess.js";
 import PaymentModel from "./Payment.js";
 
