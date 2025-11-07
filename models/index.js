@@ -129,7 +129,7 @@ import UserModel from "./User.js";
 import CourseModel from "./Course.js";
 import UnitModel from "./Unit.js";
 import LessonModel from "./Lesson.js";
-import LessonCompletionModel from "./LessonCompletion.js";
+import LessonCompletionModel from "./lessonCompletion.js";
 
 const env = process.env.NODE_ENV || "development";
 const dbConfig = config[env];
