@@ -412,8 +412,7 @@ export const createLesson = async (req, res) => {
     console.log("📁 Uploaded files:", req.files);
 
     const { courseId } = req.params;
-    const { title, content, contentType, orderIndex, videoUrl, unitId } =
-      req.body;
+    const { title, content, contentType, orderIndex, videoUrl, unitId } = req.body;
 
     // Validate required fields
     if (!title) {
@@ -634,18 +633,28 @@ export const getLessonById = async (req, res) => {
 export const updateLesson = async (req, res) => {
   try {
     const { lessonId } = req.params;
-    const { title, content, contentType, orderIndex, videoUrl, unitId } =
-      req.body;
+    const { title, content, contentType, orderIndex, videoUrl, unitId } = req.body;
 
-    console.log("🔄 Updating lesson:", lessonId, "with data:", { 
+    console.log("🔄 UPDATE LESSON - ID:", lessonId);
+    console.log("📦 Request body:", { 
       title, 
-      content: content ? `${content.substring(0, 50)}...` : 'empty',
       contentType, 
       orderIndex, 
       videoUrl, 
-      unitId 
+      unitId,
+      contentLength: content ? content.length : 0
     });
+    console.log("👤 User:", req.user);
 
+    // Validate lesson ID
+    if (!lessonId || isNaN(lessonId)) {
+      return res.status(400).json({
+        success: false,
+        error: "Invalid lesson ID",
+      });
+    }
+
+    // Find the lesson with course information
     const lesson = await Lesson.findByPk(lessonId, {
       include: [
         {
@@ -664,12 +673,19 @@ export const updateLesson = async (req, res) => {
       });
     }
 
-    // Check if user is authorized to update this lesson
+    console.log("✅ Lesson found:", {
+      id: lesson.id,
+      title: lesson.title,
+      courseId: lesson.course_id,
+      courseTeacherId: lesson.course?.teacher_id
+    });
+
+    // Check authorization
     if (req.user.role !== "admin" && lesson.course.teacher_id !== req.user.id) {
-      console.log("❌ Not authorized to update lesson:", {
+      console.log("❌ Authorization failed:", {
         userId: req.user.id,
-        teacherId: lesson.course.teacher_id,
-        userRole: req.user.role
+        userRole: req.user.role,
+        courseTeacherId: lesson.course.teacher_id
       });
       return res.status(403).json({
         success: false,
@@ -679,56 +695,84 @@ export const updateLesson = async (req, res) => {
 
     // Handle file uploads
     let videoPath = lesson.video_url;
-
     if (req.files && req.files.video && req.files.video[0]) {
       const video = req.files.video[0];
       const uploadsDir = path.join(__dirname, "../Uploads");
-      const videoFilename = `video-${Date.now()}-${video.originalname.replace(
-        /\s+/g,
-        "-"
-      )}`;
+      
+      // Ensure upload directory exists
+      if (!fs.existsSync(uploadsDir)) {
+        fs.mkdirSync(uploadsDir, { recursive: true });
+      }
+      
+      const videoFilename = `video-${Date.now()}-${video.originalname.replace(/\s+/g, "-")}`;
       const videoFullPath = path.join(uploadsDir, videoFilename);
-
       fs.writeFileSync(videoFullPath, video.buffer);
       videoPath = `/Uploads/${videoFilename}`;
       console.log("✅ New video uploaded:", videoPath);
     }
 
-    // Update lesson fields - only update if provided
-    if (title !== undefined) lesson.title = title;
-    if (content !== undefined) lesson.content = content;
-    if (contentType !== undefined) lesson.content_type = contentType;
-    if (orderIndex !== undefined) lesson.order_index = orderIndex;
-    if (videoUrl !== undefined) lesson.video_url = videoUrl;
-    if (videoPath !== lesson.video_url) lesson.video_url = videoPath;
-    if (unitId !== undefined) lesson.unit_id = unitId;
+    // Prepare update data - only update provided fields
+    const updateData = {};
+    
+    if (title !== undefined && title !== null) updateData.title = title.trim();
+    if (content !== undefined && content !== null) updateData.content = content;
+    if (contentType !== undefined && contentType !== null) updateData.content_type = contentType;
+    if (orderIndex !== undefined && orderIndex !== null) updateData.order_index = parseInt(orderIndex);
+    if (videoUrl !== undefined && videoUrl !== null) updateData.video_url = videoUrl;
+    if (videoPath !== lesson.video_url) updateData.video_url = videoPath;
+    if (unitId !== undefined && unitId !== null) updateData.unit_id = unitId;
 
-    await lesson.save();
+    console.log("📝 Update data:", updateData);
 
+    // Update lesson using direct update
+    const [affectedRows] = await Lesson.update(updateData, {
+      where: { id: lessonId },
+      individualHooks: true
+    });
+
+    if (affectedRows === 0) {
+      console.log("❌ No rows affected during update");
+      return res.status(500).json({
+        success: false,
+        error: "Failed to update lesson - no changes made",
+      });
+    }
+
+    // Fetch the updated lesson
+    const updatedLesson = await Lesson.findByPk(lessonId);
+    
     console.log("✅ Lesson updated successfully:", lessonId);
 
     res.json({
       success: true,
       message: "Lesson updated successfully",
       lesson: {
-        id: lesson.id,
-        title: lesson.title,
-        content: lesson.content,
-        content_type: lesson.content_type,
-        order_index: lesson.order_index,
-        video_url: lesson.video_url,
-        unit_id: lesson.unit_id,
-        updated_at: lesson.updated_at,
+        id: updatedLesson.id,
+        title: updatedLesson.title,
+        content: updatedLesson.content,
+        content_type: updatedLesson.content_type,
+        order_index: updatedLesson.order_index,
+        video_url: updatedLesson.video_url,
+        unit_id: updatedLesson.unit_id,
+        updated_at: updatedLesson.updated_at,
       },
     });
+
   } catch (error) {
-    console.error("❌ Error updating lesson:", error);
+    console.error("❌ ERROR updating lesson:", error);
+    console.error("❌ Error name:", error.name);
+    console.error("❌ Error message:", error.message);
     
-    // Handle validation errors
+    if (error.errors) {
+      console.error("❌ Validation errors:", error.errors);
+    }
+
+    // Handle specific error types
     if (error.name === "SequelizeValidationError") {
       const errors = error.errors.map((err) => ({
         field: err.path,
         message: err.message,
+        value: err.value,
       }));
       return res.status(400).json({
         success: false,
@@ -737,19 +781,26 @@ export const updateLesson = async (req, res) => {
       });
     }
     
-    // Handle database errors
     if (error.name === "SequelizeDatabaseError") {
       return res.status(400).json({
         success: false,
         error: "Database error",
-        details: process.env.NODE_ENV === "development" ? error.message : undefined,
+        details: process.env.NODE_ENV === "development" ? error.message : "Check server logs",
       });
     }
 
+    if (error.name === "SequelizeForeignKeyConstraintError") {
+      return res.status(400).json({
+        success: false,
+        error: "Invalid reference (course or unit does not exist)",
+      });
+    }
+
+    // Generic error response
     res.status(500).json({
       success: false,
       error: "Failed to update lesson",
-      details: process.env.NODE_ENV === "development" ? error.message : undefined,
+      details: process.env.NODE_ENV === "development" ? error.message : "Internal server error",
     });
   }
 };

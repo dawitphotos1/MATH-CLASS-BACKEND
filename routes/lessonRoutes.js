@@ -65,7 +65,7 @@ import { uploadLessonFiles } from "../middleware/uploadMiddleware.js";
 
 const router = express.Router();
 
-// 🔥 FIXED ROUTES - Remove duplicate "lessons" from paths
+// Lesson routes
 router.post(
   "/courses/:courseId/lessons",
   authenticateToken,
@@ -75,29 +75,35 @@ router.post(
 );
 router.get("/courses/:courseId/lessons", authenticateToken, getLessonsByCourse);
 router.get("/units/:unitId/lessons", authenticateToken, getLessonsByUnit);
-router.get("/:lessonId", authenticateToken, getLessonById); // 🔥 FIXED: Remove "lessons/" prefix
+router.get("/:lessonId", authenticateToken, getLessonById);
 router.put(
-  "/:lessonId", // 🔥 FIXED: Remove "lessons/" prefix
+  "/:lessonId",
   authenticateToken,
   checkTeacherOrAdmin,
   uploadLessonFiles,
   updateLesson
 );
 router.delete(
-  "/:lessonId", // 🔥 FIXED: Remove "lessons/" prefix
+  "/:lessonId",
   authenticateToken,
   checkTeacherOrAdmin,
   deleteLesson
 );
 
-// 🔥 ADD DEBUG ROUTE TO TEST CONNECTIVITY
+// Debug route to test connectivity
 router.get("/debug/:lessonId", authenticateToken, async (req, res) => {
   try {
     const { lessonId } = req.params;
     console.log("🔍 Debug route called for lesson:", lessonId);
     
-    const { Lesson } = await import("../models/index.js");
-    const lesson = await Lesson.findByPk(lessonId);
+    const db = await import("../models/index.js");
+    const lesson = await db.default.Lesson.findByPk(lessonId, {
+      include: [{
+        model: db.default.Course,
+        as: "course",
+        attributes: ["id", "title", "teacher_id"]
+      }]
+    });
     
     if (!lesson) {
       return res.status(404).json({ 
@@ -111,7 +117,9 @@ router.get("/debug/:lessonId", authenticateToken, async (req, res) => {
       lesson: { 
         id: lesson.id, 
         title: lesson.title,
-        course_id: lesson.course_id 
+        course_id: lesson.course_id,
+        course_teacher_id: lesson.course?.teacher_id,
+        unit_id: lesson.unit_id
       } 
     });
   } catch (error) {
