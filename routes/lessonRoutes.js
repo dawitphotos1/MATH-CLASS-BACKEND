@@ -90,6 +90,33 @@ router.delete(
   deleteLesson
 );
 
+// Add this to your lessonRoutes.js temporarily
+router.put("/test-upload/:lessonId", authenticateToken, uploadLessonFiles, async (req, res) => {
+  try {
+    console.log("🧪 TEST UPLOAD - Body:", req.body);
+    console.log("🧪 TEST UPLOAD - Files:", req.files);
+    console.log("🧪 TEST UPLOAD - Params:", req.params);
+    console.log("🧪 TEST UPLOAD - User:", req.user);
+    
+    res.json({
+      success: true,
+      message: "Test successful",
+      data: {
+        body: req.body,
+        files: req.files,
+        params: req.params,
+        user: req.user
+      }
+    });
+  } catch (error) {
+    console.error("Test upload error:", error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+
+
+
 // Debug route to test connectivity
 router.get("/debug/:lessonId", authenticateToken, async (req, res) => {
   try {

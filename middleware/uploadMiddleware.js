@@ -65,7 +65,6 @@
 
 
 
-
 // middleware/uploadMiddleware.js
 import multer from "multer";
 import path from "path";
@@ -93,7 +92,8 @@ const fileFilter = (req, file, cb) => {
     'video/quicktime',
     'application/pdf',
     'application/msword',
-    'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
+    'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+    'text/plain'
   ];
 
   if (allowedMimes.includes(file.mimetype)) {
@@ -115,7 +115,7 @@ export const uploadCourseFiles = multer({
   { name: 'attachments', maxCount: 10 }
 ]);
 
-// Lesson file upload configuration
+// Lesson file upload configuration - UPDATED to handle multiple file types
 export const uploadLessonFiles = multer({
   storage,
   fileFilter,
@@ -124,7 +124,9 @@ export const uploadLessonFiles = multer({
   }
 }).fields([
   { name: 'video', maxCount: 1 },
-  { name: 'attachments', maxCount: 10 }
+  { name: 'file', maxCount: 1 },        // For PDF files
+  { name: 'pdf', maxCount: 1 },         // Alternative name for PDF
+  { name: 'attachments', maxCount: 10 } // For multiple attachments
 ]);
 
 // Default export for backward compatibility
