@@ -559,7 +559,6 @@
 
 
 
-
 // controllers/lessonController.js
 import db from "../models/index.js";
 import path from "path";
@@ -577,14 +576,29 @@ const buildFileUrls = (lesson) => {
   
   const lessonData = lesson.toJSON ? lesson.toJSON() : { ...lesson };
   
+  console.log("🔗 Building URLs for lesson:", {
+    id: lessonData.id,
+    current_file_url: lessonData.file_url,
+    current_video_url: lessonData.video_url
+  });
+  
   // Build full URLs for files - only if they exist and aren't already full URLs
-  if (lessonData.video_url && lessonData.video_url !== null && !lessonData.video_url.startsWith('http')) {
-    lessonData.video_url = `${process.env.BACKEND_URL || 'http://localhost:3000'}${lessonData.video_url}`;
+  if (lessonData.video_url && lessonData.video_url !== null && lessonData.video_url !== "" && !lessonData.video_url.startsWith('http')) {
+    const fullVideoUrl = `${process.env.BACKEND_URL || 'http://localhost:3000'}${lessonData.video_url}`;
+    console.log("🎥 Video URL transformed:", fullVideoUrl);
+    lessonData.video_url = fullVideoUrl;
   }
   
-  if (lessonData.file_url && lessonData.file_url !== null && !lessonData.file_url.startsWith('http')) {
-    lessonData.file_url = `${process.env.BACKEND_URL || 'http://localhost:3000'}${lessonData.file_url}`;
+  if (lessonData.file_url && lessonData.file_url !== null && lessonData.file_url !== "" && !lessonData.file_url.startsWith('http')) {
+    const fullFileUrl = `${process.env.BACKEND_URL || 'http://localhost:3000'}${lessonData.file_url}`;
+    console.log("📄 File URL transformed:", fullFileUrl);
+    lessonData.file_url = fullFileUrl;
   }
+  
+  console.log("✅ Final lesson URLs:", {
+    file_url: lessonData.file_url,
+    video_url: lessonData.video_url
+  });
   
   return lessonData;
 };
@@ -666,6 +680,16 @@ export const createLesson = async (req, res) => {
       console.log("✅ File saved:", fileUrl);
     }
 
+    // Also check for PDF files in the 'pdf' field
+    if (req.files && req.files.pdf && req.files.pdf[0]) {
+      const pdfFile = req.files.pdf[0];
+      const pdfFilename = `pdf-${Date.now()}-${pdfFile.originalname.replace(/\s+/g, "-")}`;
+      const pdfFullPath = path.join(uploadsDir, pdfFilename);
+      fs.writeFileSync(pdfFullPath, pdfFile.buffer);
+      fileUrl = `/Uploads/${pdfFilename}`;
+      console.log("✅ PDF uploaded (pdf field):", fileUrl);
+    }
+
     // Get order index
     let orderIndexValue = orderIndex;
     if (!orderIndexValue && orderIndexValue !== 0) {
@@ -679,12 +703,19 @@ export const createLesson = async (req, res) => {
       orderIndexValue = lastLesson ? lastLesson.order_index + 1 : 1;
     }
 
-    // Determine content type based on uploaded files
+    // ✅ FIXED: Enhanced content type determination
     let finalContentType = contentType || "text";
-    if (fileUrl && !fileUrl.includes('video')) {
+    
+    // Priority: uploaded files > explicit content type > auto-detection
+    if (fileUrl) {
       finalContentType = "pdf";
+      console.log("✅ Content type set to 'pdf' because file was uploaded");
     } else if (videoPath) {
       finalContentType = "video";
+      console.log("✅ Content type set to 'video' because video was uploaded");
+    } else if (contentType && contentType !== "") {
+      finalContentType = contentType;
+      console.log("✅ Content type set from form:", contentType);
     }
 
     // Create lesson
@@ -721,6 +752,13 @@ export const createLesson = async (req, res) => {
     // Build response with full URLs
     const lessonResponse = buildFileUrls(completeLesson);
 
+    console.log("🎉 Lesson creation complete:", {
+      id: lessonResponse.id,
+      title: lessonResponse.title,
+      file_url: lessonResponse.file_url,
+      content_type: lessonResponse.content_type
+    });
+
     res.status(201).json({
       success: true,
       message: "Lesson created successfully",
@@ -749,14 +787,21 @@ export const createLesson = async (req, res) => {
   }
 };
 
-// ✅ FIXED: Enhanced updateLesson function
+// ✅ FIXED: COMPLETELY REWRITTEN updateLesson function
 export const updateLesson = async (req, res) => {
   try {
     const { lessonId } = req.params;
     const { title, content, contentType, orderIndex, videoUrl, unitId, isPreview, isUnitHeader } = req.body;
 
     console.log("🔄 UPDATE LESSON - ID:", lessonId);
-    console.log("📝 Update data:", { title, contentType, isPreview });
+    console.log("📝 Update data received:", { 
+      title, 
+      contentType, 
+      isPreview, 
+      isUnitHeader,
+      orderIndex,
+      unitId
+    });
     console.log("📁 Uploaded files:", req.files);
 
     // Validate lesson ID
@@ -785,6 +830,14 @@ export const updateLesson = async (req, res) => {
         error: "Lesson not found",
       });
     }
+
+    console.log("📖 Current lesson data:", {
+      id: lesson.id,
+      title: lesson.title,
+      file_url: lesson.file_url,
+      video_url: lesson.video_url,
+      content_type: lesson.content_type
+    });
 
     // Check authorization
     if (req.user.role !== "admin" && lesson.course.teacher_id !== req.user.id) {
@@ -815,14 +868,29 @@ export const updateLesson = async (req, res) => {
       console.log("✅ New video uploaded:", videoPath);
     }
 
-    // Handle file upload
+    // ✅ FIXED: Enhanced file upload handling - specifically for PDF files
     if (req.files && req.files.file && req.files.file[0]) {
       const file = req.files.file[0];
       const fileFilename = `file-${Date.now()}-${file.originalname.replace(/\s+/g, "-")}`;
       const fileFullPath = path.join(uploadsDir, fileFilename);
       fs.writeFileSync(fileFullPath, file.buffer);
       fileUrl = `/Uploads/${fileFilename}`;
-      console.log("✅ New file uploaded:", fileUrl);
+      console.log("✅ New PDF/file uploaded:", fileUrl);
+      console.log("📄 File details:", {
+        originalName: file.originalname,
+        mimetype: file.mimetype,
+        size: file.size
+      });
+    }
+
+    // Also check for PDF files in the 'pdf' field
+    if (req.files && req.files.pdf && req.files.pdf[0]) {
+      const pdfFile = req.files.pdf[0];
+      const pdfFilename = `pdf-${Date.now()}-${pdfFile.originalname.replace(/\s+/g, "-")}`;
+      const pdfFullPath = path.join(uploadsDir, pdfFilename);
+      fs.writeFileSync(pdfFullPath, pdfFile.buffer);
+      fileUrl = `/Uploads/${pdfFilename}`;
+      console.log("✅ New PDF uploaded (pdf field):", fileUrl);
     }
 
     // Prepare update data
@@ -831,33 +899,70 @@ export const updateLesson = async (req, res) => {
     if (title !== undefined && title !== null) updateData.title = title.trim();
     if (content !== undefined && content !== null) updateData.content = content;
     
-    // ✅ FIXED: Enhanced content type handling
+    // ✅ FIXED: CRITICAL - Enhanced content type handling
+    let finalContentType = lesson.content_type; // Start with current type
+    
     if (isUnitHeader !== undefined && isUnitHeader) {
-      updateData.content_type = 'unit_header';
-    } else if (fileUrl && fileUrl !== lesson.file_url) {
-      updateData.content_type = "pdf";
-    } else if (videoPath && videoPath !== lesson.video_url) {
-      updateData.content_type = "video";
-    } else if (contentType !== undefined && contentType !== null) {
-      updateData.content_type = contentType;
-    } else {
-      // Auto-detect content type if not specified
-      if (fileUrl && !updateData.content_type) {
-        updateData.content_type = "pdf";
-      } else if (videoPath && !updateData.content_type) {
-        updateData.content_type = "video";
-      }
+      finalContentType = 'unit_header';
+      console.log("✅ Content type set to 'unit_header'");
+    } 
+    // If a file was uploaded, set content type to PDF (HIGHEST PRIORITY)
+    else if (fileUrl && fileUrl !== lesson.file_url) {
+      finalContentType = "pdf";
+      console.log("✅ Content type set to 'pdf' because file was uploaded");
+    } 
+    // If a video was uploaded, set content type to video
+    else if (videoPath && videoPath !== lesson.video_url) {
+      finalContentType = "video";
+      console.log("✅ Content type set to 'video' because video was uploaded");
+    }
+    // If content type was explicitly provided in form, use it
+    else if (contentType !== undefined && contentType !== null && contentType !== "") {
+      finalContentType = contentType;
+      console.log("✅ Content type set from form data:", contentType);
+    }
+    // Auto-detect based on existing files if no new files uploaded
+    else if (lesson.file_url && !fileUrl) {
+      finalContentType = "pdf";
+      console.log("✅ Content type auto-detected as 'pdf' from existing file");
+    } else if (lesson.video_url && !videoPath) {
+      finalContentType = "video";
+      console.log("✅ Content type auto-detected as 'video' from existing video");
+    } else if (!finalContentType || finalContentType === "") {
+      finalContentType = "text";
+      console.log("✅ Content type set to 'text' as default");
+    }
+
+    updateData.content_type = finalContentType;
+    
+    // Handle order index
+    if (orderIndex !== undefined && orderIndex !== null) {
+      updateData.order_index = parseInt(orderIndex);
     }
     
-    if (orderIndex !== undefined && orderIndex !== null) updateData.order_index = parseInt(orderIndex);
-    if (videoUrl !== undefined && videoUrl !== null) updateData.video_url = videoUrl;
-    if (videoPath !== lesson.video_url) updateData.video_url = videoPath;
-    if (fileUrl !== lesson.file_url) updateData.file_url = fileUrl;
-    if (unitId !== undefined && unitId !== null) updateData.unit_id = unitId;
+    // Handle video URL - only update if provided or changed
+    if (videoUrl !== undefined && videoUrl !== null) {
+      updateData.video_url = videoUrl;
+    }
+    if (videoPath !== lesson.video_url) {
+      updateData.video_url = videoPath;
+    }
     
-    if (isPreview !== undefined) updateData.is_preview = Boolean(isPreview);
+    // ✅ FIXED: CRITICAL - Always update file_url if a new file was uploaded
+    if (fileUrl !== lesson.file_url) {
+      updateData.file_url = fileUrl;
+      console.log("✅ File URL updated:", fileUrl);
+    }
+    
+    if (unitId !== undefined && unitId !== null) {
+      updateData.unit_id = unitId;
+    }
+    
+    if (isPreview !== undefined) {
+      updateData.is_preview = Boolean(isPreview);
+    }
 
-    console.log("🔄 Final update data:", updateData);
+    console.log("🔄 Final update data to be saved:", updateData);
 
     // Update lesson
     const [affectedRows] = await Lesson.update(updateData, {
@@ -866,11 +971,14 @@ export const updateLesson = async (req, res) => {
     });
 
     if (affectedRows === 0) {
+      console.log("❌ No rows affected during update");
       return res.status(500).json({
         success: false,
         error: "Failed to update lesson - no changes made",
       });
     }
+
+    console.log(`✅ ${affectedRows} row(s) updated successfully`);
 
     // ✅ FIXED: Fetch the complete updated lesson with associations
     const updatedLesson = await Lesson.findByPk(lessonId, {
@@ -887,6 +995,14 @@ export const updateLesson = async (req, res) => {
         },
       ],
     });
+
+    if (!updatedLesson) {
+      console.log("❌ Failed to fetch updated lesson");
+      return res.status(500).json({
+        success: false,
+        error: "Lesson updated but failed to fetch updated data",
+      });
+    }
     
     // Build full URLs
     const lessonResponse = buildFileUrls(updatedLesson);
@@ -896,7 +1012,8 @@ export const updateLesson = async (req, res) => {
       title: lessonResponse.title,
       file_url: lessonResponse.file_url,
       video_url: lessonResponse.video_url,
-      content_type: lessonResponse.content_type
+      content_type: lessonResponse.content_type,
+      is_preview: lessonResponse.is_preview
     });
 
     res.json({
@@ -1021,7 +1138,6 @@ export const getLessonById = async (req, res) => {
   }
 };
 
-// Other functions remain the same but enhanced with better logging
 export const getLessonsByCourse = async (req, res) => {
   try {
     const { courseId } = req.params;
