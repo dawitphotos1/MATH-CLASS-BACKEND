@@ -84,7 +84,6 @@
 
 
 
-
 // routes/lessonRoutes.js
 import express from "express";
 import {
@@ -94,6 +93,8 @@ import {
   getLessonById,
   updateLesson,
   deleteLesson,
+  debugGetLesson,
+  debugCheckFile
 } from "../controllers/lessonController.js";
 
 import { authenticateToken } from "../middleware/authMiddleware.js";
@@ -130,11 +131,41 @@ router.delete(
   deleteLesson
 );
 
-// Debug route to test connectivity and file handling
-router.get("/debug/:lessonId", authenticateToken, async (req, res) => {
+// ✅ DEBUG ROUTES - Add these new routes
+
+// Debug: Get lesson directly from database
+router.get("/debug/:lessonId", authenticateToken, debugGetLesson);
+
+// Debug: Check if file exists on server
+router.get("/debug/file/:filename", authenticateToken, debugCheckFile);
+
+// Debug: List all lessons in a course (for debugging)
+router.get("/debug/course/:courseId/lessons", authenticateToken, async (req, res) => {
+  try {
+    const { courseId } = req.params;
+    console.log("🐛 DEBUG: Fetching all lessons for course:", courseId);
+
+    const lessons = await getLessonsByCourse({
+      params: { courseId },
+      user: req.user
+    }, res);
+
+    // This will use the existing getLessonsByCourse function
+    // The response will be handled by that function
+  } catch (error) {
+    console.error("🐛 DEBUG Course lessons error:", error);
+    res.status(500).json({
+      success: false,
+      error: error.message
+    });
+  }
+});
+
+// Debug route to test connectivity and file handling (existing route - keep it)
+router.get("/debug/test/:lessonId", authenticateToken, async (req, res) => {
   try {
     const { lessonId } = req.params;
-    console.log("🔧 Debug route called for lesson:", lessonId);
+    console.log("🔧 Debug test route called for lesson:", lessonId);
 
     const db = await import("../models/index.js");
     const lesson = await db.default.Lesson.findByPk(lessonId, {
@@ -178,7 +209,7 @@ router.get("/debug/:lessonId", authenticateToken, async (req, res) => {
       file_exists: lessonData.file_url ? true : false
     });
   } catch (error) {
-    console.error("❌ Debug route error:", error);
+    console.error("❌ Debug test route error:", error);
     res.status(500).json({ 
       success: false, 
       error: error.message,

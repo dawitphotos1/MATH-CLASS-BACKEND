@@ -558,7 +558,6 @@
 
 
 
-
 // controllers/lessonController.js
 import db from "../models/index.js";
 import path from "path";
@@ -601,6 +600,76 @@ const buildFileUrls = (lesson) => {
   });
   
   return lessonData;
+};
+
+// ✅ DEBUG: Get lesson directly from database
+export const debugGetLesson = async (req, res) => {
+  try {
+    const { lessonId } = req.params;
+    console.log("🐛 DEBUG: Fetching lesson directly from DB:", lessonId);
+
+    const lesson = await Lesson.findByPk(lessonId, {
+      raw: true, // Get raw data directly from DB
+      attributes: [
+        "id", "title", "content", "video_url", "file_url", 
+        "content_type", "is_preview", "course_id", "unit_id",
+        "created_at", "updated_at"
+      ]
+    });
+
+    if (!lesson) {
+      return res.status(404).json({
+        success: false,
+        error: "Lesson not found in database"
+      });
+    }
+
+    console.log("🐛 DEBUG: Raw database data:", lesson);
+
+    res.json({
+      success: true,
+      lesson: lesson,
+      backend_url: process.env.BACKEND_URL,
+      timestamp: new Date().toISOString()
+    });
+  } catch (error) {
+    console.error("🐛 DEBUG Error:", error);
+    res.status(500).json({
+      success: false,
+      error: error.message
+    });
+  }
+};
+
+// ✅ DEBUG: Check if file exists on server
+export const debugCheckFile = async (req, res) => {
+  try {
+    const { filename } = req.params;
+    const uploadsDir = path.join(__dirname, "../Uploads");
+    const filePath = path.join(uploadsDir, filename);
+
+    console.log("🐛 DEBUG: Checking file existence:", {
+      filename,
+      uploadsDir,
+      filePath
+    });
+
+    const fileExists = fs.existsSync(filePath);
+
+    res.json({
+      success: true,
+      fileExists,
+      filename,
+      filePath,
+      uploadsDir
+    });
+  } catch (error) {
+    console.error("🐛 DEBUG File Check Error:", error);
+    res.status(500).json({
+      success: false,
+      error: error.message
+    });
+  }
 };
 
 // ✅ FIXED: Enhanced createLesson function
@@ -1275,4 +1344,16 @@ export const deleteLesson = async (req, res) => {
       error: "Failed to delete lesson",
     });
   }
+};
+
+// Export all functions including debug functions
+export {
+  createLesson,
+  getLessonsByCourse,
+  getLessonsByUnit,
+  getLessonById,
+  updateLesson,
+  deleteLesson,
+  debugGetLesson,
+  debugCheckFile
 };
