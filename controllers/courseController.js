@@ -515,14 +515,13 @@
 
 
 
-
 // controllers/courseController.js
 import db from "../models/index.js";
 import path from "path";
 import { fileURLToPath } from "url";
 import fs from "fs";
 
-const { Course, Lesson, User } = db;
+const { Course, Lesson, User, Unit, Enrollment } = db;
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -1026,38 +1025,162 @@ export const getLessonsByCourse = async (req, res) => {
 };
 
 /* ============================================================
-   Delete course
+   Delete course - ENHANCED VERSION
 ============================================================ */
 export const deleteCourse = async (req, res) => {
   try {
     const { id } = req.params;
-    const course = await Course.findByPk(id);
+    const userId = req.user.id;
+    const userRole = req.user.role;
+
+    console.log("🗑️ DELETE COURSE REQUEST:", { courseId: id, userId, userRole });
+
+    // Find the course with teacher info
+    const course = await Course.findByPk(id, {
+      include: [
+        {
+          model: User,
+          as: "teacher",
+          attributes: ["id", "name", "email"],
+        },
+      ],
+    });
 
     if (!course) {
+      console.log("❌ Course not found:", id);
       return res.status(404).json({
         success: false,
         message: "Course not found",
       });
     }
 
-    if (req.user.role !== "admin" && course.teacher_id !== req.user.id) {
+    console.log("📋 Course found:", {
+      id: course.id,
+      title: course.title,
+      teacher_id: course.teacher_id,
+      current_user_id: userId,
+      user_role: userRole
+    });
+
+    // Check authorization - only admin or the course teacher can delete
+    if (userRole !== "admin" && course.teacher_id !== userId) {
+      console.log("❌ Unauthorized delete attempt:", {
+        course_teacher: course.teacher_id,
+        current_user: userId,
+        user_role: userRole
+      });
       return res.status(403).json({
         success: false,
         message: "Not authorized to delete this course",
+        details: "You can only delete courses that you created"
       });
     }
 
+    // ✅ ENHANCED: Check for existing enrollments before deletion
+    const enrollmentCount = await Enrollment.count({
+      where: { course_id: id }
+    });
+
+    if (enrollmentCount > 0) {
+      console.log("⚠️ Course has existing enrollments:", enrollmentCount);
+      return res.status(400).json({
+        success: false,
+        message: "Cannot delete course with existing enrollments",
+        details: `This course has ${enrollmentCount} student enrollment(s). Please contact admin for assistance.`
+      });
+    }
+
+    console.log("✅ Authorization passed, proceeding with deletion...");
+
+    // Delete the course (this should cascade delete lessons, units due to foreign key constraints)
     await course.destroy();
+
+    console.log("✅ Course deleted successfully:", id);
+
     res.json({
       success: true,
       message: "Course deleted successfully",
+      deletedCourse: {
+        id: course.id,
+        title: course.title,
+      },
     });
   } catch (error) {
     console.error("❌ Error deleting course:", error);
+    
+    // Handle foreign key constraint errors
+    if (error.name === "SequelizeForeignKeyConstraintError") {
+      return res.status(400).json({
+        success: false,
+        message: "Cannot delete course. There are existing enrollments or related data.",
+        error: "Database constraint violation"
+      });
+    }
+
     res.status(500).json({
       success: false,
       message: "Failed to delete course",
-      error: process.env.NODE_ENV === "development" ? error.message : undefined,
+      error: process.env.NODE_ENV === "development" ? error.message : "Internal server error",
+    });
+  }
+};
+
+// ✅ NEW: Get teacher's courses with enhanced error handling
+export const getTeacherCourses = async (req, res) => {
+  try {
+    const teacherId = req.user.id;
+    console.log("📚 Fetching courses for teacher:", teacherId);
+
+    const courses = await Course.findAll({
+      where: { teacher_id: teacherId },
+      attributes: [
+        "id",
+        "title",
+        "description",
+        "slug",
+        "price",
+        "thumbnail",
+        "created_at",
+      ],
+      include: [
+        {
+          model: User,
+          as: "teacher",
+          attributes: ["id", "name", "email"],
+        },
+        {
+          model: Unit,
+          as: "units",
+          attributes: ["id"],
+        },
+        {
+          model: Lesson,
+          as: "lessons",
+          attributes: ["id"],
+        },
+      ],
+      order: [["created_at", "DESC"]],
+    });
+
+    // Add counts to each course
+    const coursesWithCounts = courses.map(course => ({
+      ...course.toJSON(),
+      unit_count: course.units?.length || 0,
+      lesson_count: course.lessons?.length || 0,
+    }));
+
+    console.log(`✅ Found ${coursesWithCounts.length} courses for teacher ${teacherId}`);
+
+    res.json({
+      success: true,
+      courses: coursesWithCounts,
+    });
+  } catch (error) {
+    console.error("❌ Error fetching teacher courses:", error);
+    res.status(500).json({
+      success: false,
+      error: "Failed to fetch courses",
+      details: process.env.NODE_ENV === "development" ? error.message : undefined,
     });
   }
 };

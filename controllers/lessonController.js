@@ -1345,15 +1345,3 @@ export const deleteLesson = async (req, res) => {
     });
   }
 };
-
-// Export all functions including debug functions
-export {
-  createLesson,
-  getLessonsByCourse,
-  getLessonsByUnit,
-  getLessonById,
-  updateLesson,
-  deleteLesson,
-  debugGetLesson,
-  debugCheckFile
-};
