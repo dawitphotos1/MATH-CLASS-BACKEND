@@ -609,7 +609,7 @@ export const debugGetLesson = async (req, res) => {
     console.log("🐛 DEBUG: Fetching lesson directly from DB:", lessonId);
 
     const lesson = await Lesson.findByPk(lessonId, {
-      raw: true, // Get raw data directly from DB
+      raw: true,
       attributes: [
         "id", "title", "content", "video_url", "file_url", 
         "content_type", "is_preview", "course_id", "unit_id",
@@ -1344,4 +1344,16 @@ export const deleteLesson = async (req, res) => {
       error: "Failed to delete lesson",
     });
   }
+};
+
+// ✅ Export all functions
+export {
+  createLesson,
+  getLessonsByCourse,
+  getLessonsByUnit,
+  getLessonById,
+  updateLesson,
+  deleteLesson,
+  debugGetLesson,
+  debugCheckFile
 };
