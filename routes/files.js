@@ -581,7 +581,6 @@
 
 
 
-
 // routes/files.js
 import express from "express";
 import path from "path";
@@ -595,7 +594,7 @@ const __dirname = path.dirname(__filename);
 
 const router = express.Router();
 
-// ✅ FIXED: Correct uploads directory path
+// ✅ CORRECT UPLOADS DIRECTORY PATH
 const uploadsDir = path.join(__dirname, "../Uploads");
 
 // Ensure Uploads directory exists
@@ -603,13 +602,215 @@ const ensureUploadsDir = async () => {
   try {
     await fs.access(uploadsDir);
   } catch (error) {
-    await fs.mkdirSync(uploadsDir, { recursive: true });
+    await fs.mkdir(uploadsDir, { recursive: true });
     console.log("✅ Created Uploads directory");
   }
 };
 
 // Initialize directory on server start
 ensureUploadsDir();
+
+/* ============================================================
+   🎯 DEDICATED LESSON PREVIEW ENDPOINT
+============================================================ */
+
+/**
+ * ✅ DEDICATED LESSON PREVIEW ENDPOINT
+ * GET /api/v1/files/preview-lesson/:lessonId
+ */
+router.get("/preview-lesson/:lessonId", authenticateToken, async (req, res) => {
+  try {
+    const { lessonId } = req.params;
+    console.log("📁 Preview request for lesson:", lessonId);
+
+    // Import database models
+    const db = await import("../models/index.js");
+    const lesson = await db.default.Lesson.findByPk(lessonId, {
+      attributes: ["id", "title", "file_url", "video_url", "content_type", "content"]
+    });
+
+    if (!lesson) {
+      console.log("❌ Lesson not found:", lessonId);
+      return res.status(404).json({
+        success: false,
+        error: "Lesson not found"
+      });
+    }
+
+    console.log("📖 Lesson details:", {
+      id: lesson.id,
+      title: lesson.title,
+      content_type: lesson.content_type,
+      file_url: lesson.file_url,
+      video_url: lesson.video_url
+    });
+
+    // Handle different content types
+    if (lesson.content_type === 'pdf' && lesson.file_url) {
+      // Extract filename from the stored file_url
+      const filename = lesson.file_url.startsWith('/Uploads/') 
+        ? lesson.file_url.replace('/Uploads/', '')
+        : lesson.file_url;
+      
+      const safeFilename = path.basename(filename);
+      const filePath = path.join(uploadsDir, safeFilename);
+
+      console.log("📄 Looking for PDF file:", {
+        stored_url: lesson.file_url,
+        filename: filename,
+        safeFilename: safeFilename,
+        filePath: filePath,
+        exists: fs.existsSync(filePath)
+      });
+
+      // Check if file exists
+      try {
+        await fs.access(filePath);
+      } catch (error) {
+        console.log("❌ PDF file not found:", safeFilename);
+        return res.status(404).json({
+          success: false,
+          error: `PDF file not found: ${safeFilename}`,
+          path: filePath
+        });
+      }
+
+      // Serve the PDF file
+      const stats = await fs.stat(filePath);
+      res.setHeader('Content-Type', 'application/pdf');
+      res.setHeader('Content-Length', stats.size);
+      res.setHeader('Content-Disposition', `inline; filename="${safeFilename}"`);
+      res.setHeader('Access-Control-Allow-Origin', process.env.FRONTEND_URL || '*');
+      
+      const fileStream = fs.createReadStream(filePath);
+      fileStream.pipe(res);
+      
+    } else if (lesson.content_type === 'video' && lesson.video_url) {
+      // For videos, redirect to the video URL
+      console.log("🎥 Redirecting to video:", lesson.video_url);
+      
+      // If it's a relative URL, make it absolute
+      if (lesson.video_url.startsWith('/')) {
+        const fullVideoUrl = `${process.env.BACKEND_URL || 'http://localhost:3000'}${lesson.video_url}`;
+        return res.redirect(fullVideoUrl);
+      }
+      
+      return res.redirect(lesson.video_url);
+      
+    } else {
+      // For text content, serve a simple HTML preview
+      console.log("📝 Serving text preview for lesson:", lesson.title);
+      
+      const htmlContent = `
+        <!DOCTYPE html>
+        <html>
+        <head>
+          <title>Preview: ${lesson.title}</title>
+          <style>
+            body { 
+              font-family: Arial, sans-serif; 
+              padding: 20px; 
+              max-width: 800px; 
+              margin: 0 auto; 
+              line-height: 1.6;
+            }
+            .header { 
+              border-bottom: 2px solid #333; 
+              padding-bottom: 10px; 
+              margin-bottom: 20px; 
+            }
+            .content { 
+              white-space: pre-wrap;
+              background: #f9f9f9;
+              padding: 20px;
+              border-radius: 5px;
+            }
+            .info {
+              background: #e3f2fd;
+              padding: 10px;
+              border-radius: 5px;
+              margin-bottom: 20px;
+            }
+          </style>
+        </head>
+        <body>
+          <div class="header">
+            <h1>${lesson.title}</h1>
+            <div class="info">
+              <p><strong>Content Type:</strong> ${lesson.content_type}</p>
+              <p><strong>Lesson ID:</strong> ${lesson.id}</p>
+              <p><strong>Preview Generated:</strong> ${new Date().toLocaleString()}</p>
+            </div>
+          </div>
+          <div class="content">
+            ${lesson.content || 'No content available for this lesson.'}
+          </div>
+        </body>
+        </html>
+      `;
+      
+      res.setHeader('Content-Type', 'text/html');
+      res.send(htmlContent);
+    }
+    
+  } catch (error) {
+    console.error("❌ Preview error:", error);
+    res.status(500).json({
+      success: false,
+      error: "Failed to preview lesson content",
+      details: error.message
+    });
+  }
+});
+
+/**
+ * ✅ TEST FILE ACCESS ENDPOINT
+ * GET /api/v1/files/test/:lessonId
+ */
+router.get("/test/:lessonId", authenticateToken, async (req, res) => {
+  try {
+    const { lessonId } = req.params;
+    console.log("🧪 Testing file access for lesson:", lessonId);
+
+    const db = await import("../models/index.js");
+    const lesson = await db.default.Lesson.findByPk(lessonId, {
+      attributes: ["id", "title", "file_url", "content_type"]
+    });
+
+    if (!lesson) {
+      return res.status(404).json({
+        success: false,
+        error: "Lesson not found"
+      });
+    }
+
+    // Build the expected file URL
+    const expectedUrl = `${process.env.BACKEND_URL || 'http://localhost:3000'}/api/v1/files${lesson.file_url}`;
+    
+    res.json({
+      success: true,
+      lesson: {
+        id: lesson.id,
+        title: lesson.title,
+        content_type: lesson.content_type,
+        stored_file_url: lesson.file_url,
+        expected_file_url: expectedUrl,
+        test_url: `/api/v1/files/preview-lesson/${lesson.id}`
+      },
+      instructions: {
+        test_pdf: `Open this URL to test: ${expectedUrl}`,
+        use_preview: `Use this for preview: /api/v1/files/preview-lesson/${lesson.id}`
+      }
+    });
+    
+  } catch (error) {
+    console.error("❌ Test error:", error);
+    res.status(500).json({
+      success: false,
+      error: error.message
+    });
+  }
+});
 
 /* ============================================================
    📁 FILE SERVING ROUTES
@@ -630,8 +831,7 @@ const serveFile = async (req, res) => {
     console.log("📁 Serving file:", {
       requested: filename,
       safeFilename: safeFilename,
-      filePath: filePath,
-      exists: fs.existsSync(filePath)
+      filePath: filePath
     });
 
     // Check if file exists
@@ -723,7 +923,6 @@ router.get("/uploads/:filename", serveFile);
 
 /**
  * ✅ LEGACY ROUTE - Direct file access (for backward compatibility)
- * This handles direct requests to /Uploads/filename
  * GET /api/v1/files/:filename
  */
 router.get("/:filename", async (req, res) => {
@@ -851,13 +1050,11 @@ router.get("/preview/:filename", authenticateToken, async (req, res) => {
   try {
     const { filename } = req.params;
     
-    // ✅ Security - prevent directory traversal attacks
     const safeFilename = path.basename(filename);
     const filePath = path.join(uploadsDir, safeFilename);
 
     await fs.access(filePath);
 
-    // Detect MIME type based on extension
     const ext = path.extname(safeFilename).toLowerCase();
     const mimeTypes = {
       ".pdf": "application/pdf",
@@ -870,11 +1067,9 @@ router.get("/preview/:filename", authenticateToken, async (req, res) => {
 
     const mimeType = mimeTypes[ext] || "application/octet-stream";
     
-    // Enable CORS for frontend access
     res.setHeader('Access-Control-Allow-Origin', process.env.FRONTEND_URL || '*');
     res.setHeader("Content-Type", mimeType);
     
-    // For PDFs, allow inline display
     if (ext === '.pdf') {
       res.setHeader('Content-Disposition', `inline; filename="${safeFilename}"`);
     }
@@ -897,13 +1092,11 @@ router.get("/download/:filename", authenticateToken, async (req, res) => {
   try {
     const { filename } = req.params;
     
-    // ✅ Security - prevent directory traversal attacks
     const safeFilename = path.basename(filename);
     const filePath = path.join(uploadsDir, safeFilename);
 
     await fs.access(filePath);
 
-    // Enable CORS for frontend access
     res.setHeader('Access-Control-Allow-Origin', process.env.FRONTEND_URL || '*');
     
     res.download(filePath, safeFilename, (err) => {
@@ -939,7 +1132,6 @@ router.delete(
     try {
       const { filename } = req.params;
       
-      // ✅ Security - prevent directory traversal attacks
       const safeFilename = path.basename(filename);
       const filePath = path.join(uploadsDir, safeFilename);
 
@@ -975,7 +1167,6 @@ const storage = multer.diskStorage({
     });
   },
   filename: (req, file, cb) => {
-    // ✅ Create safe filename with timestamp and original name
     const timestamp = Date.now();
     const safeName = file.originalname.replace(/[^a-zA-Z0-9.\-_]/g, '_');
     const uniqueName = `${timestamp}-${safeName}`;
@@ -986,7 +1177,7 @@ const storage = multer.diskStorage({
 const upload = multer({
   storage,
   limits: { 
-    fileSize: 100 * 1024 * 1024 // ✅ 100MB limit for videos
+    fileSize: 100 * 1024 * 1024
   },
   fileFilter: (req, file, cb) => {
     const allowedTypes = [
@@ -1065,7 +1256,7 @@ router.post(
   "/upload-multiple",
   authenticateToken,
   isAdmin,
-  upload.array("files", 10), // Max 10 files
+  upload.array("files", 10),
   async (req, res) => {
     try {
       if (!req.files || req.files.length === 0) {
