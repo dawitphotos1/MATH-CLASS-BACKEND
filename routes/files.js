@@ -580,7 +580,6 @@
 
 
 
-
 // routes/files.js
 import express from "express";
 import path from "path";
@@ -611,22 +610,33 @@ const ensureUploadsDir = async () => {
 ensureUploadsDir();
 
 /* ============================================================
-   🎯 DEDICATED LESSON PREVIEW ENDPOINT
+   🎯 FIXED: DEDICATED LESSON PREVIEW ENDPOINT
 ============================================================ */
 
 /**
- * ✅ DEDICATED LESSON PREVIEW ENDPOINT
+ * ✅ FIXED: DEDICATED LESSON PREVIEW ENDPOINT
  * GET /api/v1/files/preview-lesson/:lessonId
  */
 router.get("/preview-lesson/:lessonId", authenticateToken, async (req, res) => {
   try {
     const { lessonId } = req.params;
-    console.log("📁 Preview request for lesson:", lessonId);
+    const userId = req.user.id;
+    
+    console.log("🔍 Preview request for lesson:", { lessonId, userId });
 
     // Import database models
     const db = await import("../models/index.js");
+    
+    // Find lesson with course information
     const lesson = await db.default.Lesson.findByPk(lessonId, {
-      attributes: ["id", "title", "file_url", "video_url", "content_type", "content"]
+      include: [{
+        model: db.default.Unit,
+        include: [{
+          model: db.default.Course,
+          attributes: ['id', 'title', 'teacher_id', 'price']
+        }]
+      }],
+      attributes: ["id", "title", "file_url", "video_url", "content_type", "content", "is_preview"]
     });
 
     if (!lesson) {
@@ -637,144 +647,243 @@ router.get("/preview-lesson/:lessonId", authenticateToken, async (req, res) => {
       });
     }
 
-    console.log("📖 Lesson details:", {
+    console.log("📖 Lesson found:", {
       id: lesson.id,
       title: lesson.title,
       content_type: lesson.content_type,
-      file_url: lesson.file_url,
-      video_url: lesson.video_url
+      course: lesson.Unit?.Course?.title,
+      teacher_id: lesson.Unit?.Course?.teacher_id
     });
+
+    // Check access permissions
+    const isTeacher = lesson.Unit?.Course?.teacher_id === userId;
+    const isPreviewLesson = lesson.is_preview;
+
+    if (!isTeacher && !isPreviewLesson) {
+      console.log("🚫 Access denied for user:", userId);
+      return res.status(403).json({
+        success: false,
+        error: "Access denied. This lesson is not available for preview."
+      });
+    }
 
     // Handle different content types
     if (lesson.content_type === 'pdf' && lesson.file_url) {
-      // Extract filename from the stored file_url
-      const filename = lesson.file_url.startsWith('/Uploads/') 
-        ? lesson.file_url.replace('/Uploads/', '')
-        : lesson.file_url;
-      
-      const safeFilename = path.basename(filename);
-      const filePath = path.join(uploadsDir, safeFilename);
-
-      console.log("📄 Looking for PDF file:", {
-        stored_url: lesson.file_url,
-        filename: filename,
-        safeFilename: safeFilename,
-        filePath: filePath,
-        exists: fs.existsSync(filePath)
-      });
-
-      // Check if file exists
-      try {
-        await fs.access(filePath);
-      } catch (error) {
-        console.log("❌ PDF file not found:", safeFilename);
-        return res.status(404).json({
-          success: false,
-          error: `PDF file not found: ${safeFilename}`,
-          path: filePath
-        });
-      }
-
-      // Serve the PDF file
-      const stats = await fs.stat(filePath);
-      res.setHeader('Content-Type', 'application/pdf');
-      res.setHeader('Content-Length', stats.size);
-      res.setHeader('Content-Disposition', `inline; filename="${safeFilename}"`);
-      res.setHeader('Access-Control-Allow-Origin', process.env.FRONTEND_URL || '*');
-      
-      const fileStream = fs.createReadStream(filePath);
-      fileStream.pipe(res);
-      
+      await handlePdfPreview(lesson, res);
     } else if (lesson.content_type === 'video' && lesson.video_url) {
-      // For videos, redirect to the video URL
-      console.log("🎥 Redirecting to video:", lesson.video_url);
-      
-      // If it's a relative URL, make it absolute
-      if (lesson.video_url.startsWith('/')) {
-        const fullVideoUrl = `${process.env.BACKEND_URL || 'http://localhost:3000'}${lesson.video_url}`;
-        return res.redirect(fullVideoUrl);
-      }
-      
-      return res.redirect(lesson.video_url);
-      
+      await handleVideoPreview(lesson, res);
     } else {
-      // For text content, serve a simple HTML preview
-      console.log("📝 Serving text preview for lesson:", lesson.title);
-      
-      const htmlContent = `
-        <!DOCTYPE html>
-        <html>
-        <head>
-          <title>Preview: ${lesson.title}</title>
-          <style>
-            body { 
-              font-family: Arial, sans-serif; 
-              padding: 20px; 
-              max-width: 800px; 
-              margin: 0 auto; 
-              line-height: 1.6;
-            }
-            .header { 
-              border-bottom: 2px solid #333; 
-              padding-bottom: 10px; 
-              margin-bottom: 20px; 
-            }
-            .content { 
-              white-space: pre-wrap;
-              background: #f9f9f9;
-              padding: 20px;
-              border-radius: 5px;
-            }
-            .info {
-              background: #e3f2fd;
-              padding: 10px;
-              border-radius: 5px;
-              margin-bottom: 20px;
-            }
-          </style>
-        </head>
-        <body>
-          <div class="header">
-            <h1>${lesson.title}</h1>
-            <div class="info">
-              <p><strong>Content Type:</strong> ${lesson.content_type}</p>
-              <p><strong>Lesson ID:</strong> ${lesson.id}</p>
-              <p><strong>Preview Generated:</strong> ${new Date().toLocaleString()}</p>
-            </div>
-          </div>
-          <div class="content">
-            ${lesson.content || 'No content available for this lesson.'}
-          </div>
-        </body>
-        </html>
-      `;
-      
-      res.setHeader('Content-Type', 'text/html');
-      res.send(htmlContent);
+      await handleTextPreview(lesson, isPreviewLesson, res);
     }
     
   } catch (error) {
-    console.error("❌ Preview error:", error);
+    console.error("❌ Preview error:", error.message);
     res.status(500).json({
       success: false,
       error: "Failed to preview lesson content",
-      details: error.message
+      details: process.env.NODE_ENV === 'development' ? error.message : undefined
     });
   }
 });
 
 /**
- * ✅ TEST FILE ACCESS ENDPOINT
- * GET /api/v1/files/test/:lessonId
+ * Handle PDF file preview
  */
-router.get("/test/:lessonId", authenticateToken, async (req, res) => {
+async function handlePdfPreview(lesson, res) {
+  let filename = lesson.file_url;
+  
+  // Handle different URL formats
+  if (filename.startsWith('/Uploads/')) {
+    filename = filename.replace('/Uploads/', '');
+  } else if (filename.startsWith('/api/v1/files/Uploads/')) {
+    filename = filename.replace('/api/v1/files/Uploads/', '');
+  } else if (filename.startsWith('http')) {
+    const urlObj = new URL(filename);
+    filename = path.basename(urlObj.pathname);
+  }
+  
+  const safeFilename = path.basename(filename);
+  let filePath = path.join(uploadsDir, safeFilename);
+
+  console.log("📄 Processing PDF:", { original: lesson.file_url, filename: safeFilename, path: filePath });
+
+  // Check if file exists with fallback paths
+  try {
+    await fs.access(filePath);
+    console.log("✅ PDF file found:", filePath);
+  } catch (error) {
+    console.log("❌ PDF not found, trying alternative paths...");
+    
+    const alternativePaths = [
+      path.join(uploadsDir, lesson.file_url),
+      path.join(__dirname, '..', lesson.file_url),
+      path.join(process.cwd(), lesson.file_url)
+    ];
+    
+    let foundPath = null;
+    for (const altPath of alternativePaths) {
+      try {
+        await fs.access(altPath);
+        foundPath = altPath;
+        console.log("✅ File found at alternative path:", altPath);
+        break;
+      } catch (e) {
+        // Continue to next path
+      }
+    }
+    
+    if (!foundPath) {
+      throw new Error(`PDF file not found: ${safeFilename}. Checked: ${filePath}`);
+    }
+    filePath = foundPath;
+  }
+
+  // Serve the PDF file
+  const stats = await fs.stat(filePath);
+  res.setHeader('Content-Type', 'application/pdf');
+  res.setHeader('Content-Length', stats.size);
+  res.setHeader('Content-Disposition', `inline; filename="${safeFilename}"`);
+  res.setHeader('Access-Control-Allow-Origin', process.env.FRONTEND_URL || '*');
+  
+  console.log("📤 Serving PDF:", { filename: safeFilename, size: stats.size });
+  
+  const fileStream = fs.createReadStream(filePath);
+  fileStream.pipe(res);
+}
+
+/**
+ * Handle video preview
+ */
+async function handleVideoPreview(lesson, res) {
+  console.log("🎥 Processing video:", lesson.video_url);
+  
+  let videoUrl = lesson.video_url;
+  
+  // Make relative URLs absolute
+  if (videoUrl.startsWith('/')) {
+    videoUrl = `${process.env.BACKEND_URL || 'http://localhost:3000'}${videoUrl}`;
+  }
+  
+  console.log("🎥 Redirecting to video:", videoUrl);
+  return res.redirect(videoUrl);
+}
+
+/**
+ * Handle text content preview
+ */
+async function handleTextPreview(lesson, isPreviewLesson, res) {
+  console.log("📝 Serving text preview:", lesson.title);
+  
+  const htmlContent = `
+    <!DOCTYPE html>
+    <html>
+    <head>
+      <title>Preview: ${lesson.title}</title>
+      <meta charset="utf-8">
+      <style>
+        body { 
+          font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; 
+          padding: 30px; 
+          max-width: 1000px; 
+          margin: 0 auto; 
+          line-height: 1.6;
+          background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+          min-height: 100vh;
+        }
+        .preview-container {
+          background: white;
+          border-radius: 15px;
+          padding: 40px;
+          box-shadow: 0 20px 40px rgba(0,0,0,0.1);
+          border: 1px solid rgba(255,255,255,0.2);
+        }
+        .header { 
+          border-bottom: 3px solid #667eea; 
+          padding-bottom: 20px; 
+          margin-bottom: 30px; 
+          text-align: center;
+        }
+        .header h1 {
+          color: #2d3748;
+          margin: 0;
+          font-size: 2.5em;
+        }
+        .content { 
+          white-space: pre-wrap;
+          background: #f8f9fa;
+          padding: 30px;
+          border-radius: 10px;
+          border-left: 5px solid #667eea;
+          font-size: 1.1em;
+          color: #2d3748;
+        }
+        .info {
+          background: #e3f2fd;
+          padding: 20px;
+          border-radius: 10px;
+          margin-bottom: 30px;
+          border-left: 5px solid #2196f3;
+        }
+        .info p {
+          margin: 8px 0;
+          color: #1565c0;
+          font-weight: 500;
+        }
+        .watermark {
+          text-align: center;
+          margin-top: 40px;
+          color: #666;
+          font-style: italic;
+          border-top: 1px solid #ddd;
+          padding-top: 20px;
+        }
+      </style>
+    </head>
+    <body>
+      <div class="preview-container">
+        <div class="header">
+          <h1>${lesson.title}</h1>
+        </div>
+        <div class="info">
+          <p><strong>Content Type:</strong> ${lesson.content_type}</p>
+          <p><strong>Preview Type:</strong> ${isPreviewLesson ? 'Free Preview' : 'Teacher Preview'}</p>
+          <p><strong>Generated:</strong> ${new Date().toLocaleString()}</p>
+        </div>
+        <div class="content">
+          ${lesson.content || 'No content available for this lesson.'}
+        </div>
+        <div class="watermark">
+          Lesson Preview - Generated by Learning Platform
+        </div>
+      </div>
+    </body>
+    </html>
+  `;
+  
+  res.setHeader('Content-Type', 'text/html; charset=utf-8');
+  res.send(htmlContent);
+}
+
+/**
+ * ✅ DEBUG ENDPOINT: Test file access and lesson data
+ * GET /api/v1/files/debug-lesson/:lessonId
+ */
+router.get("/debug-lesson/:lessonId", authenticateToken, async (req, res) => {
   try {
     const { lessonId } = req.params;
-    console.log("🧪 Testing file access for lesson:", lessonId);
+    
+    console.log("🐛 Debug request for lesson:", lessonId);
 
     const db = await import("../models/index.js");
     const lesson = await db.default.Lesson.findByPk(lessonId, {
-      attributes: ["id", "title", "file_url", "content_type"]
+      include: [{
+        model: db.default.Unit,
+        include: [{
+          model: db.default.Course,
+          attributes: ['id', 'title', 'teacher_id']
+        }]
+      }],
+      attributes: ["id", "title", "file_url", "video_url", "content_type", "content", "is_preview"]
     });
 
     if (!lesson) {
@@ -784,27 +893,70 @@ router.get("/test/:lessonId", authenticateToken, async (req, res) => {
       });
     }
 
-    // Build the expected file URL
-    const expectedUrl = `${process.env.BACKEND_URL || 'http://localhost:3000'}/api/v1/files${lesson.file_url}`;
+    // Check file existence if it's a PDF
+    let fileExists = false;
+    let filePath = null;
+    let fileDetails = null;
     
+    if (lesson.content_type === 'pdf' && lesson.file_url) {
+      let filename = lesson.file_url;
+      if (filename.startsWith('/Uploads/')) {
+        filename = filename.replace('/Uploads/', '');
+      }
+      const safeFilename = path.basename(filename);
+      filePath = path.join(uploadsDir, safeFilename);
+      
+      try {
+        await fs.access(filePath);
+        fileExists = true;
+        const stats = await fs.stat(filePath);
+        fileDetails = {
+          exists: true,
+          path: filePath,
+          size: stats.size,
+          sizeFormatted: formatFileSize(stats.size),
+          modified: stats.mtime
+        };
+      } catch (error) {
+        fileExists = false;
+        fileDetails = {
+          exists: false,
+          path: filePath,
+          error: error.message
+        };
+      }
+    }
+
     res.json({
       success: true,
       lesson: {
         id: lesson.id,
         title: lesson.title,
         content_type: lesson.content_type,
-        stored_file_url: lesson.file_url,
-        expected_file_url: expectedUrl,
-        test_url: `/api/v1/files/preview-lesson/${lesson.id}`
+        file_url: lesson.file_url,
+        video_url: lesson.video_url,
+        is_preview: lesson.is_preview,
+        course: {
+          id: lesson.Unit?.Course?.id,
+          title: lesson.Unit?.Course?.title,
+          teacher_id: lesson.Unit?.Course?.teacher_id
+        }
       },
-      instructions: {
-        test_pdf: `Open this URL to test: ${expectedUrl}`,
-        use_preview: `Use this for preview: /api/v1/files/preview-lesson/${lesson.id}`
+      file_info: fileDetails || { exists: false, message: 'Not a PDF lesson' },
+      uploads_directory: uploadsDir,
+      preview_urls: {
+        direct: `/api/v1/files/preview-lesson/${lessonId}`,
+        full: `${process.env.BACKEND_URL || 'http://localhost:3000'}/api/v1/files/preview-lesson/${lessonId}`
+      },
+      access: {
+        user_id: req.user.id,
+        is_teacher: lesson.Unit?.Course?.teacher_id === req.user.id,
+        has_access: lesson.Unit?.Course?.teacher_id === req.user.id || lesson.is_preview
       }
     });
     
   } catch (error) {
-    console.error("❌ Test error:", error);
+    console.error("❌ Debug error:", error);
     res.status(500).json({
       success: false,
       error: error.message
@@ -827,12 +979,8 @@ const serveFile = async (req, res) => {
     // ✅ Security - prevent directory traversal attacks
     const safeFilename = path.basename(filename);
     const filePath = path.join(uploadsDir, safeFilename);
-    
-    console.log("📁 Serving file:", {
-      requested: filename,
-      safeFilename: safeFilename,
-      filePath: filePath
-    });
+
+    console.log("📁 Serving file:", { requested: filename, safeFilename, filePath });
 
     // Check if file exists
     try {
