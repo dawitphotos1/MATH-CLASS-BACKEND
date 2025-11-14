@@ -11,7 +11,11 @@ import listEndpoints from "express-list-endpoints";
 import path from "path";
 import { fileURLToPath } from "url";
 import sequelize from "./config/db.js";
-
+import {
+  apiRateLimit,
+  authRateLimit,
+  uploadRateLimit,
+} from "./middleware/rateLimit.js";
 // Routes
 import authRoutes from "./routes/authRoutes.js";
 import adminRoutes from "./routes/admin.js";
@@ -43,7 +47,7 @@ app.post(
   express.raw({ type: "application/json" }),
   handleStripeWebhook
 );
-
+app.use(apiRateLimit);
 // JSON middleware (skip for file/webhook routes)
 app.use((req, res, next) => {
   const skipJsonRoutes = [
@@ -136,7 +140,8 @@ app.use("/api/v1/test-email", testEmailRoutes);
 app.use("/api/v1/files", filesRoutes);
 app.use("/api/v1/units", unitRoutes);
 app.use("/api/v1/teacher", teacherRoutes);
-
+app.use("/api/v1/auth", authRateLimit);
+app.use("/api/v1/upload", uploadRateLimit);
 // Health check
 app.get("/api/v1/health", async (req, res) => {
   try {
