@@ -160,7 +160,6 @@
 
 
 
-
 // controllers/teacherController.js
 import db from "../models/index.js";
 
@@ -168,6 +167,74 @@ const Course = db.Course;
 const Unit = db.Unit;
 const Lesson = db.Lesson;
 
+/**
+ * ================================
+ *   TEACHER DASHBOARD OVERVIEW
+ * ================================
+ */
+export const getTeacherDashboard = async (req, res) => {
+  try {
+    const teacherId = req.user.id;
+
+    // Count courses owned by teacher
+    const courseCount = await Course.count({
+      where: { teacher_id: teacherId }
+    });
+
+    // Count units inside teacher's courses
+    const unitCount = await Unit.count({
+      include: [{ model: Course, where: { teacher_id: teacherId } }]
+    });
+
+    // Count lessons inside teacher's courses
+    const lessonCount = await Lesson.count({
+      include: [{ model: Course, where: { teacher_id: teacherId } }]
+    });
+
+    return res.json({
+      success: true,
+      dashboard: {
+        totalCourses: courseCount,
+        totalUnits: unitCount,
+        totalLessons: lessonCount,
+      },
+    });
+  } catch (err) {
+    console.error("❌ Teacher dashboard error:", err);
+    return res.status(500).json({ error: "Failed to load teacher dashboard" });
+  }
+};
+
+/**
+ * ================================
+ *     COURSE ANALYTICS
+ * ================================
+ */
+export const getCourseAnalytics = async (req, res) => {
+  try {
+    const { courseId } = req.params;
+
+    const unitCount = await Unit.count({ where: { course_id: courseId } });
+    const lessonCount = await Lesson.count({ where: { course_id: courseId } });
+
+    return res.json({
+      success: true,
+      analytics: {
+        totalUnits: unitCount,
+        totalLessons: lessonCount,
+      },
+    });
+  } catch (err) {
+    console.error("❌ Course analytics error:", err);
+    return res.status(500).json({ error: "Failed to load course analytics" });
+  }
+};
+
+/**
+ * ========================================
+ *   FULL COURSE STRUCTURE (Units + Lessons)
+ * ========================================
+ */
 export const getTeacherCourseFull = async (req, res) => {
   try {
     const { courseId } = req.params;
@@ -202,6 +269,11 @@ export const getTeacherCourseFull = async (req, res) => {
   }
 };
 
+/**
+ * ============================================
+ *   ALL TEACHER COURSES (Full Nested Structure)
+ * ============================================
+ */
 export const getAllTeacherCoursesFull = async (req, res) => {
   try {
     const courses = await Course.findAll({
