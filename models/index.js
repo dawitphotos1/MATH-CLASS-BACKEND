@@ -95,20 +95,12 @@ db.LessonCompletion = LessonCompletionModel(sequelize, DataTypes);
 db.UserCourseAccess = UserCourseAccessModel(sequelize, DataTypes);
 db.Payment = PaymentModel(sequelize, DataTypes);
 
-// ✅ FIXED: Run associations properly
+// ✅ FIXED: Run associations properly - REMOVE DUPLICATES
 Object.keys(db).forEach(modelName => {
   if (db[modelName].associate) {
     db[modelName].associate(db);
   }
 });
-
-// ✅ FIXED: Add explicit associations to ensure they work
-// Course -> Unit -> Lesson associations
-db.Course.hasMany(db.Unit, { foreignKey: 'course_id', as: 'units' });
-db.Unit.belongsTo(db.Course, { foreignKey: 'course_id', as: 'course' });
-db.Unit.hasMany(db.Lesson, { foreignKey: 'unit_id', as: 'lessons' });
-db.Lesson.belongsTo(db.Unit, { foreignKey: 'unit_id', as: 'unit' });
-db.Lesson.belongsTo(db.Course, { foreignKey: 'course_id', as: 'course' });
 
 // ✅ Correct exports only
 export default db;
