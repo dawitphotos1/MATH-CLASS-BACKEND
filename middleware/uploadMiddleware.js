@@ -79,7 +79,6 @@
 
 
 
-
 // middleware/uploadMiddleware.js
 import multer from "multer";
 
@@ -99,7 +98,7 @@ const fileFilter = (req, file, cb) => {
   else cb(new Error("Invalid file type"), false);
 };
 
-export const uploadLessonFiles = multer({
+export const uploadCourseFiles = multer({
   storage,
   fileFilter,
   limits: {
