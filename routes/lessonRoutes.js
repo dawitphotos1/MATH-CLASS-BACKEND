@@ -151,6 +151,7 @@
 
 // routes/lessonRoutes.js
 import express from "express";
+import { uploadLessonFiles } from "../middleware/uploadMiddleware.js";
 import {
   createLesson,
   getLessonsByCourse,
@@ -158,40 +159,30 @@ import {
   getLessonById,
   updateLesson,
   deleteLesson,
-  debugGetLesson,
-  debugCheckFile,
 } from "../controllers/lessonController.js";
 
-import { authenticateToken } from "../middleware/authMiddleware.js";
-import checkTeacherOrAdmin from "../middleware/checkTeacherOrAdmin.js";
-import { uploadLessonFiles } from "../middleware/uploadMiddleware.js";
-import { lessonRateLimit } from "../middleware/rateLimit.js";
-
 const router = express.Router();
-router.use(lessonRateLimit);
 
-// Create lesson (handles files + unitId)
+// CREATE lesson
 router.post(
   "/courses/:courseId/lessons",
-  authenticateToken,
-  checkTeacherOrAdmin,
   uploadLessonFiles,
   createLesson
 );
 
-// Get lessons by course (used by teacher / protected)
-router.get("/courses/:courseId/lessons", authenticateToken, getLessonsByCourse);
+// GET lessons by course
+router.get("/courses/:courseId/lessons", getLessonsByCourse);
 
-// Get lessons by unit
-router.get("/units/:unitId/lessons", authenticateToken, getLessonsByUnit);
+// GET lessons by unit
+router.get("/units/:unitId/lessons", getLessonsByUnit);
 
-// Lesson CRUD
-router.get("/:lessonId", authenticateToken, getLessonById);
-router.put("/:lessonId", authenticateToken, checkTeacherOrAdmin, uploadLessonFiles, updateLesson);
-router.delete("/:lessonId", authenticateToken, checkTeacherOrAdmin, deleteLesson);
+// GET single lesson
+router.get("/:lessonId", getLessonById);
 
-// Debug utilities
-router.get("/debug/:lessonId", authenticateToken, debugGetLesson);
-router.get("/debug/file/:filename", authenticateToken, debugCheckFile);
+// UPDATE lesson
+router.put("/:lessonId", uploadLessonFiles, updateLesson);
+
+// DELETE lesson
+router.delete("/:lessonId", deleteLesson);
 
 export default router;

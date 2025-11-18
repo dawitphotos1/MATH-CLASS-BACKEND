@@ -849,296 +849,161 @@
 
 // controllers/lessonController.js
 import db from "../models/index.js";
-import path from "path";
-import { fileURLToPath } from "url";
-import fs from "fs";
+import { uploadToStorage } from "../utils/uploadHelper.js"; // you will get this below
 
-const { Lesson, Course, Unit, Enrollment } = db;
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
+const Lesson = db.Lesson;
+const Unit = db.Unit;
+const Course = db.Course;
 
-const buildFileUrls = (lesson) => {
-  if (!lesson) return lesson;
-  const lessonData = lesson.toJSON ? lesson.toJSON() : { ...lesson };
-
-  // If file_url is present and not absolute, build full URL
-  if (lessonData.file_url && !lessonData.file_url.startsWith("http")) {
-    let clean = lessonData.file_url.startsWith("/") ? lessonData.file_url : `/${lessonData.file_url}`;
-    lessonData.file_url = `${process.env.BACKEND_URL || "http://localhost:5000"}/api/v1/files${clean}`;
-  }
-  if (lessonData.video_url && !lessonData.video_url.startsWith("http")) {
-    let clean = lessonData.video_url.startsWith("/") ? lessonData.video_url : `/${lessonData.video_url}`;
-    lessonData.video_url = `${process.env.BACKEND_URL || "http://localhost:5000"}/api/v1/files${clean}`;
-  }
-  return lessonData;
-};
-
-export const debugGetLesson = async (req, res) => {
-  try {
-    const { lessonId } = req.params;
-    const lesson = await Lesson.findByPk(lessonId, { raw: true });
-    if (!lesson) return res.status(404).json({ success: false, error: "Lesson not found" });
-    res.json({ success: true, lesson });
-  } catch (err) {
-    console.error("DEBUG GET LESSON:", err);
-    res.status(500).json({ success: false, error: err.message });
-  }
-};
-
-export const debugCheckFile = async (req, res) => {
-  try {
-    const { filename } = req.params;
-    const uploadsDir = path.join(__dirname, "../Uploads");
-    const filePath = path.join(uploadsDir, filename);
-    const exists = fs.existsSync(filePath);
-    res.json({ success: true, exists, filePath });
-  } catch (err) {
-    console.error("DEBUG CHECK FILE:", err);
-    res.status(500).json({ success: false, error: err.message });
-  }
-};
-
+/* --------------------- CREATE LESSON --------------------- */
 export const createLesson = async (req, res) => {
   try {
-    console.log("CreateLesson - body:", req.body);
-    console.log("CreateLesson - files:", req.files?.file?.length || 0, req.files?.video?.length || 0);
-
     const { courseId } = req.params;
-    const { title, content, contentType, orderIndex, videoUrl, unitId, isPreview, isUnitHeader } = req.body;
-    if (!title) return res.status(400).json({ success: false, error: "Title required" });
+    const {
+      title,
+      content,
+      content_type,
+      order_index,
+      video_url,
+      is_preview,
+      unit_id,
+    } = req.body;
 
-    const course = await Course.findByPk(courseId);
-    if (!course) return res.status(404).json({ success: false, error: "Course not found" });
+    let file_url = null;
 
-    if (unitId) {
-      const unit = await Unit.findOne({ where: { id: unitId, course_id: courseId } });
-      if (!unit) return res.status(404).json({ success: false, error: "Unit not found in this course" });
-    }
-
-    // Authorization: only teacher or admin
-    if (req.user.role !== "admin" && course.teacher_id !== req.user.id)
-      return res.status(403).json({ success: false, error: "Not authorized" });
-
-    // Handle uploads
-    const uploadsDir = path.join(__dirname, "../Uploads");
-    if (!fs.existsSync(uploadsDir)) fs.mkdirSync(uploadsDir, { recursive: true });
-
-    let fileUrl = null;
-    let videoPath = null;
-
-    if (req.files?.file && req.files.file[0]) {
+    // Upload file if exists
+    if (req.files && req.files.file && req.files.file[0]) {
       const file = req.files.file[0];
-      const filename = `file-${Date.now()}-${file.originalname.replace(/\s+/g, "-")}`;
-      const full = path.join(uploadsDir, filename);
-      fs.writeFileSync(full, file.buffer);
-      fileUrl = `/Uploads/${filename}`;
+      file_url = await uploadToStorage(file);
     }
 
-    if (req.files?.pdf && req.files.pdf[0]) {
-      const file = req.files.pdf[0];
-      const filename = `pdf-${Date.now()}-${file.originalname.replace(/\s+/g, "-")}`;
-      const full = path.join(uploadsDir, filename);
-      fs.writeFileSync(full, file.buffer);
-      fileUrl = `/Uploads/${filename}`;
-    }
-
-    if (req.files?.video && req.files.video[0]) {
-      const v = req.files.video[0];
-      const filename = `video-${Date.now()}-${v.originalname.replace(/\s+/g, "-")}`;
-      const full = path.join(uploadsDir, filename);
-      fs.writeFileSync(full, v.buffer);
-      videoPath = `/Uploads/${filename}`;
-    }
-
-    // Determine order index
-    let orderIndexValue = orderIndex;
-    if (orderIndexValue === undefined || orderIndexValue === null) {
-      const whereClause = unitId ? { unit_id: unitId } : { course_id: courseId, unit_id: null };
-      const last = await Lesson.findOne({ where: whereClause, order: [["order_index", "DESC"]] });
-      orderIndexValue = last ? last.order_index + 1 : 1;
-    }
-
-    // Determine content type
-    let finalContentType = contentType || "text";
-    if (isUnitHeader === "true" || isUnitHeader === true) finalContentType = "unit_header";
-    else if (fileUrl) finalContentType = "pdf";
-    else if (videoPath) finalContentType = "video";
-
-    const lesson = await Lesson.create({
+    const newLesson = await Lesson.create({
       course_id: courseId,
-      unit_id: unitId || null,
-      title: title.trim(),
-      content: (content || "").trim(),
-      video_url: videoPath || videoUrl || null,
-      file_url: fileUrl || null,
-      order_index: orderIndexValue,
-      content_type: finalContentType,
-      is_preview: !!isPreview,
+      unit_id: unit_id || null,
+      title,
+      content,
+      content_type,
+      order_index: order_index || 0,
+      video_url,
+      is_preview: is_preview === "true" || is_preview === true,
+      file_url,
     });
 
-    const complete = await Lesson.findByPk(lesson.id, {
-      include: [
-        { model: Course, as: "course", attributes: ["id", "title", "teacher_id"] },
-        { model: Unit, as: "unit", attributes: ["id", "title"] },
-      ],
+    return res.json({
+      success: true,
+      lesson: newLesson,
     });
-
-    res.status(201).json({ success: true, message: "Lesson created", lesson: buildFileUrls(complete) });
   } catch (err) {
-    console.error("CreateLesson ERROR:", err);
-    if (err.name === "SequelizeValidationError") {
-      return res.status(400).json({ success: false, error: "Validation failed", details: err.errors });
-    }
-    res.status(500).json({ success: false, error: err.message });
+    console.error("❌ Lesson create error:", err);
+    return res.status(500).json({ error: "Failed to create lesson" });
   }
 };
 
-export const updateLesson = async (req, res) => {
-  try {
-    const { lessonId } = req.params;
-    const { title, content, contentType, orderIndex, videoUrl, unitId, isPreview, isUnitHeader } = req.body;
-
-    const lesson = await Lesson.findByPk(lessonId, {
-      include: [{ model: Course, as: "course", attributes: ["id", "teacher_id"] }],
-    });
-    if (!lesson) return res.status(404).json({ success: false, error: "Lesson not found" });
-
-    // Authorization
-    if (req.user.role !== "admin" && lesson.course.teacher_id !== req.user.id)
-      return res.status(403).json({ success: false, error: "Not authorized" });
-
-    // Validate unit if provided
-    if (unitId) {
-      const unit = await Unit.findOne({ where: { id: unitId, course_id: lesson.course_id } });
-      if (!unit) return res.status(400).json({ success: false, error: "Unit not found in this course" });
-    }
-
-    const uploadsDir = path.join(__dirname, "../Uploads");
-    if (!fs.existsSync(uploadsDir)) fs.mkdirSync(uploadsDir, { recursive: true });
-
-    let fileUrl = lesson.file_url;
-    let videoPath = lesson.video_url;
-
-    if (req.files?.file && req.files.file[0]) {
-      const file = req.files.file[0];
-      const filename = `file-${Date.now()}-${file.originalname.replace(/\s+/g, "-")}`;
-      const full = path.join(uploadsDir, filename);
-      fs.writeFileSync(full, file.buffer);
-      fileUrl = `/Uploads/${filename}`;
-    }
-
-    if (req.files?.pdf && req.files.pdf[0]) {
-      const file = req.files.pdf[0];
-      const filename = `pdf-${Date.now()}-${file.originalname.replace(/\s+/g, "-")}`;
-      const full = path.join(uploadsDir, filename);
-      fs.writeFileSync(full, file.buffer);
-      fileUrl = `/Uploads/${filename}`;
-    }
-
-    if (req.files?.video && req.files.video[0]) {
-      const v = req.files.video[0];
-      const filename = `video-${Date.now()}-${v.originalname.replace(/\s+/g, "-")}`;
-      const full = path.join(uploadsDir, filename);
-      fs.writeFileSync(full, v.buffer);
-      videoPath = `/Uploads/${filename}`;
-    }
-
-    let finalContentType = lesson.content_type;
-    if (isUnitHeader === "true" || isUnitHeader === true) finalContentType = "unit_header";
-    else if (fileUrl && fileUrl !== lesson.file_url) finalContentType = "pdf";
-    else if (videoPath && videoPath !== lesson.video_url) finalContentType = "video";
-    else if (contentType) finalContentType = contentType;
-
-    const updateData = {
-      ...(title !== undefined ? { title: title.trim() } : {}),
-      ...(content !== undefined ? { content } : {}),
-      ...(orderIndex !== undefined ? { order_index: parseInt(orderIndex, 10) } : {}),
-      ...(videoUrl !== undefined ? { video_url: videoUrl } : {}),
-      ...(fileUrl !== undefined ? { file_url: fileUrl } : {}),
-      ...(unitId !== undefined ? { unit_id: unitId } : {}),
-      content_type: finalContentType,
-      ...(isPreview !== undefined ? { is_preview: !!isPreview } : {}),
-    };
-
-    await Lesson.update(updateData, { where: { id: lessonId } });
-
-    const updated = await Lesson.findByPk(lessonId, {
-      include: [
-        { model: Course, as: "course", attributes: ["id", "teacher_id"] },
-        { model: Unit, as: "unit", attributes: ["id", "title"] },
-      ],
-    });
-
-    res.json({ success: true, message: "Lesson updated", lesson: buildFileUrls(updated) });
-  } catch (err) {
-    console.error("UpdateLesson ERROR:", err);
-    res.status(500).json({ success: false, error: err.message });
-  }
-};
-
-export const getLessonById = async (req, res) => {
-  try {
-    const { lessonId } = req.params;
-    const lesson = await Lesson.findByPk(lessonId, {
-      include: [
-        { model: Course, as: "course", attributes: ["id", "title", "teacher_id"] },
-        { model: Unit, as: "unit", attributes: ["id", "title"] },
-      ],
-    });
-    if (!lesson) return res.status(404).json({ success: false, error: "Lesson not found" });
-
-    // Access control for students handled in calling routes if needed
-    res.json({ success: true, lesson: buildFileUrls(lesson) });
-  } catch (err) {
-    console.error("GetLesson ERROR:", err);
-    res.status(500).json({ success: false, error: err.message });
-  }
-};
-
+/* --------------------- GET LESSONS BY COURSE --------------------- */
 export const getLessonsByCourse = async (req, res) => {
   try {
     const { courseId } = req.params;
+
     const lessons = await Lesson.findAll({
       where: { course_id: courseId },
       order: [["order_index", "ASC"]],
-      include: [{ model: Unit, as: "unit", attributes: ["id", "title"] }],
     });
-    res.json({ success: true, lessons: lessons.map(buildFileUrls) });
+
+    return res.json({ success: true, lessons });
   } catch (err) {
-    console.error("GetLessonsByCourse ERROR:", err);
-    res.status(500).json({ success: false, error: err.message });
+    console.error("❌ Fetch lessons error:", err);
+    return res.status(500).json({ error: "Failed to fetch lessons" });
   }
 };
 
+/* --------------------- GET LESSONS BY UNIT --------------------- */
 export const getLessonsByUnit = async (req, res) => {
   try {
     const { unitId } = req.params;
+
     const lessons = await Lesson.findAll({
       where: { unit_id: unitId },
       order: [["order_index", "ASC"]],
-      include: [{ model: Unit, as: "unit", attributes: ["id", "title"] }],
     });
-    res.json({ success: true, lessons: lessons.map(buildFileUrls) });
+
+    return res.json({ success: true, lessons });
   } catch (err) {
-    console.error("GetLessonsByUnit ERROR:", err);
-    res.status(500).json({ success: false, error: err.message });
+    console.error("❌ Fetch unit lessons error:", err);
+    return res.status(500).json({ error: "Failed to fetch unit lessons" });
   }
 };
 
+/* --------------------- GET SINGLE LESSON --------------------- */
+export const getLessonById = async (req, res) => {
+  try {
+    const { lessonId } = req.params;
+
+    const lesson = await Lesson.findByPk(lessonId);
+
+    if (!lesson) return res.status(404).json({ error: "Lesson not found" });
+
+    return res.json({ success: true, lesson });
+  } catch (err) {
+    console.error(err);
+    return res.status(500).json({ error: "Failed to fetch lesson" });
+  }
+};
+
+/* --------------------- UPDATE LESSON --------------------- */
+export const updateLesson = async (req, res) => {
+  try {
+    const { lessonId } = req.params;
+    const {
+      title,
+      content,
+      content_type,
+      order_index,
+      video_url,
+      is_preview,
+      unit_id,
+    } = req.body;
+
+    const lesson = await Lesson.findByPk(lessonId);
+    if (!lesson) return res.status(404).json({ error: "Lesson not found" });
+
+    let updatedFileUrl = lesson.file_url;
+
+    // If new file uploaded, replace old
+    if (req.files && req.files.file && req.files.file[0]) {
+      updatedFileUrl = await uploadToStorage(req.files.file[0]);
+    }
+
+    await lesson.update({
+      title,
+      content,
+      content_type,
+      order_index: order_index || lesson.order_index,
+      video_url,
+      is_preview: is_preview === "true" || is_preview === true,
+      unit_id: unit_id || lesson.unit_id,
+      file_url: updatedFileUrl,
+    });
+
+    return res.json({ success: true, lesson });
+  } catch (err) {
+    console.error("❌ Lesson update error:", err);
+    return res.status(500).json({ error: "Failed to update lesson" });
+  }
+};
+
+/* --------------------- DELETE LESSON --------------------- */
 export const deleteLesson = async (req, res) => {
   try {
     const { lessonId } = req.params;
-    const lesson = await Lesson.findByPk(lessonId, {
-      include: [{ model: Course, as: "course", attributes: ["teacher_id"] }],
-    });
-    if (!lesson) return res.status(404).json({ success: false, error: "Lesson not found" });
-    if (req.user.role !== "admin" && lesson.course.teacher_id !== req.user.id)
-      return res.status(403).json({ success: false, error: "Not authorized" });
+
+    const lesson = await Lesson.findByPk(lessonId);
+    if (!lesson) return res.status(404).json({ error: "Lesson not found" });
 
     await lesson.destroy();
-    res.json({ success: true, message: "Lesson deleted" });
+
+    return res.json({ success: true });
   } catch (err) {
-    console.error("DeleteLesson ERROR:", err);
-    res.status(500).json({ success: false, error: err.message });
+    console.error("❌ Lesson delete error:", err);
+    return res.status(500).json({ error: "Failed to delete lesson" });
   }
 };
