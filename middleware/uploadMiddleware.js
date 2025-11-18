@@ -98,10 +98,14 @@ const fileFilter = (req, file, cb) => {
   else cb(new Error("Invalid file type"), false);
 };
 
-export const uploadCourseFiles = multer({
+const uploader = multer({
   storage,
   fileFilter,
   limits: {
     fileSize: 100 * 1024 * 1024, // 100MB
   },
 }).fields([{ name: "file", maxCount: 1 }]);
+
+// Export BOTH versions so both routes continue working
+export const uploadCourseFiles = uploader;
+export const uploadLessonFiles = uploader;
