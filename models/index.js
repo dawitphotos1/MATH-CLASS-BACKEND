@@ -51,7 +51,6 @@
 // export { sequelize };
 
 
-
 // models/index.js
 import { Sequelize, DataTypes } from "sequelize";
 import config from "../config/config.js";
@@ -68,7 +67,6 @@ import PaymentModel from "./Payment.js";
 const env = process.env.NODE_ENV || "development";
 const dbConfig = config[env];
 
-// Initialize Sequelize
 const sequelize = new Sequelize(dbConfig.url, {
   dialect: dbConfig.dialect,
   logging: dbConfig.logging || false,
@@ -95,13 +93,12 @@ db.LessonCompletion = LessonCompletionModel(sequelize, DataTypes);
 db.UserCourseAccess = UserCourseAccessModel(sequelize, DataTypes);
 db.Payment = PaymentModel(sequelize, DataTypes);
 
-// ✅ FIXED: Run associations properly - REMOVE DUPLICATES
-Object.keys(db).forEach(modelName => {
-  if (db[modelName].associate) {
+// Run associations
+Object.keys(db).forEach((modelName) => {
+  if (db[modelName] && typeof db[modelName].associate === "function") {
     db[modelName].associate(db);
   }
 });
 
-// ✅ Correct exports only
 export default db;
 export { sequelize };
