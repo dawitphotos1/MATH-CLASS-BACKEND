@@ -1279,17 +1279,18 @@ export const deleteCourse = async (req, res) => {
   }
 };
 
-// ✅ FIXED: Get teacher's courses with proper lesson counting
+// ✅ DEBUGGED: Get teacher's courses with proper lesson counting
 export const getTeacherCourses = async (req, res) => {
   try {
     const teacherId = req.user.id;
     console.log("📚 Fetching courses for teacher:", teacherId);
 
+    // Get courses with units
     const courses = await Course.findAll({
       where: { teacher_id: teacherId },
       attributes: [
         "id",
-        "title",
+        "title", 
         "description",
         "slug",
         "price",
@@ -1306,31 +1307,51 @@ export const getTeacherCourses = async (req, res) => {
           model: Unit,
           as: "units",
           attributes: ["id"],
+          include: [
+            {
+              model: Lesson,
+              as: "lessons",
+              attributes: ["id"] // ✅ Include lessons through units
+            }
+          ]
         }
       ],
       order: [["created_at", "DESC"]],
     });
 
-    // Get lesson counts for each course
-    const coursesWithCounts = await Promise.all(
-      courses.map(async (course) => {
-        const courseData = course.toJSON();
-        const unitCount = courseData.units?.length || 0;
-        
-        // Count lessons directly (more reliable)
-        const lessonCount = await Lesson.count({
-          where: { course_id: course.id }
-        });
+    console.log(`📊 Found ${courses.length} courses for teacher ${teacherId}`);
 
-        return {
-          ...courseData,
-          unit_count: unitCount,
-          lesson_count: lessonCount,
-        };
-      })
-    );
+    // ✅ DEBUG: Log what we found
+    courses.forEach(course => {
+      const unitCount = course.units?.length || 0;
+      const lessonCount = course.units?.reduce((total, unit) => {
+        return total + (unit.lessons?.length || 0);
+      }, 0) || 0;
+      
+      console.log(`   📘 ${course.title}: ${unitCount} units, ${lessonCount} lessons via units`);
+    });
 
-    console.log(`✅ Found ${coursesWithCounts.length} courses for teacher ${teacherId}`);
+    // Build response with proper counts
+    const coursesWithCounts = courses.map(course => {
+      const courseData = course.toJSON();
+      const unitCount = courseData.units?.length || 0;
+      
+      // ✅ Count lessons through units (this is the correct way)
+      const lessonCount = courseData.units?.reduce((total, unit) => {
+        return total + (unit.lessons?.length || 0);
+      }, 0) || 0;
+
+      return {
+        ...courseData,
+        unit_count: unitCount,
+        lesson_count: lessonCount,
+      };
+    });
+
+    console.log(`✅ Final counts - Courses: ${coursesWithCounts.length}`);
+    coursesWithCounts.forEach(course => {
+      console.log(`   ✅ ${course.title}: ${course.unit_count} units, ${course.lesson_count} lessons`);
+    });
 
     res.json({
       success: true,
