@@ -670,7 +670,6 @@
 
 
 
-
 // controllers/courseController.js
 import db from "../models/index.js";
 import path from "path";
@@ -887,24 +886,23 @@ export const createCourseWithUnits = async (req, res) => {
     if (units && Array.isArray(units) && units.length > 0) {
       console.log(`📚 Creating ${units.length} units with lessons...`);
 
-      for (const unit of units) {
-        if (unit.title && unit.lessons && Array.isArray(unit.lessons)) {
-          // Create unit header as a lesson with special type
-          const unitLesson = await Lesson.create({
+      for (const unitData of units) {
+        if (unitData.title && unitData.lessons && Array.isArray(unitData.lessons)) {
+          // Create the unit first
+          const unit = await Unit.create({
             course_id: course.id,
-            title: unit.title,
-            content: unit.description || '',
-            order_index: unit.order_index || 0,
-            content_type: 'unit_header',
-            is_preview: false
+            title: unitData.title,
+            description: unitData.description || '',
+            order_index: unitData.order_index || 0,
           });
-          createdUnits.push(unitLesson);
+          createdUnits.push(unit);
 
-          // Create lessons for this unit
-          for (const lessonData of unit.lessons) {
+          // Create lessons for this unit with proper unit_id
+          for (const lessonData of unitData.lessons) {
             if (lessonData.title) {
               const lesson = await Lesson.create({
                 course_id: course.id,
+                unit_id: unit.id, // ✅ CRITICAL: Set unit_id
                 title: lessonData.title,
                 content: lessonData.content || '',
                 video_url: lessonData.video_url || null,
@@ -1281,7 +1279,7 @@ export const deleteCourse = async (req, res) => {
   }
 };
 
-// ✅ FIXED: Get teacher's courses with proper lesson counting through units
+// ✅ FIXED: Get teacher's courses with proper lesson counting
 export const getTeacherCourses = async (req, res) => {
   try {
     const teacherId = req.user.id;
@@ -1308,34 +1306,29 @@ export const getTeacherCourses = async (req, res) => {
           model: Unit,
           as: "units",
           attributes: ["id"],
-          include: [
-            {
-              model: Lesson,
-              as: "lessons",
-              attributes: ["id"],
-            }
-          ]
         }
       ],
       order: [["created_at", "DESC"]],
     });
 
-    // ✅ FIXED: Count lessons through units
-    const coursesWithCounts = courses.map(course => {
-      const courseData = course.toJSON();
-      const unitCount = courseData.units?.length || 0;
-      
-      // Count lessons from all units
-      const lessonCount = courseData.units?.reduce((total, unit) => {
-        return total + (unit.lessons?.length || 0);
-      }, 0) || 0;
+    // Get lesson counts for each course
+    const coursesWithCounts = await Promise.all(
+      courses.map(async (course) => {
+        const courseData = course.toJSON();
+        const unitCount = courseData.units?.length || 0;
+        
+        // Count lessons directly (more reliable)
+        const lessonCount = await Lesson.count({
+          where: { course_id: course.id }
+        });
 
-      return {
-        ...courseData,
-        unit_count: unitCount,
-        lesson_count: lessonCount,
-      };
-    });
+        return {
+          ...courseData,
+          unit_count: unitCount,
+          lesson_count: lessonCount,
+        };
+      })
+    );
 
     console.log(`✅ Found ${coursesWithCounts.length} courses for teacher ${teacherId}`);
 
