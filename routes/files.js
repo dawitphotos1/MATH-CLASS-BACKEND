@@ -883,7 +883,6 @@
 
 
 
-
 // routes/files.js
 import express from "express";
 import path from "path";
@@ -905,7 +904,7 @@ const ensureUploadsDir = async () => {
   try {
     await fs.access(uploadsDir);
   } catch (error) {
-    await fs.mkdirSync(uploadsDir, { recursive: true });
+    await fs.mkdir(uploadsDir, { recursive: true });
     console.log("✅ Created Uploads directory");
   }
 };
@@ -914,19 +913,21 @@ const ensureUploadsDir = async () => {
 ensureUploadsDir();
 
 /* ============================================================
-   🎯 FIXED: DEDICATED LESSON PREVIEW ENDPOINT
+   🎯 ENHANCED LESSON PREVIEW ENDPOINTS
 ============================================================ */
 
 /**
- * ✅ FIXED: DEDICATED LESSON PREVIEW ENDPOINT
- * GET /api/v1/files/preview-lesson/:lessonId
+ * ✅ DEBUG: Test preview access and lesson data
+ * GET /api/v1/files/debug-preview/:lessonId
  */
-router.get("/preview-lesson/:lessonId", authenticateToken, async (req, res) => {
+router.get("/debug-preview/:lessonId", authenticateToken, async (req, res) => {
   try {
     const { lessonId } = req.params;
     const userId = req.user.id;
     
-    console.log("🔍 Preview request for lesson:", { lessonId, userId });
+    console.log("🔍 DEBUG PREVIEW - Lesson ID:", lessonId);
+    console.log("🔍 DEBUG PREVIEW - User ID:", userId);
+    console.log("🔍 DEBUG PREVIEW - User Role:", req.user.role);
 
     // Import database models
     const db = await import("../models/index.js");
@@ -936,50 +937,161 @@ router.get("/preview-lesson/:lessonId", authenticateToken, async (req, res) => {
       include: [{
         model: db.default.Course,
         as: "course",
-        attributes: ['id', 'title', 'teacher_id', 'price']
+        attributes: ['id', 'title', 'teacher_id']
       }],
-      attributes: ["id", "title", "file_url", "video_url", "content_type", "content", "is_preview"]
+      attributes: ["id", "title", "file_url", "video_url", "content_type", "content", "is_preview", "course_id"]
     });
 
     if (!lesson) {
-      console.log("❌ Lesson not found:", lessonId);
+      console.log("❌ Lesson not found for preview:", lessonId);
       return res.status(404).json({
         success: false,
         error: "Lesson not found"
       });
     }
 
-    console.log("📖 Lesson found:", {
+    console.log("✅ Lesson found for preview:", {
       id: lesson.id,
       title: lesson.title,
       content_type: lesson.content_type,
-      course: lesson.course?.title,
-      teacher_id: lesson.course?.teacher_id
+      file_url: lesson.file_url,
+      video_url: lesson.video_url,
+      is_preview: lesson.is_preview,
+      course_teacher_id: lesson.course?.teacher_id,
+      current_user_id: userId
     });
 
     // Check access permissions
     const isTeacher = lesson.course?.teacher_id === userId;
     const isPreviewLesson = lesson.is_preview;
+    const isAdmin = req.user.role === "admin";
 
-    if (!isTeacher && !isPreviewLesson) {
-      console.log("🚫 Access denied for user:", userId);
-      return res.status(403).json({
+    console.log("🔐 Access check:", {
+      isTeacher,
+      isPreviewLesson,
+      isAdmin,
+      hasAccess: isTeacher || isPreviewLesson || isAdmin
+    });
+
+    res.json({
+      success: true,
+      lesson: {
+        id: lesson.id,
+        title: lesson.title,
+        content_type: lesson.content_type,
+        file_url: lesson.file_url,
+        video_url: lesson.video_url,
+        is_preview: lesson.is_preview,
+        course_id: lesson.course_id,
+        course_teacher_id: lesson.course?.teacher_id
+      },
+      access: {
+        user_id: userId,
+        user_role: req.user.role,
+        is_teacher: isTeacher,
+        is_preview_lesson: isPreviewLesson,
+        is_admin: isAdmin,
+        has_access: isTeacher || isPreviewLesson || isAdmin
+      },
+      preview_url: `/api/v1/files/preview-lesson/${lessonId}`,
+      full_preview_url: `${process.env.BACKEND_URL || 'https://mathe-class-website-backend-1.onrender.com'}/api/v1/files/preview-lesson/${lessonId}`
+    });
+    
+  } catch (error) {
+    console.error("❌ DEBUG PREVIEW Error:", error.message);
+    res.status(500).json({
+      success: false,
+      error: error.message,
+      details: process.env.NODE_ENV === 'development' ? error.stack : undefined
+    });
+  }
+});
+
+/**
+ * ✅ ENHANCED: DEDICATED LESSON PREVIEW ENDPOINT
+ * GET /api/v1/files/preview-lesson/:lessonId
+ */
+router.get("/preview-lesson/:lessonId", authenticateToken, async (req, res) => {
+  try {
+    const { lessonId } = req.params;
+    const userId = req.user.id;
+    
+    console.log("🔍 PREVIEW REQUEST:", { 
+      lessonId, 
+      userId,
+      userRole: req.user.role 
+    });
+
+    // Import database models
+    const db = await import("../models/index.js");
+    
+    // Find lesson with course information
+    const lesson = await db.default.Lesson.findByPk(lessonId, {
+      include: [{
+        model: db.default.Course,
+        as: "course",
+        attributes: ['id', 'title', 'teacher_id']
+      }],
+      attributes: ["id", "title", "file_url", "video_url", "content_type", "content", "is_preview", "course_id"]
+    });
+
+    if (!lesson) {
+      console.log("❌ Lesson not found for preview:", lessonId);
+      return res.status(404).json({
         success: false,
-        error: "Access denied. This lesson is not available for preview."
+        error: "Lesson not found"
       });
     }
 
+    console.log("✅ Lesson found for preview:", {
+      id: lesson.id,
+      title: lesson.title,
+      content_type: lesson.content_type,
+      file_url: lesson.file_url,
+      video_url: lesson.video_url,
+      is_preview: lesson.is_preview,
+      course_teacher_id: lesson.course?.teacher_id,
+      current_user_id: userId
+    });
+
+    // Check access permissions
+    const isTeacher = lesson.course?.teacher_id === userId;
+    const isPreviewLesson = lesson.is_preview;
+    const isAdmin = req.user.role === "admin";
+
+    console.log("🔐 Access check:", {
+      isTeacher,
+      isPreviewLesson,
+      isAdmin,
+      hasAccess: isTeacher || isPreviewLesson || isAdmin
+    });
+
+    // Allow access for: teachers, admins, or if lesson is marked as preview
+    if (!isTeacher && !isPreviewLesson && !isAdmin) {
+      console.log("🚫 Access denied for user:", userId);
+      return res.status(403).json({
+        success: false,
+        error: "Access denied. This lesson is not available for preview.",
+        details: "You need to be the teacher, an admin, or the lesson must be marked as preview"
+      });
+    }
+
+    console.log("✅ Access granted for preview");
+
     // Handle different content types
     if (lesson.content_type === 'pdf' && lesson.file_url) {
+      console.log("📄 Handling PDF preview");
       await handlePdfPreview(lesson, res);
     } else if (lesson.content_type === 'video' && lesson.video_url) {
+      console.log("🎥 Handling video preview");
       await handleVideoPreview(lesson, res);
     } else {
+      console.log("📝 Handling text preview");
       await handleTextPreview(lesson, isPreviewLesson, res);
     }
     
   } catch (error) {
-    console.error("❌ Preview error:", error.message);
+    console.error("❌ PREVIEW ERROR:", error.message);
     res.status(500).json({
       success: false,
       error: "Failed to preview lesson content",
@@ -1148,7 +1260,7 @@ async function handleTextPreview(lesson, isPreviewLesson, res) {
         </div>
         <div class="info">
           <p><strong>Content Type:</strong> ${lesson.content_type}</p>
-          <p><strong>Preview Type:</strong> ${isPreviewLesson ? 'Free Preview' : 'Teacher Preview'}</p>
+          <p><strong>Preview Type:</strong> ${isPreviewLesson ? 'Free Preview' : 'Teacher/Admin Preview'}</p>
           <p><strong>Generated:</strong> ${new Date().toLocaleString()}</p>
         </div>
         <div class="content">
@@ -1250,8 +1362,9 @@ router.get("/debug-lesson/:lessonId", authenticateToken, async (req, res) => {
       },
       access: {
         user_id: req.user.id,
+        user_role: req.user.role,
         is_teacher: lesson.course?.teacher_id === req.user.id,
-        has_access: lesson.course?.teacher_id === req.user.id || lesson.is_preview
+        has_access: lesson.course?.teacher_id === req.user.id || lesson.is_preview || req.user.role === 'admin'
       }
     });
     
