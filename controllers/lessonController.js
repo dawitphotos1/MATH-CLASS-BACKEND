@@ -575,12 +575,12 @@
 
 
 
-
 // controllers/lessonController.js
 import db from "../models/index.js";
 import path from "path";
 import { fileURLToPath } from "url";
 import fs from "fs";
+import { Op } from "sequelize";
 
 const { Lesson, Course, Unit, Enrollment } = db;
 
@@ -753,6 +753,64 @@ const debugFileUrl = async (req, res) => {
     });
   } catch (error) {
     console.error("🔧 DEBUG Error:", error);
+    res.status(500).json({
+      success: false,
+      error: error.message,
+    });
+  }
+};
+
+// ✅ DEBUG: Check lesson type and editability
+const debugLessonType = async (req, res) => {
+  try {
+    const { lessonId } = req.params;
+    console.log("🔍 DEBUG: Checking lesson type for ID:", lessonId);
+
+    const lesson = await Lesson.findByPk(lessonId, {
+      include: [
+        {
+          model: Course,
+          as: "course",
+          attributes: ["id", "title", "teacher_id"],
+        },
+      ],
+      attributes: [
+        "id",
+        "title",
+        "content_type",
+        "course_id",
+        "unit_id",
+        "is_preview",
+        "created_at",
+      ],
+    });
+
+    if (!lesson) {
+      return res.status(404).json({
+        success: false,
+        error: "Lesson not found",
+      });
+    }
+
+    res.json({
+      success: true,
+      lesson: {
+        id: lesson.id,
+        title: lesson.title,
+        content_type: lesson.content_type,
+        course_id: lesson.course_id,
+        unit_id: lesson.unit_id,
+        is_preview: lesson.is_preview,
+        is_unit_header: lesson.content_type === "unit_header",
+        course_teacher_id: lesson.course?.teacher_id,
+      },
+      can_edit: lesson.content_type !== "unit_header",
+      message: lesson.content_type === "unit_header" 
+        ? "This is a unit header and cannot be edited like a regular lesson" 
+        : "This is a regular lesson that can be edited"
+    });
+  } catch (error) {
+    console.error("❌ Debug lesson type error:", error);
     res.status(500).json({
       success: false,
       error: error.message,
@@ -952,7 +1010,7 @@ const createLesson = async (req, res) => {
   }
 };
 
-// ✅ FIXED: COMPLETELY REWRITTEN updateLesson function
+// ✅ FIXED: COMPLETELY REWRITTEN updateLesson function with unit header protection
 const updateLesson = async (req, res) => {
   try {
     const { lessonId } = req.params;
@@ -978,6 +1036,33 @@ const updateLesson = async (req, res) => {
       return res.status(400).json({
         success: false,
         error: "Invalid lesson ID",
+      });
+    }
+
+    // ✅ FIXED: First check if this is a unit header
+    const lessonCheck = await Lesson.findByPk(lessonId, {
+      attributes: ["id", "content_type", "title", "course_id"]
+    });
+
+    if (!lessonCheck) {
+      return res.status(404).json({
+        success: false,
+        error: "Lesson not found",
+      });
+    }
+
+    // ✅ FIXED: Prevent editing unit headers through regular lesson update
+    if (lessonCheck.content_type === "unit_header") {
+      console.log("🚫 Attempted to edit unit header:", {
+        lessonId,
+        title: lessonCheck.title,
+        courseId: lessonCheck.course_id
+      });
+      return res.status(400).json({
+        success: false,
+        error: "Unit headers cannot be edited through this interface. Please use the unit management interface.",
+        lesson_type: "unit_header",
+        lesson_title: lessonCheck.title
       });
     }
 
@@ -1354,6 +1439,79 @@ const getLessonsByCourse = async (req, res) => {
   }
 };
 
+// ✅ NEW: Get only regular lessons (excluding unit headers)
+const getRegularLessonsByCourse = async (req, res) => {
+  try {
+    const { courseId } = req.params;
+    const userId = req.user.id;
+
+    console.log("📚 Fetching regular lessons (excluding unit headers) for course:", courseId);
+
+    // Verify course exists and user has access
+    const course = await Course.findByPk(courseId);
+    if (!course) {
+      return res.status(404).json({
+        success: false,
+        error: "Course not found",
+      });
+    }
+
+    // Check authorization
+    if (req.user.role !== "admin" && course.teacher_id !== req.user.id) {
+      return res.status(403).json({
+        success: false,
+        error: "Not authorized to access these lessons",
+      });
+    }
+
+    // Get only regular lessons (excluding unit headers)
+    const lessons = await Lesson.findAll({
+      where: { 
+        course_id: courseId,
+        content_type: {
+          [Op.ne]: "unit_header" // Exclude unit headers
+        }
+      },
+      order: [["order_index", "ASC"]],
+      include: [
+        {
+          association: "unit",
+          attributes: ["id", "title"],
+        },
+      ],
+      attributes: [
+        "id",
+        "title",
+        "content",
+        "video_url",
+        "file_url",
+        "order_index",
+        "content_type",
+        "unit_id",
+        "is_preview",
+        "created_at",
+        "updated_at",
+      ],
+    });
+
+    console.log(`✅ Found ${lessons.length} regular lessons for course ${courseId}`);
+
+    // Build full URLs for all lessons
+    const lessonsWithUrls = lessons.map((lesson) => buildFileUrls(lesson));
+
+    res.json({
+      success: true,
+      lessons: lessonsWithUrls,
+    });
+  } catch (error) {
+    console.error("❌ Error fetching regular lessons:", error);
+    res.status(500).json({
+      success: false,
+      error: "Failed to fetch lessons",
+    });
+  }
+};
+
 const getLessonsByUnit = async (req, res) => {
   try {
     const { unitId } = req.params;
@@ -1450,6 +1608,7 @@ const deleteLesson = async (req, res) => {
 export {
   createLesson,
   getLessonsByCourse,
+  getRegularLessonsByCourse,
   getLessonsByUnit,
   getLessonById,
   updateLesson,
@@ -1457,4 +1616,5 @@ export {
   debugGetLesson,
   debugCheckFile,
   debugFileUrl,
+  debugLessonType,
 };

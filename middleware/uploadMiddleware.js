@@ -83,8 +83,7 @@
 
 
 
-
-// middleware/uploadMiddleware.js
+// middleware/uploadMiddleware.js (keep as is)
 import multer from "multer";
 import path from "path";
 import fs from "fs";
@@ -97,19 +96,8 @@ if (!fs.existsSync(uploadsDir)) {
   console.log("✅ Created Uploads directory:", uploadsDir);
 }
 
-// ✅ FIXED: Use disk storage for production reliability
-const storage = multer.diskStorage({
-  destination: (req, file, cb) => {
-    cb(null, uploadsDir);
-  },
-  filename: (req, file, cb) => {
-    // Create safe filename with timestamp
-    const timestamp = Date.now();
-    const safeName = file.originalname.replace(/[^a-zA-Z0-9.\-_]/g, '_');
-    const uniqueName = `${timestamp}-${safeName}`;
-    cb(null, uniqueName);
-  },
-});
+// Memory storage for file uploads (better for cloud deployment)
+const storage = multer.memoryStorage();
 
 // Enhanced file filter
 const fileFilter = (req, file, cb) => {

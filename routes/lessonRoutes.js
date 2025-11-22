@@ -165,12 +165,12 @@
 
 
 
-
 // routes/lessonRoutes.js
 import express from "express";
 import {
   createLesson,
   getLessonsByCourse,
+  getRegularLessonsByCourse,
   getLessonsByUnit,
   getLessonById,
   updateLesson,
@@ -178,6 +178,7 @@ import {
   debugGetLesson,
   debugCheckFile,
   debugFileUrl,
+  debugLessonType,
 } from "../controllers/lessonController.js";
 
 import {
@@ -201,6 +202,10 @@ router.post(
 );
 
 router.get("/courses/:courseId/lessons", authenticateToken, getLessonsByCourse);
+
+// ✅ NEW: Get only regular lessons (excluding unit headers)
+router.get("/courses/:courseId/regular-lessons", authenticateToken, getRegularLessonsByCourse);
+
 router.get("/units/:unitId/lessons", authenticateToken, getLessonsByUnit);
 router.get("/:lessonId", authenticateToken, getLessonById);
 
@@ -233,6 +238,7 @@ router.post(
 router.get("/debug/:lessonId", authenticateToken, debugGetLesson);
 router.get("/debug/file/:filename", authenticateToken, debugCheckFile);
 router.get("/debug/url/:lessonId", authenticateToken, debugFileUrl);
+router.get("/debug/type/:lessonId", authenticateToken, debugLessonType);
 
 // Debug: List all lessons in a course
 router.get(
@@ -320,6 +326,44 @@ router.get("/debug/test/:lessonId", authenticateToken, async (req, res) => {
       success: false,
       error: error.message,
       backend_url: process.env.BACKEND_URL,
+    });
+  }
+});
+
+// Debug: Check course lesson types
+router.get("/debug/course-lesson-types/:courseId", authenticateToken, async (req, res) => {
+  try {
+    const { courseId } = req.params;
+    const { Op } = await import("sequelize");
+
+    const lessons = await Lesson.findAll({
+      where: { course_id: courseId },
+      order: [["order_index", "ASC"]],
+      attributes: ["id", "title", "content_type", "order_index", "unit_id"]
+    });
+
+    const lessonTypes = lessons.map(lesson => ({
+      id: lesson.id,
+      title: lesson.title,
+      type: lesson.content_type,
+      order: lesson.order_index,
+      unit_id: lesson.unit_id,
+      is_editable: lesson.content_type !== "unit_header"
+    }));
+
+    res.json({
+      success: true,
+      courseId,
+      total_lessons: lessons.length,
+      unit_headers: lessons.filter(l => l.content_type === "unit_header").length,
+      regular_lessons: lessons.filter(l => l.content_type !== "unit_header").length,
+      lessons: lessonTypes
+    });
+  } catch (error) {
+    console.error("❌ Debug lesson types error:", error);
+    res.status(500).json({
+      success: false,
+      error: error.message
     });
   }
 });
