@@ -1,580 +1,3 @@
-// // controllers/lessonController.js
-// import db from "../models/index.js";
-// import path from "path";
-// import { fileURLToPath } from "url";
-// import fs from "fs";
-
-// const { Lesson, Course, Unit, Enrollment } = db;
-
-// const __filename = fileURLToPath(import.meta.url);
-// const __dirname = path.dirname(__filename);
-
-// // ✅ FIXED: Enhanced helper function to build full file URLs
-// const buildFileUrls = (lesson) => {
-//   if (!lesson) return lesson;
-
-//   const lessonData = lesson.toJSON ? lesson.toJSON() : { ...lesson };
-//   const backendUrl = process.env.BACKEND_URL || "http://localhost:3000";
-
-//   console.log("🔗 Building URLs for lesson:", {
-//     id: lessonData.id,
-//     current_file_url: lessonData.file_url,
-//     current_video_url: lessonData.video_url,
-//   });
-
-//   // Build full URLs for files - only if they exist and aren't already full URLs
-//   if (
-//     lessonData.video_url &&
-//     lessonData.video_url !== null &&
-//     lessonData.video_url !== "" &&
-//     !lessonData.video_url.startsWith("http")
-//   ) {
-//     // Ensure proper URL formatting
-//     const cleanVideoUrl = lessonData.video_url.startsWith("/")
-//       ? lessonData.video_url
-//       : `/${lessonData.video_url}`;
-//     const fullVideoUrl = `${backendUrl}/api/v1/files${cleanVideoUrl}`;
-//     console.log("🎥 Video URL transformed:", fullVideoUrl);
-//     lessonData.video_url = fullVideoUrl;
-//   }
-
-//   if (
-//     lessonData.file_url &&
-//     lessonData.file_url !== null &&
-//     lessonData.file_url !== "" &&
-//     !lessonData.file_url.startsWith("http")
-//   ) {
-//     // Ensure proper URL formatting
-//     const cleanFileUrl = lessonData.file_url.startsWith("/")
-//       ? lessonData.file_url
-//       : `/${lessonData.file_url}`;
-//     const fullFileUrl = `${backendUrl}/api/v1/files${cleanFileUrl}`;
-//     console.log("📄 File URL transformed:", fullFileUrl);
-//     lessonData.file_url = fullFileUrl;
-//   }
-
-//   console.log("✅ Final lesson URLs:", {
-//     file_url: lessonData.file_url,
-//     video_url: lessonData.video_url,
-//   });
-
-//   return lessonData;
-// };
-
-// // ✅ FIXED: Enhanced updateLesson function with better file handling
-// const updateLesson = async (req, res) => {
-//   try {
-//     const { lessonId } = req.params;
-//     const {
-//       title,
-//       content,
-//       contentType,
-//       orderIndex,
-//       videoUrl,
-//       unitId,
-//       isPreview,
-//       isUnitHeader,
-//     } = req.body;
-
-//     console.log("🔄 UPDATE LESSON - FULL REQUEST:");
-//     console.log("📝 Params:", req.params);
-//     console.log("📝 Body:", req.body);
-//     console.log("📁 Files:", req.files);
-//     console.log("👤 User:", req.user);
-
-//     // Validate lesson ID
-//     if (!lessonId || isNaN(lessonId)) {
-//       return res.status(400).json({
-//         success: false,
-//         error: "Invalid lesson ID",
-//       });
-//     }
-
-//     // Find the lesson with course information
-//     const lesson = await Lesson.findByPk(lessonId, {
-//       include: [
-//         {
-//           model: Course,
-//           as: "course",
-//           attributes: ["id", "title", "teacher_id"],
-//         },
-//       ],
-//     });
-
-//     if (!lesson) {
-//       console.log("❌ Lesson not found for update:", lessonId);
-//       return res.status(404).json({
-//         success: false,
-//         error: "Lesson not found",
-//       });
-//     }
-
-//     console.log("📖 Current lesson data:", {
-//       id: lesson.id,
-//       title: lesson.title,
-//       file_url: lesson.file_url,
-//       video_url: lesson.video_url,
-//       content_type: lesson.content_type,
-//     });
-
-//     // Check authorization
-//     if (req.user.role !== "admin" && lesson.course.teacher_id !== req.user.id) {
-//       return res.status(403).json({
-//         success: false,
-//         error: "Not authorized to update this lesson",
-//       });
-//     }
-
-//     // ✅ FIXED: Enhanced file upload handling for updates
-//     let videoPath = lesson.video_url;
-//     let fileUrl = lesson.file_url;
-//     const uploadsDir = path.join(process.cwd(), "Uploads");
-
-//     // Ensure upload directory exists
-//     if (!fs.existsSync(uploadsDir)) {
-//       fs.mkdirSync(uploadsDir, { recursive: true });
-//       console.log("✅ Created Uploads directory");
-//     }
-
-//     // ✅ FIXED: Handle file uploads properly
-//     if (req.files) {
-//       console.log("📁 Processing uploaded files:", Object.keys(req.files));
-
-//       // Handle video upload
-//       if (req.files.video && req.files.video[0]) {
-//         const video = req.files.video[0];
-//         console.log("🎥 Processing video upload:", video.originalname);
-//         videoPath = `/Uploads/${video.filename}`;
-//         console.log("✅ Video path set to:", videoPath);
-//       }
-
-//       // Handle file upload (PDF, documents, etc.)
-//       if (req.files.file && req.files.file[0]) {
-//         const file = req.files.file[0];
-//         console.log("📄 Processing file upload:", file.originalname);
-//         fileUrl = `/Uploads/${file.filename}`;
-//         console.log("✅ File path set to:", fileUrl);
-//       }
-
-//       // Also check for PDF files in the 'pdf' field
-//       if (req.files.pdf && req.files.pdf[0]) {
-//         const pdfFile = req.files.pdf[0];
-//         console.log("📑 Processing PDF upload:", pdfFile.originalname);
-//         fileUrl = `/Uploads/${pdfFile.filename}`;
-//         console.log("✅ PDF path set to:", fileUrl);
-//       }
-//     } else {
-//       console.log("📁 No files were uploaded in this request");
-//     }
-
-//     // Prepare update data
-//     const updateData = {};
-
-//     if (title !== undefined && title !== null) updateData.title = title.trim();
-//     if (content !== undefined && content !== null) updateData.content = content;
-
-//     // ✅ FIXED: CRITICAL - Enhanced content type handling
-//     let finalContentType = lesson.content_type; // Start with current type
-
-//     if (isUnitHeader !== undefined && isUnitHeader) {
-//       finalContentType = "unit_header";
-//       console.log("✅ Content type set to 'unit_header'");
-//     }
-//     // If a file was uploaded, set content type to PDF (HIGHEST PRIORITY)
-//     else if (fileUrl && fileUrl !== lesson.file_url) {
-//       finalContentType = "pdf";
-//       console.log("✅ Content type set to 'pdf' because file was uploaded");
-//     }
-//     // If a video was uploaded, set content type to video
-//     else if (videoPath && videoPath !== lesson.video_url) {
-//       finalContentType = "video";
-//       console.log("✅ Content type set to 'video' because video was uploaded");
-//     }
-//     // If content type was explicitly provided in form, use it
-//     else if (
-//       contentType !== undefined &&
-//       contentType !== null &&
-//       contentType !== ""
-//     ) {
-//       finalContentType = contentType;
-//       console.log("✅ Content type set from form data:", contentType);
-//     }
-//     // Auto-detect based on existing files if no new files uploaded
-//     else if (lesson.file_url && !fileUrl) {
-//       finalContentType = "pdf";
-//       console.log("✅ Content type auto-detected as 'pdf' from existing file");
-//     } else if (lesson.video_url && !videoPath) {
-//       finalContentType = "video";
-//       console.log(
-//         "✅ Content type auto-detected as 'video' from existing video"
-//       );
-//     } else if (!finalContentType || finalContentType === "") {
-//       finalContentType = "text";
-//       console.log("✅ Content type set to 'text' as default");
-//     }
-
-//     updateData.content_type = finalContentType;
-
-//     // Handle order index
-//     if (orderIndex !== undefined && orderIndex !== null) {
-//       updateData.order_index = parseInt(orderIndex);
-//     }
-
-//     // Handle video URL
-//     if (videoPath !== lesson.video_url) {
-//       updateData.video_url = videoPath;
-//     } else if (videoUrl !== undefined && videoUrl !== null) {
-//       updateData.video_url = videoUrl;
-//     }
-
-//     // ✅ FIXED: CRITICAL - Always update file_url if a new file was uploaded
-//     if (fileUrl !== lesson.file_url) {
-//       updateData.file_url = fileUrl;
-//       console.log("✅ File URL updated:", fileUrl);
-//     }
-
-//     if (unitId !== undefined && unitId !== null) {
-//       updateData.unit_id = unitId;
-//     }
-
-//     if (isPreview !== undefined) {
-//       updateData.is_preview = Boolean(isPreview);
-//     }
-
-//     console.log("🔄 Final update data to be saved:", updateData);
-
-//     // Update lesson
-//     const [affectedRows] = await Lesson.update(updateData, {
-//       where: { id: lessonId },
-//     });
-
-//     if (affectedRows === 0) {
-//       console.log("❌ No rows affected during update");
-//       return res.status(500).json({
-//         success: false,
-//         error: "Failed to update lesson - no changes made",
-//       });
-//     }
-
-//     console.log(`✅ ${affectedRows} row(s) updated successfully`);
-
-//     // ✅ FIXED: Fetch the complete updated lesson with associations
-//     const updatedLesson = await Lesson.findByPk(lessonId, {
-//       include: [
-//         {
-//           model: Course,
-//           as: "course",
-//           attributes: ["id", "title", "teacher_id"],
-//         },
-//         {
-//           model: Unit,
-//           as: "unit",
-//           attributes: ["id", "title"],
-//         },
-//       ],
-//     });
-
-//     if (!updatedLesson) {
-//       console.log("❌ Failed to fetch updated lesson");
-//       return res.status(500).json({
-//         success: false,
-//         error: "Lesson updated but failed to fetch updated data",
-//       });
-//     }
-
-//     // Build full URLs
-//     const lessonResponse = buildFileUrls(updatedLesson);
-
-//     console.log("✅ Lesson updated successfully:", {
-//       id: lessonResponse.id,
-//       title: lessonResponse.title,
-//       file_url: lessonResponse.file_url,
-//       video_url: lessonResponse.video_url,
-//       content_type: lessonResponse.content_type,
-//       is_preview: lessonResponse.is_preview,
-//     });
-
-//     res.json({
-//       success: true,
-//       message: "Lesson updated successfully",
-//       lesson: lessonResponse,
-//     });
-//   } catch (error) {
-//     console.error("❌ ERROR updating lesson:", error);
-
-//     if (error.name === "SequelizeValidationError") {
-//       const errors = error.errors.map((err) => ({
-//         field: err.path,
-//         message: err.message,
-//       }));
-//       return res.status(400).json({
-//         success: false,
-//         error: "Validation failed",
-//         details: errors,
-//       });
-//     }
-
-//     res.status(500).json({
-//       success: false,
-//       error: "Failed to update lesson",
-//       details:
-//         process.env.NODE_ENV === "development"
-//           ? error.message
-//           : "Internal server error",
-//     });
-//   }
-// };
-
-// // ✅ FIXED: Enhanced getLessonById function
-// const getLessonById = async (req, res) => {
-//   try {
-//     const { lessonId } = req.params;
-//     console.log("🔍 Fetching lesson by ID:", lessonId);
-
-//     const lesson = await Lesson.findByPk(lessonId, {
-//       include: [
-//         {
-//           model: Course,
-//           as: "course",
-//           attributes: ["id", "title", "teacher_id"],
-//         },
-//         {
-//           model: Unit,
-//           as: "unit",
-//           attributes: ["id", "title"],
-//         },
-//       ],
-//       attributes: [
-//         "id",
-//         "title",
-//         "content",
-//         "video_url",
-//         "file_url",
-//         "order_index",
-//         "content_type",
-//         "unit_id",
-//         "is_preview",
-//         "created_at",
-//         "updated_at",
-//       ],
-//     });
-
-//     if (!lesson) {
-//       console.log("❌ Lesson not found:", lessonId);
-//       return res.status(404).json({
-//         success: false,
-//         error: "Lesson not found",
-//       });
-//     }
-
-//     // Check if user has access to this lesson
-//     if (req.user.role !== "admin" && lesson.course.teacher_id !== req.user.id) {
-//       // For students, check if they're enrolled in the course
-//       if (req.user.role === "student") {
-//         const enrollment = await Enrollment.findOne({
-//           where: {
-//             user_id: req.user.id,
-//             course_id: lesson.course_id,
-//             approval_status: "approved",
-//           },
-//         });
-
-//         if (!enrollment) {
-//           return res.status(403).json({
-//             success: false,
-//             error: "Not enrolled in this course",
-//           });
-//         }
-//       } else {
-//         return res.status(403).json({
-//           success: false,
-//           error: "Not authorized to access this lesson",
-//         });
-//       }
-//     }
-
-//     console.log("✅ Lesson found:", {
-//       id: lesson.id,
-//       title: lesson.title,
-//       file_url: lesson.file_url,
-//       video_url: lesson.video_url,
-//       content_type: lesson.content_type,
-//       is_preview: lesson.is_preview,
-//     });
-
-//     // Build full URLs
-//     const lessonWithUrls = buildFileUrls(lesson);
-
-//     res.json({
-//       success: true,
-//       lesson: lessonWithUrls,
-//     });
-//   } catch (error) {
-//     console.error("❌ Error fetching lesson:", error);
-//     res.status(500).json({
-//       success: false,
-//       error: "Failed to fetch lesson",
-//     });
-//   }
-// };
-
-// const getLessonsByCourse = async (req, res) => {
-//   try {
-//     const { courseId } = req.params;
-//     console.log("📚 Fetching lessons for course:", courseId);
-
-//     const lessons = await Lesson.findAll({
-//       where: { course_id: courseId },
-//       order: [["order_index", "ASC"]],
-//       include: [
-//         {
-//           association: "unit",
-//           attributes: ["id", "title"],
-//         },
-//       ],
-//       attributes: [
-//         "id",
-//         "title",
-//         "content",
-//         "video_url",
-//         "file_url",
-//         "order_index",
-//         "content_type",
-//         "unit_id",
-//         "is_preview",
-//         "created_at",
-//         "updated_at",
-//       ],
-//     });
-
-//     console.log(`✅ Found ${lessons.length} lessons for course ${courseId}`);
-
-//     // Build full URLs for all lessons
-//     const lessonsWithUrls = lessons.map((lesson) => buildFileUrls(lesson));
-
-//     res.json({
-//       success: true,
-//       lessons: lessonsWithUrls,
-//     });
-//   } catch (error) {
-//     console.error("❌ Error fetching lessons:", error);
-//     res.status(500).json({
-//       success: false,
-//       error: "Failed to fetch lessons",
-//     });
-//   }
-// };
-
-// const getLessonsByUnit = async (req, res) => {
-//   try {
-//     const { unitId } = req.params;
-//     console.log("📚 Fetching lessons for unit:", unitId);
-
-//     const lessons = await Lesson.findAll({
-//       where: { unit_id: unitId },
-//       order: [["order_index", "ASC"]],
-//       include: [
-//         {
-//           association: "unit",
-//           attributes: ["id", "title"],
-//         },
-//       ],
-//       attributes: [
-//         "id",
-//         "title",
-//         "content",
-//         "video_url",
-//         "file_url",
-//         "order_index",
-//         "content_type",
-//         "unit_id",
-//         "is_preview",
-//         "created_at",
-//       ],
-//     });
-
-//     console.log(`✅ Found ${lessons.length} lessons for unit ${unitId}`);
-
-//     // Build full URLs for all lessons
-//     const lessonsWithUrls = lessons.map((lesson) => buildFileUrls(lesson));
-
-//     res.json({
-//       success: true,
-//       lessons: lessonsWithUrls,
-//     });
-//   } catch (error) {
-//     console.error("❌ Error fetching lessons by unit:", error);
-//     res.status(500).json({
-//       success: false,
-//       error: "Failed to fetch lessons",
-//     });
-//   }
-// };
-
-// const deleteLesson = async (req, res) => {
-//   try {
-//     const { lessonId } = req.params;
-//     console.log("🗑️ Deleting lesson:", lessonId);
-
-//     const lesson = await Lesson.findByPk(lessonId, {
-//       include: [
-//         {
-//           model: Course,
-//           as: "course",
-//           attributes: ["id", "teacher_id"],
-//         },
-//       ],
-//     });
-
-//     if (!lesson) {
-//       return res.status(404).json({
-//         success: false,
-//         error: "Lesson not found",
-//       });
-//     }
-
-//     // Check authorization
-//     if (req.user.role !== "admin" && lesson.course.teacher_id !== req.user.id) {
-//       return res.status(403).json({
-//         success: false,
-//         error: "Not authorized to delete this lesson",
-//       });
-//     }
-
-//     await lesson.destroy();
-
-//     console.log("✅ Lesson deleted successfully:", lessonId);
-//     res.json({
-//       success: true,
-//       message: "Lesson deleted successfully",
-//     });
-//   } catch (error) {
-//     console.error("❌ Error deleting lesson:", error);
-//     res.status(500).json({
-//       success: false,
-//       error: "Failed to delete lesson",
-//     });
-//   }
-// };
-
-// // ✅ SINGLE EXPORT STATEMENT - No duplicates
-// export {
-//   createLesson,
-//   getLessonsByCourse,
-//   getLessonsByUnit,
-//   getLessonById,
-//   updateLesson,
-//   deleteLesson,
-//   debugGetLesson,
-//   debugCheckFile,
-//   debugFileUrl,
-// };
-
-
-
-
-
-
 // controllers/lessonController.js
 
 import db from "../models/index.js";
@@ -594,15 +17,21 @@ const getBackendUrl = () => {
   );
 };
 
-// Enhanced helper function to build full file URLs (no changes needed)
+/**
+ * Enhanced helper function to build full file URLs for lesson content.
+ * It prepends the backend URL and file route prefix (/api/v1/files)
+ * to relative file paths stored in the database.
+ * @param {object} lesson The lesson object, potentially with relative file_url/video_url.
+ * @returns {object} The lesson object with absolute URLs.
+ */
 const buildFileUrls = (lesson) => {
   if (!lesson) return lesson;
 
   const lessonData = lesson.toJSON ? lesson.toJSON() : { ...lesson };
-  const backendUrl = getBackendUrl(); // Build full URLs for files - only if they exist and aren't already full URLs // NOTE: The relative path stored in DB is expected to be like: /Uploads/filename.pdf // Handle Video URL
+  const backendUrl = getBackendUrl(); // Handle Video URL
 
   if (lessonData.video_url && !lessonData.video_url.startsWith("http")) {
-    // Ensure proper URL formatting: /api/v1/files + stored path
+    // Ensure proper URL formatting: /api/v1/files + stored path (e.g., /Uploads/filename.mp4)
     const cleanVideoUrl = lessonData.video_url.startsWith("/")
       ? lessonData.video_url
       : `/${lessonData.video_url}`;
@@ -611,7 +40,7 @@ const buildFileUrls = (lesson) => {
   } // Handle File URL (PDF/Document)
 
   if (lessonData.file_url && !lessonData.file_url.startsWith("http")) {
-    // Ensure proper URL formatting: /api/v1/files + stored path
+    // Ensure proper URL formatting: /api/v1/files + stored path (e.g., /Uploads/filename.pdf)
     const cleanFileUrl = lessonData.file_url.startsWith("/")
       ? lessonData.file_url
       : `/${lessonData.file_url}`;
@@ -622,9 +51,12 @@ const buildFileUrls = (lesson) => {
   return lessonData;
 };
 
-// ----------------------------------------------------------------------
-// ✅ CRITICAL FIX: The logic to handle uploaded files during an update
-// ----------------------------------------------------------------------
+/**
+ * Handles processing uploaded files and determines the correct database paths and content type.
+ * Clears the path for the other content type if a new file is uploaded.
+ * @param {object} req The Express request object containing `req.files`.
+ * @returns {object} An object containing the new paths and content_type.
+ */
 const handleFileUploads = (req, lesson) => {
   const updatePaths = {};
   let fileUploaded = false; // 1. Video Upload
@@ -653,7 +85,7 @@ const handleFileUploads = (req, lesson) => {
   } // 3. If a new file/video was uploaded, clear the other path to ensure only one is active
 
   if (fileUploaded) {
-    // If video uploaded, ensure file_url is nulled out if not explicitly provided
+    // If video uploaded, ensure file_url is nulled out
     if (updatePaths.video_url) {
       updatePaths.file_url = null;
     } // If document uploaded, ensure video_url is nulled out
@@ -666,7 +98,7 @@ const handleFileUploads = (req, lesson) => {
 };
 
 // ----------------------------------------------------------------------
-// Lesson Creation and Update Functions
+// Lesson Creation Function
 // ----------------------------------------------------------------------
 
 const createLesson = async (req, res) => {
@@ -683,7 +115,7 @@ const createLesson = async (req, res) => {
       videoUrl,
       unitId,
       isPreview,
-    } = req.body; // ... (Input validation and Course/Unit verification remains the same) ... // Verify course exists
+    } = req.body; // Verify course exists
 
     const course = await Course.findByPk(courseId);
     if (!course) {
@@ -698,7 +130,7 @@ const createLesson = async (req, res) => {
         success: false,
         error: "Not authorized to create lessons for this course",
       });
-    } // --- File Handling using the new helper structure ---
+    } // --- File Handling ---
     const initialLessonData = {
       video_url: videoUrl,
       file_url: null,
@@ -713,7 +145,7 @@ const createLesson = async (req, res) => {
       videoPath = videoUrl; // Assuming external link
       finalContentType =
         finalContentType === "text" ? "video" : finalContentType;
-    } // Get order index (logic remains the same)
+    } // Get order index (Determine the next order index if not provided)
     let orderIndexValue = orderIndex;
     if (!orderIndexValue && orderIndexValue !== 0) {
       const whereClause = unitId
@@ -732,7 +164,7 @@ const createLesson = async (req, res) => {
       title: title.trim(),
       content: (content || "").trim(),
       video_url: videoPath,
-      file_url: fileUrl, // Now correctly storing the path
+      file_url: fileUrl, // Storing relative path
       order_index: orderIndexValue,
       content_type: finalContentType,
       is_preview: isPreview || false,
@@ -765,7 +197,7 @@ const createLesson = async (req, res) => {
       lesson: lessonResponse,
     });
   } catch (error) {
-    console.error("❌ Error creating lesson:", error); // ... (Error handling remains the same) ...
+    console.error("❌ Error creating lesson:", error);
     if (error.name === "SequelizeValidationError") {
       const errors = error.errors.map((err) => ({
         field: err.path,
@@ -787,16 +219,19 @@ const createLesson = async (req, res) => {
   }
 };
 
-// ✅ FIXED: CRITICAL - Enhanced updateLesson function
+// ----------------------------------------------------------------------
+// Lesson Update Function
+// ----------------------------------------------------------------------
+
 const updateLesson = async (req, res) => {
   try {
     const { lessonId } = req.params;
     const {
       title,
       content,
-      contentType, // Explicit content type from form (if used)
+      contentType,
       orderIndex,
-      videoUrl, // Explicit external video URL from form (if used)
+      videoUrl,
       unitId,
       isPreview,
       isUnitHeader,
@@ -804,7 +239,7 @@ const updateLesson = async (req, res) => {
 
     console.log("🔄 UPDATE LESSON - Params:", req.params);
     console.log("📝 Body:", req.body);
-    console.log("📁 Files:", req.files); // 1. Authorization and Header Check (No changes needed, logic is sound)
+    console.log("📁 Files:", req.files); // 1. Check existence and prevent editing unit headers
     const lessonCheck = await Lesson.findByPk(lessonId, {
       attributes: [
         "id",
@@ -827,7 +262,7 @@ const updateLesson = async (req, res) => {
         success: false,
         error: "Unit headers cannot be edited through this interface.",
       });
-    } // Find the lesson with course information for auth check
+    } // Find the lesson with course information for authorization
 
     const lesson = await Lesson.findByPk(lessonId, {
       include: [
@@ -856,13 +291,13 @@ const updateLesson = async (req, res) => {
       updateData.order_index = parseInt(orderIndex);
     if (unitId !== undefined && unitId !== null) updateData.unit_id = unitId;
     if (isPreview !== undefined) updateData.is_preview = Boolean(isPreview); // 3. Set Final Video/File URLs and Content Type
-    let finalContentType = lessonCheck.content_type; // If a new file was uploaded, use the path and type from the helper
+    let finalContentType = lessonCheck.content_type; // Apply file upload paths (overrides existing paths)
     if (filePaths.file_url !== undefined) {
-      updateData.file_url = filePaths.file_url; // Will be new path or null
+      updateData.file_url = filePaths.file_url; // New path or null
       finalContentType = filePaths.content_type;
     }
     if (filePaths.video_url !== undefined) {
-      updateData.video_url = filePaths.video_url; // Will be new path or null
+      updateData.video_url = filePaths.video_url; // New path or null
       finalContentType = filePaths.content_type;
     } // If no file was uploaded, check for external URL update
 
@@ -885,7 +320,7 @@ const updateLesson = async (req, res) => {
 
     const [affectedRows] = await Lesson.update(updateData, {
       where: { id: lessonId },
-    }); // ... (Update success check and final fetching logic remain the same) ...
+    });
 
     if (affectedRows === 0) {
       console.log("❌ No rows affected during update");
@@ -913,7 +348,7 @@ const updateLesson = async (req, res) => {
           success: false,
           error: "Lesson updated but failed to fetch updated data",
         });
-    } // Build full URLs
+    } // Build full URLs for client response
 
     const lessonResponse = buildFileUrls(updatedLesson);
 
@@ -928,7 +363,7 @@ const updateLesson = async (req, res) => {
       lesson: lessonResponse,
     });
   } catch (error) {
-    console.error("❌ ERROR updating lesson:", error); // ... (Error handling remains the same) ...
+    console.error("❌ ERROR updating lesson:", error);
     if (error.name === "SequelizeValidationError") {
       const errors = error.errors.map((err) => ({
         field: err.path,
@@ -951,20 +386,177 @@ const updateLesson = async (req, res) => {
   }
 };
 
-// ... (Other functions like getLessonById, getLessonsByCourse, deleteLesson remain largely the same) ...
-// The URL building is handled by buildFileUrls, which is called in all successful fetch paths.
+// ----------------------------------------------------------------------
+// Placeholder functions for Lesson fetching/listing and deletion
+// NOTE: These need full implementation later for actual functionality
+// ----------------------------------------------------------------------
 
-// All other functions are imported from the original file, ensuring URL building is applied correctly.
+const getLessonsByCourse = async (req, res) => {
+  console.warn("⚠️ Placeholder: getLessonsByCourse not fully implemented.");
+  res
+    .status(501)
+    .json({ success: false, error: "Not Implemented: getLessonsByCourse" });
+};
+
+const getRegularLessonsByCourse = async (req, res) => {
+  console.warn(
+    "⚠️ Placeholder: getRegularLessonsByCourse not fully implemented."
+  );
+  res
+    .status(501)
+    .json({
+      success: false,
+      error: "Not Implemented: getRegularLessonsByCourse",
+    });
+};
+
+const getLessonsByUnit = async (req, res) => {
+  console.warn("⚠️ Placeholder: getLessonsByUnit not fully implemented.");
+  res
+    .status(501)
+    .json({ success: false, error: "Not Implemented: getLessonsByUnit" });
+};
+
+const getLessonById = async (req, res) => {
+  console.warn("⚠️ Placeholder: getLessonById not fully implemented.");
+  res
+    .status(501)
+    .json({ success: false, error: "Not Implemented: getLessonById" });
+};
+
+const deleteLesson = async (req, res) => {
+  console.warn("⚠️ Placeholder: deleteLesson not fully implemented.");
+  res
+    .status(501)
+    .json({ success: false, error: "Not Implemented: deleteLesson" });
+};
+
+// ----------------------------------------------------------------------
+// Debug Routes (Used for testing and troubleshooting)
+// ----------------------------------------------------------------------
+
+/**
+ * Debug: Retrieve lesson data by ID.
+ */
+const debugGetLesson = async (req, res) => {
+  console.log(
+    `🐛 DEBUG: debugGetLesson called for lessonId: ${req.params.lessonId}`
+  );
+  try {
+    const lesson = await Lesson.findByPk(req.params.lessonId, {
+      attributes: [
+        "id",
+        "title",
+        "content_type",
+        "file_url",
+        "video_url",
+        "course_id",
+        "unit_id",
+      ],
+    });
+    if (!lesson) {
+      return res
+        .status(404)
+        .json({ success: false, error: "Lesson not found" });
+    }
+    res.json({
+      success: true,
+      message: "Debug route hit: debugGetLesson",
+      lesson: lesson.toJSON(),
+    });
+  } catch (error) {
+    console.error("🐛 DEBUG error in debugGetLesson:", error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+};
+
+/**
+ * Debug: Check if a file exists in the local 'Uploads' directory.
+ */
+const debugCheckFile = async (req, res) => {
+  const filename = req.params.filename;
+  // Uses process.cwd() for the absolute path to the project root
+  const filePath = path.join(process.cwd(), "Uploads", filename);
+  const fileExists = fs.existsSync(filePath);
+
+  console.log(
+    `🐛 DEBUG: Checking file existence for: ${filename} (Exists: ${fileExists})`
+  );
+
+  res.json({
+    success: true,
+    message: "Debug route hit: debugCheckFile",
+    filename: filename,
+    path: filePath,
+    exists: fileExists,
+  });
+};
+
+/**
+ * Debug: Retrieve a lesson and generate its full, usable file/video URLs.
+ */
+const debugFileUrl = async (req, res) => {
+  console.log(
+    `🐛 DEBUG: debugFileUrl called for lessonId: ${req.params.lessonId}`
+  );
+  try {
+    const lesson = await Lesson.findByPk(req.params.lessonId);
+    if (!lesson) {
+      return res
+        .status(404)
+        .json({ success: false, error: "Lesson not found" });
+    }
+    const lessonWithUrls = buildFileUrls(lesson);
+    res.json({
+      success: true,
+      message: "Debug route hit: debugFileUrl",
+      lessonId: req.params.lessonId,
+      file_url: lessonWithUrls.file_url,
+      video_url: lessonWithUrls.video_url,
+    });
+  } catch (error) {
+    console.error("🐛 DEBUG error in debugFileUrl:", error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+};
+
+/**
+ * Debug: Retrieve a lesson's content type.
+ */
+const debugLessonType = async (req, res) => {
+  console.log(
+    `🐛 DEBUG: debugLessonType called for lessonId: ${req.params.lessonId}`
+  );
+  try {
+    const lesson = await Lesson.findByPk(req.params.lessonId, {
+      attributes: ["id", "title", "content_type"],
+    });
+    if (!lesson) {
+      return res
+        .status(404)
+        .json({ success: false, error: "Lesson not found" });
+    }
+    res.json({
+      success: true,
+      message: "Debug route hit: debugLessonType",
+      lessonId: req.params.lessonId,
+      content_type: lesson.content_type,
+    });
+  } catch (error) {
+    console.error("🐛 DEBUG error in debugLessonType:", error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+};
 
 // Export all functions
 export {
   createLesson,
+  updateLesson,
+  deleteLesson, // Main Lesson Fetching (placeholders)
   getLessonsByCourse,
   getRegularLessonsByCourse,
   getLessonsByUnit,
-  getLessonById,
-  updateLesson,
-  deleteLesson, // Debug functions
+  getLessonById, // Debug functions
   debugGetLesson,
   debugCheckFile,
   debugFileUrl,
