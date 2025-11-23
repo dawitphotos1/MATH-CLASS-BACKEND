@@ -166,6 +166,7 @@
 
 
 // routes/lessonRoutes.js
+
 import express from "express";
 import {
   createLesson,
@@ -204,7 +205,11 @@ router.post(
 router.get("/courses/:courseId/lessons", authenticateToken, getLessonsByCourse);
 
 // ✅ NEW: Get only regular lessons (excluding unit headers)
-router.get("/courses/:courseId/regular-lessons", authenticateToken, getRegularLessonsByCourse);
+router.get(
+  "/courses/:courseId/regular-lessons",
+  authenticateToken,
+  getRegularLessonsByCourse
+);
 
 router.get("/units/:unitId/lessons", authenticateToken, getLessonsByUnit);
 router.get("/:lessonId", authenticateToken, getLessonById);
@@ -240,7 +245,7 @@ router.get("/debug/file/:filename", authenticateToken, debugCheckFile);
 router.get("/debug/url/:lessonId", authenticateToken, debugFileUrl);
 router.get("/debug/type/:lessonId", authenticateToken, debugLessonType);
 
-// Debug: List all lessons in a course
+// Debug: List all lessons in a course (Uses the existing controller)
 router.get(
   "/debug/course/:courseId/lessons",
   authenticateToken,
@@ -296,12 +301,14 @@ router.get("/debug/test/:lessonId", authenticateToken, async (req, res) => {
     const lessonData = lesson.toJSON();
     if (lessonData.file_url && !lessonData.file_url.startsWith("http")) {
       lessonData.file_url = `${
-        process.env.BACKEND_URL || "https://mathe-class-website-backend-1.onrender.com"
+        process.env.BACKEND_URL ||
+        "https://mathe-class-website-backend-1.onrender.com"
       }/api/v1/files${lessonData.file_url}`;
     }
     if (lessonData.video_url && !lessonData.video_url.startsWith("http")) {
       lessonData.video_url = `${
-        process.env.BACKEND_URL || "https://mathe-class-website-backend-1.onrender.com"
+        process.env.BACKEND_URL ||
+        "https://mathe-class-website-backend-1.onrender.com"
       }/api/v1/files${lessonData.video_url}`;
     }
 
@@ -331,41 +338,50 @@ router.get("/debug/test/:lessonId", authenticateToken, async (req, res) => {
 });
 
 // Debug: Check course lesson types
-router.get("/debug/course-lesson-types/:courseId", authenticateToken, async (req, res) => {
-  try {
-    const { courseId } = req.params;
-    const { Op } = await import("sequelize");
+router.get(
+  "/debug/course-lesson-types/:courseId",
+  authenticateToken,
+  async (req, res) => {
+    try {
+      const { courseId } = req.params;
 
-    const lessons = await Lesson.findAll({
-      where: { course_id: courseId },
-      order: [["order_index", "ASC"]],
-      attributes: ["id", "title", "content_type", "order_index", "unit_id"]
-    });
+      // Dynamically import models
+      const db = await import("../models/index.js");
+      const Lesson = db.default.Lesson;
 
-    const lessonTypes = lessons.map(lesson => ({
-      id: lesson.id,
-      title: lesson.title,
-      type: lesson.content_type,
-      order: lesson.order_index,
-      unit_id: lesson.unit_id,
-      is_editable: lesson.content_type !== "unit_header"
-    }));
+      const lessons = await Lesson.findAll({
+        where: { course_id: courseId },
+        order: [["order_index", "ASC"]],
+        attributes: ["id", "title", "content_type", "order_index", "unit_id"],
+      });
 
-    res.json({
-      success: true,
-      courseId,
-      total_lessons: lessons.length,
-      unit_headers: lessons.filter(l => l.content_type === "unit_header").length,
-      regular_lessons: lessons.filter(l => l.content_type !== "unit_header").length,
-      lessons: lessonTypes
-    });
-  } catch (error) {
-    console.error("❌ Debug lesson types error:", error);
-    res.status(500).json({
-      success: false,
-      error: error.message
-    });
+      const lessonTypes = lessons.map((lesson) => ({
+        id: lesson.id,
+        title: lesson.title,
+        type: lesson.content_type,
+        order: lesson.order_index,
+        unit_id: lesson.unit_id,
+        is_editable: lesson.content_type !== "unit_header",
+      }));
+
+      res.json({
+        success: true,
+        courseId,
+        total_lessons: lessons.length,
+        unit_headers: lessons.filter((l) => l.content_type === "unit_header")
+          .length,
+        regular_lessons: lessons.filter((l) => l.content_type !== "unit_header")
+          .length,
+        lessons: lessonTypes,
+      });
+    } catch (error) {
+      console.error("❌ Debug lesson types error:", error);
+      res.status(500).json({
+        success: false,
+        error: error.message,
+      });
+    }
   }
-});
+);
 
 export default router;
