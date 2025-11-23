@@ -573,7 +573,6 @@ import { fileURLToPath } from "url";
 import fs from "fs";
 import { Op } from "sequelize";
 
-// IMPORTANT: Assuming Lesson, Course, Unit, Enrollment are correctly exported from db
 const { Lesson, Course, Unit, Enrollment } = db;
 
 // Helper to determine the backend URL for file serving
@@ -586,10 +585,6 @@ const getBackendUrl = () => {
 
 /**
  * Enhanced helper function to build full file URLs for lesson content.
- * It prepends the backend URL and file route prefix (/api/v1/files)
- * to relative file paths stored in the database.
- * @param {object} lesson The lesson object, potentially with relative file_url/video_url.
- * @returns {object} The lesson object with absolute URLs.
  */
 const buildFileUrls = (lesson) => {
   if (!lesson) return lesson;
@@ -599,7 +594,6 @@ const buildFileUrls = (lesson) => {
 
   // Handle Video URL
   if (lessonData.video_url && !lessonData.video_url.startsWith("http")) {
-    // Ensure proper URL formatting: /api/v1/files + stored path (e.g., /Uploads/filename.mp4)
     const cleanVideoUrl = lessonData.video_url.startsWith("/")
       ? lessonData.video_url
       : `/${lessonData.video_url}`;
@@ -609,7 +603,6 @@ const buildFileUrls = (lesson) => {
 
   // Handle File URL (PDF/Document)
   if (lessonData.file_url && !lessonData.file_url.startsWith("http")) {
-    // Ensure proper URL formatting: /api/v1/files + stored path (e.g., /Uploads/filename.pdf)
     const cleanFileUrl = lessonData.file_url.startsWith("/")
       ? lessonData.file_url
       : `/${lessonData.file_url}`;
@@ -621,10 +614,7 @@ const buildFileUrls = (lesson) => {
 };
 
 /**
- * Handles processing uploaded files and determines the correct database paths and content type.
- * Clears the path for the other content type if a new file is uploaded.
- * @param {object} req The Express request object containing `req.files`.
- * @returns {object} An object containing the new paths and content_type.
+ * Handles processing uploaded files
  */
 const handleFileUploads = (req, lesson) => {
   const updatePaths = {};
@@ -636,33 +626,29 @@ const handleFileUploads = (req, lesson) => {
     updatePaths.video_url = `/Uploads/${video.filename}`;
     updatePaths.content_type = "video";
     fileUploaded = true;
-    console.log("🎥 New video uploaded, path set to:", updatePaths.video_url);
+    console.log("🎥 New video uploaded:", updatePaths.video_url);
   }
 
-  // 2. Document/PDF Upload (prioritized over general 'file' if both exist)
+  // 2. Document/PDF Upload
   if (req.files?.pdf && req.files.pdf[0]) {
     const pdfFile = req.files.pdf[0];
     updatePaths.file_url = `/Uploads/${pdfFile.filename}`;
     updatePaths.content_type = "pdf";
     fileUploaded = true;
-    console.log("📑 New PDF uploaded, path set to:", updatePaths.file_url);
+    console.log("📑 New PDF uploaded:", updatePaths.file_url);
   } else if (req.files?.file && req.files.file[0]) {
-    // General file upload (could be DOCX, TXT, etc.)
     const file = req.files.file[0];
     updatePaths.file_url = `/Uploads/${file.filename}`;
-    updatePaths.content_type = "pdf"; // Treating all documents as 'pdf' type for content view
+    updatePaths.content_type = "pdf";
     fileUploaded = true;
-    console.log("📄 New file uploaded, path set to:", updatePaths.file_url);
+    console.log("📄 New file uploaded:", updatePaths.file_url);
   }
 
-  // 3. If a new file/video was uploaded, clear the other path to ensure only one is active
+  // Clear other path if one is uploaded
   if (fileUploaded) {
-    // If video uploaded, ensure file_url is nulled out
     if (updatePaths.video_url) {
       updatePaths.file_url = null;
-    }
-    // If document uploaded, ensure video_url is nulled out
-    else if (updatePaths.file_url) {
+    } else if (updatePaths.file_url) {
       updatePaths.video_url = null;
     }
   }
@@ -670,10 +656,7 @@ const handleFileUploads = (req, lesson) => {
   return updatePaths;
 };
 
-// ----------------------------------------------------------------------
 // Lesson Creation Function
-// ----------------------------------------------------------------------
-
 const createLesson = async (req, res) => {
   try {
     console.log("📝 Creating lesson - Request body:", req.body);
@@ -707,7 +690,7 @@ const createLesson = async (req, res) => {
       });
     }
 
-    // --- File Handling ---
+    // File Handling
     const initialLessonData = {
       video_url: videoUrl,
       file_url: null,
@@ -720,11 +703,11 @@ const createLesson = async (req, res) => {
 
     // If no file was uploaded, check if the videoUrl provided is a direct link
     if (!fileUrl && !videoPath && videoUrl) {
-      videoPath = videoUrl; // Assuming external link
+      videoPath = videoUrl;
       finalContentType = finalContentType === "text" ? "video" : finalContentType;
     }
 
-    // Get order index (Determine the next order index if not provided)
+    // Get order index
     let orderIndexValue = orderIndex;
     if (!orderIndexValue && orderIndexValue !== 0) {
       const whereClause = unitId
@@ -744,7 +727,7 @@ const createLesson = async (req, res) => {
       title: title.trim(),
       content: (content || "").trim(),
       video_url: videoPath,
-      file_url: fileUrl, // Storing relative path
+      file_url: fileUrl,
       order_index: orderIndexValue,
       content_type: finalContentType,
       is_preview: isPreview || false,
@@ -799,10 +782,7 @@ const createLesson = async (req, res) => {
   }
 };
 
-// ----------------------------------------------------------------------
 // Lesson Update Function
-// ----------------------------------------------------------------------
-
 const updateLesson = async (req, res) => {
   try {
     const { lessonId } = req.params;
@@ -814,14 +794,13 @@ const updateLesson = async (req, res) => {
       videoUrl,
       unitId,
       isPreview,
-      isUnitHeader,
     } = req.body;
 
     console.log("🔄 UPDATE LESSON - Params:", req.params);
     console.log("📝 Body:", req.body);
     console.log("📁 Files:", req.files);
 
-    // 1. Check existence and prevent editing unit headers
+    // Check existence and prevent editing unit headers
     const lessonCheck = await Lesson.findByPk(lessonId, {
       attributes: [
         "id",
@@ -862,7 +841,7 @@ const updateLesson = async (req, res) => {
       });
     }
 
-    // 2. Handle File Uploads and Path Updates
+    // Handle File Uploads and Path Updates
     const filePaths = handleFileUploads(req, lessonCheck);
 
     // Prepare update data
@@ -876,16 +855,16 @@ const updateLesson = async (req, res) => {
     if (unitId !== undefined && unitId !== null) updateData.unit_id = unitId;
     if (isPreview !== undefined) updateData.is_preview = Boolean(isPreview);
 
-    // 3. Set Final Video/File URLs and Content Type
+    // Set Final Video/File URLs and Content Type
     let finalContentType = lessonCheck.content_type;
 
-    // Apply file upload paths (overrides existing paths)
+    // Apply file upload paths
     if (filePaths.file_url !== undefined) {
-      updateData.file_url = filePaths.file_url; // New path or null
+      updateData.file_url = filePaths.file_url;
       finalContentType = filePaths.content_type;
     }
     if (filePaths.video_url !== undefined) {
-      updateData.video_url = filePaths.video_url; // New path or null
+      updateData.video_url = filePaths.video_url;
       finalContentType = filePaths.content_type;
     }
 
@@ -893,18 +872,18 @@ const updateLesson = async (req, res) => {
     if (videoUrl !== undefined && videoUrl !== null && !filePaths.video_url) {
       updateData.video_url = videoUrl;
       finalContentType = "video";
-      updateData.file_url = null; // Clear file path if external video link is provided
+      updateData.file_url = null;
     }
 
-    // Explicit content type from form (lowest priority, often overridden by files)
+    // Explicit content type from form
     if (contentType !== undefined && contentType !== null && contentType !== "") {
       finalContentType = contentType;
     }
     updateData.content_type = finalContentType;
 
-    console.log("🔄 Final update data to be saved:", updateData);
+    console.log("🔄 Final update data:", updateData);
 
-    // 4. Perform Update
+    // Perform Update
     const [affectedRows] = await Lesson.update(updateData, {
       where: { id: lessonId },
     });
@@ -972,10 +951,7 @@ const updateLesson = async (req, res) => {
   }
 };
 
-// ----------------------------------------------------------------------
-// Placeholder functions for Lesson fetching/listing and deletion
-// ----------------------------------------------------------------------
-
+// Get lessons by course
 const getLessonsByCourse = async (req, res) => {
   try {
     const { courseId } = req.params;
@@ -991,7 +967,6 @@ const getLessonsByCourse = async (req, res) => {
       ],
     });
 
-    // Build full URLs for lessons
     const lessonsWithUrls = lessons.map(lesson => buildFileUrls(lesson));
 
     res.json({
@@ -1008,6 +983,7 @@ const getLessonsByCourse = async (req, res) => {
   }
 };
 
+// Get regular lessons (excluding unit headers)
 const getRegularLessonsByCourse = async (req, res) => {
   try {
     const { courseId } = req.params;
@@ -1034,6 +1010,7 @@ const getRegularLessonsByCourse = async (req, res) => {
   }
 };
 
+// Get lessons by unit
 const getLessonsByUnit = async (req, res) => {
   try {
     const { unitId } = req.params;
@@ -1057,6 +1034,7 @@ const getLessonsByUnit = async (req, res) => {
   }
 };
 
+// Get lesson by ID
 const getLessonById = async (req, res) => {
   try {
     const { lessonId } = req.params;
@@ -1093,6 +1071,7 @@ const getLessonById = async (req, res) => {
   }
 };
 
+// Delete lesson
 const deleteLesson = async (req, res) => {
   try {
     const { lessonId } = req.params;
@@ -1152,10 +1131,7 @@ const deleteLesson = async (req, res) => {
   }
 };
 
-// ----------------------------------------------------------------------
-// Debug Routes
-// ----------------------------------------------------------------------
-
+// Debug routes
 const debugGetLesson = async (req, res) => {
   console.log(`🐛 DEBUG: debugGetLesson called for lessonId: ${req.params.lessonId}`);
   try {
