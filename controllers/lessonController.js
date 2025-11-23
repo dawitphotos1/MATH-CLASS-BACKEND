@@ -566,7 +566,6 @@
 
 
 
-
 // controllers/lessonController.js
 import db from "../models/index.js";
 import path from "path";
@@ -975,44 +974,188 @@ const updateLesson = async (req, res) => {
 
 // ----------------------------------------------------------------------
 // Placeholder functions for Lesson fetching/listing and deletion
-// NOTE: These need full implementation later for actual functionality
 // ----------------------------------------------------------------------
 
 const getLessonsByCourse = async (req, res) => {
-  console.warn("⚠️ Placeholder: getLessonsByCourse not fully implemented.");
-  res.status(501).json({ success: false, error: "Not Implemented: getLessonsByCourse" });
+  try {
+    const { courseId } = req.params;
+    const lessons = await Lesson.findAll({
+      where: { course_id: courseId },
+      order: [["order_index", "ASC"]],
+      include: [
+        {
+          model: Unit,
+          as: "unit",
+          attributes: ["id", "title"],
+        },
+      ],
+    });
+
+    // Build full URLs for lessons
+    const lessonsWithUrls = lessons.map(lesson => buildFileUrls(lesson));
+
+    res.json({
+      success: true,
+      lessons: lessonsWithUrls
+    });
+  } catch (error) {
+    console.error("❌ Error fetching lessons:", error);
+    res.status(500).json({
+      success: false,
+      message: "Failed to fetch lessons",
+      error: process.env.NODE_ENV === "development" ? error.message : undefined,
+    });
+  }
 };
 
 const getRegularLessonsByCourse = async (req, res) => {
-  console.warn("⚠️ Placeholder: getRegularLessonsByCourse not fully implemented.");
-  res.status(501).json({
-    success: false,
-    error: "Not Implemented: getRegularLessonsByCourse",
-  });
+  try {
+    const { courseId } = req.params;
+    const lessons = await Lesson.findAll({
+      where: { 
+        course_id: courseId,
+        content_type: { [Op.ne]: 'unit_header' }
+      },
+      order: [["order_index", "ASC"]],
+    });
+
+    const lessonsWithUrls = lessons.map(lesson => buildFileUrls(lesson));
+
+    res.json({
+      success: true,
+      lessons: lessonsWithUrls
+    });
+  } catch (error) {
+    console.error("❌ Error fetching regular lessons:", error);
+    res.status(500).json({
+      success: false,
+      error: "Failed to fetch lessons",
+    });
+  }
 };
 
 const getLessonsByUnit = async (req, res) => {
-  console.warn("⚠️ Placeholder: getLessonsByUnit not fully implemented.");
-  res.status(501).json({ success: false, error: "Not Implemented: getLessonsByUnit" });
+  try {
+    const { unitId } = req.params;
+    const lessons = await Lesson.findAll({
+      where: { unit_id: unitId },
+      order: [["order_index", "ASC"]],
+    });
+
+    const lessonsWithUrls = lessons.map(lesson => buildFileUrls(lesson));
+
+    res.json({
+      success: true,
+      lessons: lessonsWithUrls
+    });
+  } catch (error) {
+    console.error("❌ Error fetching unit lessons:", error);
+    res.status(500).json({
+      success: false,
+      error: "Failed to fetch lessons",
+    });
+  }
 };
 
 const getLessonById = async (req, res) => {
-  console.warn("⚠️ Placeholder: getLessonById not fully implemented.");
-  res.status(501).json({ success: false, error: "Not Implemented: getLessonById" });
+  try {
+    const { lessonId } = req.params;
+    const lesson = await Lesson.findByPk(lessonId, {
+      include: [
+        {
+          model: Course,
+          as: "course",
+          attributes: ["id", "title", "teacher_id"],
+        },
+        { model: Unit, as: "unit", attributes: ["id", "title"] },
+      ],
+    });
+
+    if (!lesson) {
+      return res.status(404).json({
+        success: false,
+        error: "Lesson not found",
+      });
+    }
+
+    const lessonWithUrls = buildFileUrls(lesson);
+
+    res.json({
+      success: true,
+      lesson: lessonWithUrls,
+    });
+  } catch (error) {
+    console.error("❌ Error fetching lesson:", error);
+    res.status(500).json({
+      success: false,
+      error: "Failed to fetch lesson",
+    });
+  }
 };
 
 const deleteLesson = async (req, res) => {
-  console.warn("⚠️ Placeholder: deleteLesson not fully implemented.");
-  res.status(501).json({ success: false, error: "Not Implemented: deleteLesson" });
+  try {
+    const { lessonId } = req.params;
+    const userId = req.user.id;
+    const userRole = req.user.role;
+
+    console.log("🗑️ DELETE LESSON REQUEST:", { lessonId, userId, userRole });
+
+    // Find the lesson with course info
+    const lesson = await Lesson.findByPk(lessonId, {
+      include: [
+        {
+          model: Course,
+          as: "course",
+          attributes: ["id", "title", "teacher_id"],
+        },
+      ],
+    });
+
+    if (!lesson) {
+      return res.status(404).json({
+        success: false,
+        error: "Lesson not found",
+      });
+    }
+
+    // Check authorization
+    if (userRole !== "admin" && lesson.course.teacher_id !== userId) {
+      return res.status(403).json({
+        success: false,
+        error: "Not authorized to delete this lesson",
+      });
+    }
+
+    // Prevent deletion of unit headers
+    if (lesson.content_type === "unit_header") {
+      return res.status(400).json({
+        success: false,
+        error: "Unit headers cannot be deleted",
+      });
+    }
+
+    await lesson.destroy();
+
+    console.log("✅ Lesson deleted successfully:", lessonId);
+
+    res.json({
+      success: true,
+      message: "Lesson deleted successfully",
+    });
+  } catch (error) {
+    console.error("❌ Error deleting lesson:", error);
+    res.status(500).json({
+      success: false,
+      error: "Failed to delete lesson",
+    });
+  }
 };
 
 // ----------------------------------------------------------------------
-// Debug Routes (Used for testing and troubleshooting)
+// Debug Routes
 // ----------------------------------------------------------------------
 
-/**
- * Debug: Retrieve lesson data by ID.
- */
 const debugGetLesson = async (req, res) => {
   console.log(`🐛 DEBUG: debugGetLesson called for lessonId: ${req.params.lessonId}`);
   try {
@@ -1041,12 +1184,8 @@ const debugGetLesson = async (req, res) => {
   }
 };
 
-/**
- * Debug: Check if a file exists in the local 'Uploads' directory.
- */
 const debugCheckFile = async (req, res) => {
   const filename = req.params.filename;
-  // Uses process.cwd() for the absolute path to the project root
   const filePath = path.join(process.cwd(), "Uploads", filename);
   const fileExists = fs.existsSync(filePath);
 
@@ -1061,9 +1200,6 @@ const debugCheckFile = async (req, res) => {
   });
 };
 
-/**
- * Debug: Retrieve a lesson and generate its full, usable file/video URLs.
- */
 const debugFileUrl = async (req, res) => {
   console.log(`🐛 DEBUG: debugFileUrl called for lessonId: ${req.params.lessonId}`);
   try {
@@ -1085,9 +1221,6 @@ const debugFileUrl = async (req, res) => {
   }
 };
 
-/**
- * Debug: Retrieve a lesson's content type.
- */
 const debugLessonType = async (req, res) => {
   console.log(`🐛 DEBUG: debugLessonType called for lessonId: ${req.params.lessonId}`);
   try {

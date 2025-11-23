@@ -998,7 +998,6 @@
 
 
 
-
 // routes/files.js
 import express from "express";
 import path from "path";
@@ -1161,6 +1160,14 @@ router.get("/preview-lesson/:lessonId", authenticateToken, async (req, res) => {
       userRole: req.user.role 
     });
 
+    // Validate lessonId
+    if (!lessonId || isNaN(parseInt(lessonId))) {
+      return res.status(400).json({
+        success: false,
+        error: "Invalid lesson ID"
+      });
+    }
+
     // Import database models
     const db = await import("../models/index.js");
     
@@ -1226,9 +1233,15 @@ router.get("/preview-lesson/:lessonId", authenticateToken, async (req, res) => {
     } else if (lesson.content_type === 'video' && lesson.video_url) {
       console.log("🎥 Handling video preview");
       await handleVideoPreview(lesson, res);
-    } else {
+    } else if (lesson.content_type === 'text') {
       console.log("📝 Handling text preview");
       await handleTextPreview(lesson, isPreviewLesson, res);
+    } else {
+      console.log("❓ Unknown content type:", lesson.content_type);
+      return res.status(400).json({
+        success: false,
+        error: `Unsupported content type: ${lesson.content_type}`
+      });
     }
     
   } catch (error) {
