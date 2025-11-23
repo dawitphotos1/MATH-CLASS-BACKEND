@@ -573,18 +573,15 @@ import { fileURLToPath } from "url";
 import fs from "fs";
 import { Op } from "sequelize";
 
-const { Lesson, Course, Unit, Enrollment } = db;
+const { Lesson, Course, Unit, Enrollment, LessonView } = db;
 
 // Helper to determine the backend URL for file serving
 const getBackendUrl = () => {
-  return (
-    process.env.BACKEND_URL ||
-    "https://mathe-class-website-backend-1.onrender.com"
-  );
+  return process.env.BACKEND_URL || "https://mathe-class-website-backend-1.onrender.com";
 };
 
 /**
- * Enhanced helper function to build full file URLs for lesson content.
+ * Build full file URLs for lesson content
  */
 const buildFileUrls = (lesson) => {
   if (!lesson) return lesson;
@@ -594,54 +591,65 @@ const buildFileUrls = (lesson) => {
 
   // Handle Video URL
   if (lessonData.video_url && !lessonData.video_url.startsWith("http")) {
-    const cleanVideoUrl = lessonData.video_url.startsWith("/")
-      ? lessonData.video_url
-      : `/${lessonData.video_url}`;
-    const fullVideoUrl = `${backendUrl}/api/v1/files${cleanVideoUrl}`;
-    lessonData.video_url = fullVideoUrl;
+    const cleanVideoUrl = lessonData.video_url.startsWith("/") 
+      ? lessonData.video_url.substring(1) 
+      : lessonData.video_url;
+    lessonData.video_url = `${backendUrl}/api/v1/files/${cleanVideoUrl}`;
   }
 
   // Handle File URL (PDF/Document)
   if (lessonData.file_url && !lessonData.file_url.startsWith("http")) {
     const cleanFileUrl = lessonData.file_url.startsWith("/")
-      ? lessonData.file_url
-      : `/${lessonData.file_url}`;
-    const fullFileUrl = `${backendUrl}/api/v1/files${cleanFileUrl}`;
-    lessonData.file_url = fullFileUrl;
+      ? lessonData.file_url.substring(1)
+      : lessonData.file_url;
+    lessonData.file_url = `${backendUrl}/api/v1/files/${cleanFileUrl}`;
   }
 
   return lessonData;
 };
 
 /**
- * Handles processing uploaded files
+ * Track lesson view for analytics
  */
-const handleFileUploads = (req, lesson) => {
+const trackLessonView = async (userId, lessonId) => {
+  try {
+    if (LessonView) {
+      await LessonView.findOrCreate({
+        where: { user_id: userId, lesson_id: lessonId },
+        defaults: { user_id: userId, lesson_id: lessonId, viewed_at: new Date() }
+      });
+    }
+  } catch (error) {
+    console.error('Error tracking lesson view:', error.message);
+  }
+};
+
+/**
+ * Handle file uploads and return paths
+ */
+const handleFileUploads = (req) => {
   const updatePaths = {};
   let fileUploaded = false;
 
-  // 1. Video Upload
+  // Video Upload
   if (req.files?.video && req.files.video[0]) {
     const video = req.files.video[0];
-    updatePaths.video_url = `/Uploads/${video.filename}`;
+    updatePaths.video_url = `Uploads/${video.filename}`;
     updatePaths.content_type = "video";
     fileUploaded = true;
-    console.log("🎥 New video uploaded:", updatePaths.video_url);
   }
 
-  // 2. Document/PDF Upload
+  // Document/PDF Upload
   if (req.files?.pdf && req.files.pdf[0]) {
     const pdfFile = req.files.pdf[0];
-    updatePaths.file_url = `/Uploads/${pdfFile.filename}`;
+    updatePaths.file_url = `Uploads/${pdfFile.filename}`;
     updatePaths.content_type = "pdf";
     fileUploaded = true;
-    console.log("📑 New PDF uploaded:", updatePaths.file_url);
   } else if (req.files?.file && req.files.file[0]) {
     const file = req.files.file[0];
-    updatePaths.file_url = `/Uploads/${file.filename}`;
+    updatePaths.file_url = `Uploads/${file.filename}`;
     updatePaths.content_type = "pdf";
     fileUploaded = true;
-    console.log("📄 New file uploaded:", updatePaths.file_url);
   }
 
   // Clear other path if one is uploaded
@@ -656,22 +664,11 @@ const handleFileUploads = (req, lesson) => {
   return updatePaths;
 };
 
-// Lesson Creation Function
-const createLesson = async (req, res) => {
+// Lesson Creation
+export const createLesson = async (req, res) => {
   try {
-    console.log("📝 Creating lesson - Request body:", req.body);
-    console.log("📁 Uploaded files:", req.files);
-
     const { courseId } = req.params;
-    const {
-      title,
-      content,
-      contentType,
-      orderIndex,
-      videoUrl,
-      unitId,
-      isPreview,
-    } = req.body;
+    const { title, content, contentType, orderIndex, videoUrl, unitId, isPreview } = req.body;
 
     // Verify course exists
     const course = await Course.findByPk(courseId);
@@ -691,12 +688,7 @@ const createLesson = async (req, res) => {
     }
 
     // File Handling
-    const initialLessonData = {
-      video_url: videoUrl,
-      file_url: null,
-      content_type: contentType || "text",
-    };
-    const filePaths = handleFileUploads(req, initialLessonData);
+    const filePaths = handleFileUploads(req);
     let videoPath = filePaths.video_url || videoUrl || null;
     let fileUrl = filePaths.file_url || null;
     let finalContentType = filePaths.content_type || contentType || "text";
@@ -733,27 +725,15 @@ const createLesson = async (req, res) => {
       is_preview: isPreview || false,
     });
 
-    console.log("✅ Lesson created successfully:", lesson.id);
-
-    // Fetch the complete lesson with associations and URLs
+    // Fetch complete lesson with associations
     const completeLesson = await Lesson.findByPk(lesson.id, {
       include: [
-        {
-          model: Course,
-          as: "course",
-          attributes: ["id", "title", "teacher_id"],
-        },
+        { model: Course, as: "course", attributes: ["id", "title", "teacher_id"] },
         { model: Unit, as: "unit", attributes: ["id", "title"] },
       ],
     });
 
     const lessonResponse = buildFileUrls(completeLesson);
-
-    console.log("🎉 Lesson creation complete:", {
-      id: lessonResponse.id,
-      file_url: lessonResponse.file_url,
-      content_type: lessonResponse.content_type,
-    });
 
     res.status(201).json({
       success: true,
@@ -761,7 +741,8 @@ const createLesson = async (req, res) => {
       lesson: lessonResponse,
     });
   } catch (error) {
-    console.error("❌ Error creating lesson:", error);
+    console.error("Error creating lesson:", error);
+    
     if (error.name === "SequelizeValidationError") {
       const errors = error.errors.map((err) => ({
         field: err.path,
@@ -782,34 +763,15 @@ const createLesson = async (req, res) => {
   }
 };
 
-// Lesson Update Function
-const updateLesson = async (req, res) => {
+// Lesson Update
+export const updateLesson = async (req, res) => {
   try {
     const { lessonId } = req.params;
-    const {
-      title,
-      content,
-      contentType,
-      orderIndex,
-      videoUrl,
-      unitId,
-      isPreview,
-    } = req.body;
-
-    console.log("🔄 UPDATE LESSON - Params:", req.params);
-    console.log("📝 Body:", req.body);
-    console.log("📁 Files:", req.files);
+    const { title, content, contentType, orderIndex, videoUrl, unitId, isPreview } = req.body;
 
     // Check existence and prevent editing unit headers
     const lessonCheck = await Lesson.findByPk(lessonId, {
-      attributes: [
-        "id",
-        "content_type",
-        "title",
-        "course_id",
-        "video_url",
-        "file_url",
-      ],
+      attributes: ["id", "content_type", "title", "course_id", "video_url", "file_url"],
     });
 
     if (!lessonCheck) {
@@ -825,13 +787,7 @@ const updateLesson = async (req, res) => {
 
     // Find the lesson with course information for authorization
     const lesson = await Lesson.findByPk(lessonId, {
-      include: [
-        {
-          model: Course,
-          as: "course",
-          attributes: ["id", "title", "teacher_id"],
-        },
-      ],
+      include: [{ model: Course, as: "course", attributes: ["id", "title", "teacher_id"] }],
     });
 
     if (req.user.role !== "admin" && lesson.course.teacher_id !== req.user.id) {
@@ -842,7 +798,7 @@ const updateLesson = async (req, res) => {
     }
 
     // Handle File Uploads and Path Updates
-    const filePaths = handleFileUploads(req, lessonCheck);
+    const filePaths = handleFileUploads(req);
 
     // Prepare update data
     const updateData = {};
@@ -850,8 +806,7 @@ const updateLesson = async (req, res) => {
     // Basic text fields
     if (title !== undefined && title !== null) updateData.title = title.trim();
     if (content !== undefined && content !== null) updateData.content = content;
-    if (orderIndex !== undefined && orderIndex !== null)
-      updateData.order_index = parseInt(orderIndex);
+    if (orderIndex !== undefined && orderIndex !== null) updateData.order_index = parseInt(orderIndex);
     if (unitId !== undefined && unitId !== null) updateData.unit_id = unitId;
     if (isPreview !== undefined) updateData.is_preview = Boolean(isPreview);
 
@@ -881,15 +836,10 @@ const updateLesson = async (req, res) => {
     }
     updateData.content_type = finalContentType;
 
-    console.log("🔄 Final update data:", updateData);
-
     // Perform Update
-    const [affectedRows] = await Lesson.update(updateData, {
-      where: { id: lessonId },
-    });
+    const [affectedRows] = await Lesson.update(updateData, { where: { id: lessonId } });
 
     if (affectedRows === 0) {
-      console.log("❌ No rows affected during update");
       return res.status(500).json({
         success: false,
         error: "Failed to update lesson - no changes made",
@@ -899,11 +849,7 @@ const updateLesson = async (req, res) => {
     // Fetch the complete updated lesson
     const updatedLesson = await Lesson.findByPk(lessonId, {
       include: [
-        {
-          model: Course,
-          as: "course",
-          attributes: ["id", "title", "teacher_id"],
-        },
+        { model: Course, as: "course", attributes: ["id", "title", "teacher_id"] },
         { model: Unit, as: "unit", attributes: ["id", "title"] },
       ],
     });
@@ -915,13 +861,7 @@ const updateLesson = async (req, res) => {
       });
     }
 
-    // Build full URLs for client response
     const lessonResponse = buildFileUrls(updatedLesson);
-
-    console.log("✅ Lesson updated successfully:", {
-      id: lessonResponse.id,
-      file_url: lessonResponse.file_url,
-    });
 
     res.json({
       success: true,
@@ -929,7 +869,8 @@ const updateLesson = async (req, res) => {
       lesson: lessonResponse,
     });
   } catch (error) {
-    console.error("❌ ERROR updating lesson:", error);
+    console.error("ERROR updating lesson:", error);
+    
     if (error.name === "SequelizeValidationError") {
       const errors = error.errors.map((err) => ({
         field: err.path,
@@ -941,40 +882,30 @@ const updateLesson = async (req, res) => {
         details: errors,
       });
     }
+    
     res.status(500).json({
       success: false,
       error: "Failed to update lesson",
-      details: process.env.NODE_ENV === "development"
-        ? error.message
-        : "Internal server error",
+      details: process.env.NODE_ENV === "development" ? error.message : "Internal server error",
     });
   }
 };
 
 // Get lessons by course
-const getLessonsByCourse = async (req, res) => {
+export const getLessonsByCourse = async (req, res) => {
   try {
     const { courseId } = req.params;
     const lessons = await Lesson.findAll({
       where: { course_id: courseId },
       order: [["order_index", "ASC"]],
-      include: [
-        {
-          model: Unit,
-          as: "unit",
-          attributes: ["id", "title"],
-        },
-      ],
+      include: [{ model: Unit, as: "unit", attributes: ["id", "title"] }],
     });
 
     const lessonsWithUrls = lessons.map(lesson => buildFileUrls(lesson));
 
-    res.json({
-      success: true,
-      lessons: lessonsWithUrls
-    });
+    res.json({ success: true, lessons: lessonsWithUrls });
   } catch (error) {
-    console.error("❌ Error fetching lessons:", error);
+    console.error("Error fetching lessons:", error);
     res.status(500).json({
       success: false,
       message: "Failed to fetch lessons",
@@ -983,35 +914,55 @@ const getLessonsByCourse = async (req, res) => {
   }
 };
 
+// Get lesson by ID with view tracking
+export const getLessonById = async (req, res) => {
+  try {
+    const { lessonId } = req.params;
+    const userId = req.user.id;
+
+    const lesson = await Lesson.findByPk(lessonId, {
+      include: [
+        { model: Course, as: "course", attributes: ["id", "title", "teacher_id"] },
+        { model: Unit, as: "unit", attributes: ["id", "title"] },
+      ],
+    });
+
+    if (!lesson) {
+      return res.status(404).json({ success: false, error: "Lesson not found" });
+    }
+
+    // Track lesson view
+    await trackLessonView(userId, lessonId);
+
+    const lessonWithUrls = buildFileUrls(lesson);
+
+    res.json({ success: true, lesson: lessonWithUrls });
+  } catch (error) {
+    console.error("Error fetching lesson:", error);
+    res.status(500).json({ success: false, error: "Failed to fetch lesson" });
+  }
+};
+
 // Get regular lessons (excluding unit headers)
-const getRegularLessonsByCourse = async (req, res) => {
+export const getRegularLessonsByCourse = async (req, res) => {
   try {
     const { courseId } = req.params;
     const lessons = await Lesson.findAll({
-      where: { 
-        course_id: courseId,
-        content_type: { [Op.ne]: 'unit_header' }
-      },
+      where: { course_id: courseId, content_type: { [Op.ne]: 'unit_header' } },
       order: [["order_index", "ASC"]],
     });
 
     const lessonsWithUrls = lessons.map(lesson => buildFileUrls(lesson));
 
-    res.json({
-      success: true,
-      lessons: lessonsWithUrls
-    });
+    res.json({ success: true, lessons: lessonsWithUrls });
   } catch (error) {
-    console.error("❌ Error fetching regular lessons:", error);
-    res.status(500).json({
-      success: false,
-      error: "Failed to fetch lessons",
-    });
+    console.error("Error fetching regular lessons:", error);
+    res.status(500).json({ success: false, error: "Failed to fetch lessons" });
   }
 };
 
 // Get lessons by unit
-const getLessonsByUnit = async (req, res) => {
+export const getLessonsByUnit = async (req, res) => {
   try {
     const { unitId } = req.params;
     const lessons = await Lesson.findAll({
@@ -1021,81 +972,27 @@ const getLessonsByUnit = async (req, res) => {
 
     const lessonsWithUrls = lessons.map(lesson => buildFileUrls(lesson));
 
-    res.json({
-      success: true,
-      lessons: lessonsWithUrls
-    });
+    res.json({ success: true, lessons: lessonsWithUrls });
   } catch (error) {
-    console.error("❌ Error fetching unit lessons:", error);
-    res.status(500).json({
-      success: false,
-      error: "Failed to fetch lessons",
-    });
-  }
-};
-
-// Get lesson by ID
-const getLessonById = async (req, res) => {
-  try {
-    const { lessonId } = req.params;
-    const lesson = await Lesson.findByPk(lessonId, {
-      include: [
-        {
-          model: Course,
-          as: "course",
-          attributes: ["id", "title", "teacher_id"],
-        },
-        { model: Unit, as: "unit", attributes: ["id", "title"] },
-      ],
-    });
-
-    if (!lesson) {
-      return res.status(404).json({
-        success: false,
-        error: "Lesson not found",
-      });
-    }
-
-    const lessonWithUrls = buildFileUrls(lesson);
-
-    res.json({
-      success: true,
-      lesson: lessonWithUrls,
-    });
-  } catch (error) {
-    console.error("❌ Error fetching lesson:", error);
-    res.status(500).json({
-      success: false,
-      error: "Failed to fetch lesson",
-    });
+    console.error("Error fetching unit lessons:", error);
+    res.status(500).json({ success: false, error: "Failed to fetch lessons" });
   }
 };
 
 // Delete lesson
-const deleteLesson = async (req, res) => {
+export const deleteLesson = async (req, res) => {
   try {
     const { lessonId } = req.params;
     const userId = req.user.id;
     const userRole = req.user.role;
 
-    console.log("🗑️ DELETE LESSON REQUEST:", { lessonId, userId, userRole });
-
     // Find the lesson with course info
     const lesson = await Lesson.findByPk(lessonId, {
-      include: [
-        {
-          model: Course,
-          as: "course",
-          attributes: ["id", "title", "teacher_id"],
-        },
-      ],
+      include: [{ model: Course, as: "course", attributes: ["id", "title", "teacher_id"] }],
     });
 
     if (!lesson) {
-      return res.status(404).json({
-        success: false,
-        error: "Lesson not found",
-      });
+      return res.status(404).json({ success: false, error: "Lesson not found" });
     }
 
     // Check authorization
@@ -1116,119 +1013,93 @@ const deleteLesson = async (req, res) => {
 
     await lesson.destroy();
 
-    console.log("✅ Lesson deleted successfully:", lessonId);
-
-    res.json({
-      success: true,
-      message: "Lesson deleted successfully",
-    });
+    res.json({ success: true, message: "Lesson deleted successfully" });
   } catch (error) {
-    console.error("❌ Error deleting lesson:", error);
-    res.status(500).json({
-      success: false,
-      error: "Failed to delete lesson",
-    });
+    console.error("Error deleting lesson:", error);
+    res.status(500).json({ success: false, error: "Failed to delete lesson" });
   }
 };
 
 // Debug routes
-const debugGetLesson = async (req, res) => {
-  console.log(`🐛 DEBUG: debugGetLesson called for lessonId: ${req.params.lessonId}`);
+export const debugGetLesson = async (req, res) => {
   try {
     const lesson = await Lesson.findByPk(req.params.lessonId, {
-      attributes: [
-        "id",
-        "title",
-        "content_type",
-        "file_url",
-        "video_url",
-        "course_id",
-        "unit_id",
-      ],
+      attributes: ["id", "title", "content_type", "file_url", "video_url", "course_id", "unit_id"],
     });
+    
     if (!lesson) {
       return res.status(404).json({ success: false, error: "Lesson not found" });
     }
+    
+    const lessonWithUrls = buildFileUrls(lesson);
+    
     res.json({
       success: true,
-      message: "Debug route hit: debugGetLesson",
-      lesson: lesson.toJSON(),
+      original_lesson: lesson.toJSON(),
+      processed_lesson: lessonWithUrls,
+      backend_url: getBackendUrl(),
     });
   } catch (error) {
-    console.error("🐛 DEBUG error in debugGetLesson:", error);
+    console.error("DEBUG error in debugGetLesson:", error);
     res.status(500).json({ success: false, error: error.message });
   }
 };
 
-const debugCheckFile = async (req, res) => {
+export const debugCheckFile = async (req, res) => {
   const filename = req.params.filename;
   const filePath = path.join(process.cwd(), "Uploads", filename);
   const fileExists = fs.existsSync(filePath);
 
-  console.log(`🐛 DEBUG: Checking file existence for: ${filename} (Exists: ${fileExists})`);
-
   res.json({
     success: true,
-    message: "Debug route hit: debugCheckFile",
     filename: filename,
     path: filePath,
     exists: fileExists,
   });
 };
 
-const debugFileUrl = async (req, res) => {
-  console.log(`🐛 DEBUG: debugFileUrl called for lessonId: ${req.params.lessonId}`);
+export const debugFileUrl = async (req, res) => {
   try {
     const lesson = await Lesson.findByPk(req.params.lessonId);
+    
     if (!lesson) {
       return res.status(404).json({ success: false, error: "Lesson not found" });
     }
+    
     const lessonWithUrls = buildFileUrls(lesson);
+    
     res.json({
       success: true,
-      message: "Debug route hit: debugFileUrl",
       lessonId: req.params.lessonId,
-      file_url: lessonWithUrls.file_url,
-      video_url: lessonWithUrls.video_url,
+      stored_file_url: lesson.file_url,
+      stored_video_url: lesson.video_url,
+      processed_file_url: lessonWithUrls.file_url,
+      processed_video_url: lessonWithUrls.video_url,
+      backend_url: getBackendUrl(),
     });
   } catch (error) {
-    console.error("🐛 DEBUG error in debugFileUrl:", error);
+    console.error("DEBUG error in debugFileUrl:", error);
     res.status(500).json({ success: false, error: error.message });
   }
 };
 
-const debugLessonType = async (req, res) => {
-  console.log(`🐛 DEBUG: debugLessonType called for lessonId: ${req.params.lessonId}`);
+export const debugLessonType = async (req, res) => {
   try {
     const lesson = await Lesson.findByPk(req.params.lessonId, {
       attributes: ["id", "title", "content_type"],
     });
+    
     if (!lesson) {
       return res.status(404).json({ success: false, error: "Lesson not found" });
     }
+    
     res.json({
       success: true,
-      message: "Debug route hit: debugLessonType",
       lessonId: req.params.lessonId,
       content_type: lesson.content_type,
     });
   } catch (error) {
-    console.error("🐛 DEBUG error in debugLessonType:", error);
+    console.error("DEBUG error in debugLessonType:", error);
     res.status(500).json({ success: false, error: error.message });
   }
-};
-
-// Export all functions
-export {
-  createLesson,
-  updateLesson,
-  deleteLesson,
-  getLessonsByCourse,
-  getRegularLessonsByCourse,
-  getLessonsByUnit,
-  getLessonById,
-  debugGetLesson,
-  debugCheckFile,
-  debugFileUrl,
-  debugLessonType,
 };
