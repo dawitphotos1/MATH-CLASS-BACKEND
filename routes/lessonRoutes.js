@@ -222,7 +222,10 @@
 
 
 
+
+
 // routes/lessonRoutes.js
+
 import express from "express";
 import {
   createLesson,
@@ -249,11 +252,9 @@ import { uploadLessonFiles } from "../middleware/uploadMiddleware.js";
 
 const router = express.Router();
 
-// ✅ MAIN LESSON ROUTES
-
-// 🔥 CRITICAL FIX: Add this route to match frontend calls
-router.get("/course/:courseId", authenticateToken, getLessonsByCourse);
-
+/* ============================================================
+   CREATE LESSON
+============================================================ */
 router.post(
   "/courses/:courseId/lessons",
   authenticateToken,
@@ -262,19 +263,35 @@ router.post(
   createLesson
 );
 
+/* ============================================================
+   FETCH LESSONS BY COURSE
+============================================================ */
 router.get("/courses/:courseId/lessons", authenticateToken, getLessonsByCourse);
 
-// ✅ Get only regular lessons (excluding unit headers)
+/* Get only non-unit-header lessons */
 router.get(
   "/courses/:courseId/regular-lessons",
   authenticateToken,
   getRegularLessonsByCourse
 );
 
+/* Fetch lessons under a unit */
 router.get("/units/:unitId/lessons", authenticateToken, getLessonsByUnit);
+
+/* ============================================================
+   FIXED!! MUST COME BEFORE "/:lessonId"
+   Teacher Dashboard → Preview Lesson
+============================================================ */
+router.get("/:lessonId/preview", authenticateToken, getLessonById);
+
+/* ============================================================
+   GET LESSON BY ID  (must stay AFTER preview route)
+============================================================ */
 router.get("/:lessonId", authenticateToken, getLessonById);
 
-// ✅ Update lesson route
+/* ============================================================
+   UPDATE + DELETE
+============================================================ */
 router.put(
   "/:lessonId",
   authenticateToken,
@@ -290,8 +307,11 @@ router.delete(
   deleteLesson
 );
 
-// ✅ SUBLESSONS ROUTES
+/* ============================================================
+   SUB-LESSONS
+============================================================ */
 router.get("/:lessonId/sublessons", authenticateToken, getSubLessonsByLesson);
+
 router.post(
   "/:lessonId/sublessons",
   authenticateToken,
@@ -299,23 +319,24 @@ router.post(
   createSubLesson
 );
 
-// ✅ DEBUG ROUTES
+/* ============================================================
+   DEBUG ROUTES
+============================================================ */
 router.get("/debug/:lessonId", authenticateToken, debugGetLesson);
 router.get("/debug/file/:filename", authenticateToken, debugCheckFile);
 router.get("/debug/url/:lessonId", authenticateToken, debugFileUrl);
 router.get("/debug/type/:lessonId", authenticateToken, debugLessonType);
 
-// Debug: List all lessons in a course
 router.get(
   "/debug/course/:courseId/lessons",
   authenticateToken,
   async (req, res) => {
     try {
       const { courseId } = req.params;
-      console.log("🔧 DEBUG: Fetching all lessons for course:", courseId);
+      console.log("🐛 DEBUG: Fetching all lessons for course:", courseId);
       await getLessonsByCourse(req, res);
     } catch (error) {
-      console.error("❌ DEBUG Course lessons error:", error);
+      console.error("🐛 DEBUG Course lessons error:", error);
       res.status(500).json({
         success: false,
         error: error.message,
@@ -324,7 +345,9 @@ router.get(
   }
 );
 
-// Debug route to test connectivity and file handling
+/* ============================================================
+   DEBUG FILE + TYPE CHECKER
+============================================================ */
 router.get("/debug/test/:lessonId", authenticateToken, async (req, res) => {
   try {
     const { lessonId } = req.params;
@@ -357,19 +380,16 @@ router.get("/debug/test/:lessonId", authenticateToken, async (req, res) => {
       });
     }
 
-    // Build full URLs for debug
     const lessonData = lesson.toJSON();
+    const base =
+      process.env.BACKEND_URL ||
+      "https://mathe-class-website-backend-1.onrender.com";
+
     if (lessonData.file_url && !lessonData.file_url.startsWith("http")) {
-      lessonData.file_url = `${
-        process.env.BACKEND_URL ||
-        "https://mathe-class-website-backend-1.onrender.com"
-      }/api/v1/files${lessonData.file_url}`;
+      lessonData.file_url = `${base}/api/v1/files${lessonData.file_url}`;
     }
     if (lessonData.video_url && !lessonData.video_url.startsWith("http")) {
-      lessonData.video_url = `${
-        process.env.BACKEND_URL ||
-        "https://mathe-class-website-backend-1.onrender.com"
-      }/api/v1/files${lessonData.video_url}`;
+      lessonData.video_url = `${base}/api/v1/files${lessonData.video_url}`;
     }
 
     res.json({
@@ -385,7 +405,7 @@ router.get("/debug/test/:lessonId", authenticateToken, async (req, res) => {
         unit_id: lessonData.unit_id,
       },
       backend_url: process.env.BACKEND_URL,
-      file_exists: lessonData.file_url ? true : false,
+      file_exists: !!lessonData.file_url,
     });
   } catch (error) {
     console.error("❌ Debug test route error:", error);
@@ -397,7 +417,9 @@ router.get("/debug/test/:lessonId", authenticateToken, async (req, res) => {
   }
 });
 
-// Debug: Check course lesson types
+/* ============================================================
+   DEBUG Course lesson types
+============================================================ */
 router.get(
   "/debug/course-lesson-types/:courseId",
   authenticateToken,
@@ -405,7 +427,6 @@ router.get(
     try {
       const { courseId } = req.params;
 
-      // Dynamically import models
       const db = await import("../models/index.js");
       const Lesson = db.default.Lesson;
 
@@ -415,13 +436,13 @@ router.get(
         attributes: ["id", "title", "content_type", "order_index", "unit_id"],
       });
 
-      const lessonTypes = lessons.map((lesson) => ({
-        id: lesson.id,
-        title: lesson.title,
-        type: lesson.content_type,
-        order: lesson.order_index,
-        unit_id: lesson.unit_id,
-        is_editable: lesson.content_type !== "unit_header",
+      const lessonTypes = lessons.map((l) => ({
+        id: l.id,
+        title: l.title,
+        type: l.content_type,
+        order: l.order_index,
+        unit_id: l.unit_id,
+        is_editable: l.content_type !== "unit_header",
       }));
 
       res.json({
