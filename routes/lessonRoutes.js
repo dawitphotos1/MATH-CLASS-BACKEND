@@ -56,7 +56,6 @@
 
 
 
-
 // routes/lessonRoutes.js
 
 import express from "express";
@@ -75,7 +74,9 @@ import { uploadLessonFiles } from "../middleware/uploadMiddleware.js";
 
 const router = express.Router();
 
-/* --- CREATE LESSON --- */
+/* -------------------------------------------------------
+   CREATE LESSON
+------------------------------------------------------- */
 router.post(
   "/courses/:courseId/lessons",
   authenticateToken,
@@ -84,17 +85,26 @@ router.post(
   createLesson
 );
 
-/* --- COURSE + UNIT LIST --- */
+/* -------------------------------------------------------
+   LIST BY COURSE / UNIT
+------------------------------------------------------- */
 router.get("/courses/:courseId/lessons", authenticateToken, getLessonsByCourse);
 router.get("/units/:unitId/lessons", authenticateToken, getLessonsByUnit);
 
-/* --- GET LESSON BY ID (MULTIPLE ROUTES) --- */
+/* -------------------------------------------------------
+   GET LESSON
+   (Only ONE clean route)
+------------------------------------------------------- */
 router.get("/:lessonId", authenticateToken, getLessonById);
-router.get("/id/:lessonId", authenticateToken, getLessonById);
-router.get("/preview/:lessonId", authenticateToken, getLessonById);
+
+/* -------------------------------------------------------
+   LESSON PREVIEW (correct)
+------------------------------------------------------- */
 router.get("/:lessonId/preview", authenticateToken, getLessonById);
 
-/* --- UPDATE / DELETE --- */
+/* -------------------------------------------------------
+   UPDATE & DELETE
+------------------------------------------------------- */
 router.put(
   "/:lessonId",
   authenticateToken,
