@@ -55,9 +55,7 @@
 
 
 
-
 // routes/lessonRoutes.js
-
 import express from "express";
 import {
   createLesson,
@@ -74,9 +72,7 @@ import { uploadLessonFiles } from "../middleware/uploadMiddleware.js";
 
 const router = express.Router();
 
-/* -------------------------------------------------------
-   CREATE LESSON
-------------------------------------------------------- */
+/* CREATE */
 router.post(
   "/courses/:courseId/lessons",
   authenticateToken,
@@ -85,26 +81,17 @@ router.post(
   createLesson
 );
 
-/* -------------------------------------------------------
-   LIST BY COURSE / UNIT
-------------------------------------------------------- */
+/* LIST */
 router.get("/courses/:courseId/lessons", authenticateToken, getLessonsByCourse);
 router.get("/units/:unitId/lessons", authenticateToken, getLessonsByUnit);
 
-/* -------------------------------------------------------
-   GET LESSON
-   (Only ONE clean route)
-------------------------------------------------------- */
-router.get("/:lessonId", authenticateToken, getLessonById);
-
-/* -------------------------------------------------------
-   LESSON PREVIEW (correct)
-------------------------------------------------------- */
+/* PREVIEW (define before generic :lessonId if you prefer, but both work) */
 router.get("/:lessonId/preview", authenticateToken, getLessonById);
 
-/* -------------------------------------------------------
-   UPDATE & DELETE
-------------------------------------------------------- */
+/* GET BY ID */
+router.get("/:lessonId", authenticateToken, getLessonById);
+
+/* UPDATE / DELETE */
 router.put(
   "/:lessonId",
   authenticateToken,
@@ -112,12 +99,6 @@ router.put(
   uploadLessonFiles,
   updateLesson
 );
-
-router.delete(
-  "/:lessonId",
-  authenticateToken,
-  checkTeacherOrAdmin,
-  deleteLesson
-);
+router.delete("/:lessonId", authenticateToken, checkTeacherOrAdmin, deleteLesson);
 
 export default router;
