@@ -286,7 +286,7 @@ const ensureUploadsDir = async () => {
   try {
     await fs.access(uploadsDir);
   } catch (error) {
-    await fs.mkdir(uploadsDir, { recursive: true });
+    await fs.mkdirSync(uploadsDir, { recursive: true });
     console.log("✅ Created Uploads directory");
   }
 };
@@ -503,10 +503,12 @@ function buildFileUrls(lesson) {
 }
 
 /**
- * IMPROVED UNIVERSAL FILE SERVING ROUTE
- * Handles ALL file requests with multiple fallback paths
+ * ENHANCED UNIVERSAL FILE SERVING ROUTE
+ * Handles ALL file requests with better Windows path support and error handling
  */
 const serveFile = async (req, res) => {
+  let fileStream = null;
+  
   try {
     const { filename } = req.params;
     
@@ -516,61 +518,63 @@ const serveFile = async (req, res) => {
     const safeFilename = path.basename(filename);
     let filePath = path.join(uploadsDir, safeFilename);
 
+    // Normalize path for Windows
+    filePath = path.normalize(filePath);
+
     console.log("🔍 Looking for file at:", filePath);
 
-    // Check if file exists with multiple fallback paths
+    // Check if file exists
     let fileExists = false;
     let finalFilePath = filePath;
 
-    // Try multiple possible locations
-    const possiblePaths = [
-      filePath,
-      path.join(uploadsDir, filename), // Original filename
-      path.join(process.cwd(), 'Uploads', safeFilename),
-      path.join(process.cwd(), 'Uploads', filename),
-      path.join(__dirname, '..', 'Uploads', safeFilename),
-      path.join(__dirname, '..', 'Uploads', filename)
-    ];
+    try {
+      await fs.access(filePath);
+      fileExists = true;
+      finalFilePath = filePath;
+      console.log("✅ File exists:", filePath);
+    } catch (error) {
+      console.log("❌ File not found at primary path:", filePath);
+      
+      // Try alternative paths
+      const possiblePaths = [
+        path.join(uploadsDir, filename),
+        path.join(process.cwd(), 'Uploads', safeFilename),
+        path.join(process.cwd(), 'Uploads', filename),
+        path.join(__dirname, '..', 'Uploads', safeFilename),
+        path.join(__dirname, '..', 'Uploads', filename)
+      ].map(p => path.normalize(p));
 
-    for (const testPath of possiblePaths) {
-      try {
-        await fs.access(testPath);
-        fileExists = true;
-        finalFilePath = testPath;
-        console.log("✅ File found at:", testPath);
-        break;
-      } catch (e) {
-        // Continue to next path
+      for (const testPath of possiblePaths) {
+        try {
+          await fs.access(testPath);
+          fileExists = true;
+          finalFilePath = testPath;
+          console.log("✅ File found at alternative path:", testPath);
+          break;
+        } catch (e) {
+          // Continue to next path
+        }
       }
     }
 
     if (!fileExists) {
       console.log("❌ File not found in any location:", safeFilename);
-      console.log("🔍 Checked paths:", possiblePaths);
-      
-      // List what files actually exist
-      try {
-        const existingFiles = await fs.readdir(uploadsDir);
-        console.log("📁 Existing files in uploads:", existingFiles.slice(0, 10));
-      } catch (err) {
-        console.log("❌ Cannot read uploads directory");
-      }
-
       return res.status(404).json({
         success: false,
-        error: `File not found: ${safeFilename}`,
-        debug: {
-          requested: filename,
-          safeFilename,
-          uploadsDir,
-          checkedPaths: possiblePaths.map(p => p.replace(process.cwd(), ''))
-        }
+        error: `File not found: ${safeFilename}`
       });
     }
 
     // Get file stats
     const stats = await fs.stat(finalFilePath);
     
+    console.log("📄 File stats:", {
+      filename: safeFilename,
+      path: finalFilePath,
+      size: stats.size,
+      canRead: true
+    });
+
     // Detect MIME type based on extension
     const ext = path.extname(safeFilename).toLowerCase();
     const mimeTypes = {
@@ -589,12 +593,7 @@ const serveFile = async (req, res) => {
 
     const mimeType = mimeTypes[ext] || 'application/octet-stream';
     
-    console.log("📄 Serving file:", {
-      filename: safeFilename,
-      path: finalFilePath,
-      size: stats.size,
-      mimeType
-    });
+    console.log("🚀 Serving file with headers...");
     
     // Set appropriate headers
     res.setHeader('Content-Type', mimeType);
@@ -604,6 +603,7 @@ const serveFile = async (req, res) => {
     // For PDFs, always allow inline display
     if (ext === '.pdf') {
       res.setHeader('Content-Disposition', `inline; filename="${safeFilename}"`);
+      console.log("📖 PDF inline display enabled");
     } else if (['.jpg', '.jpeg', '.png', '.gif', '.txt'].includes(ext)) {
       res.setHeader('Content-Disposition', `inline; filename="${safeFilename}"`);
     } else {
@@ -611,21 +611,47 @@ const serveFile = async (req, res) => {
     }
     
     // Create read stream and pipe to response
-    const fileStream = fs.createReadStream(finalFilePath);
-    fileStream.pipe(res);
+    fileStream = fs.createReadStream(finalFilePath);
     
     fileStream.on('error', (error) => {
-      console.error("❌ File stream error:", error);
+      console.error("❌ FILE STREAM ERROR:", error);
+      console.error("Error details:", {
+        code: error.code,
+        path: finalFilePath,
+        message: error.message
+      });
+      
       if (!res.headersSent) {
         res.status(500).json({
           success: false,
           error: "Error reading file stream",
+          details: error.message
         });
       }
     });
 
+    fileStream.on('open', () => {
+      console.log("✅ File stream opened successfully");
+    });
+
+    fileStream.on('close', () => {
+      console.log("✅ File stream closed successfully");
+    });
+
+    // Pipe the file to response
+    fileStream.pipe(res);
+    
+    console.log("✅ File streaming started");
+
   } catch (error) {
     console.error("❌ FILE SERVING ERROR:", error);
+    console.error("Full error:", {
+      name: error.name,
+      message: error.message,
+      code: error.code,
+      stack: error.stack
+    });
+    
     if (!res.headersSent) {
       res.status(500).json({
         success: false,
