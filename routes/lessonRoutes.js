@@ -53,10 +53,10 @@
 
 // export default router;
 
-
 // routes/lessonRoutes.js
+
 import express from "express";
-import { authenticateToken, authorizeTeacherOrAdmin } from "../middleware/authMiddleware.js";
+import { authenticateToken, isTeacherOrAdmin } from "../middleware/authMiddleware.js";
 import {
   createLesson,
   updateLesson,
@@ -70,42 +70,54 @@ import { uploadLessonFiles } from "../middleware/uploadMiddleware.js";
 const router = express.Router();
 
 /* -----------------------------------------------
-   LESSON ROUTES
+   📘 LESSON ROUTES
 ------------------------------------------------ */
 
-// Create lesson (teacher/admin only)
+/**
+ * Create a new lesson — allowed for teachers or admins only
+ */
 router.post(
   "/course/:courseId",
   authenticateToken,
-  authorizeTeacherOrAdmin,
+  isTeacherOrAdmin,
   uploadLessonFiles,
   createLesson
 );
 
-// Update lesson
+/**
+ * Update a lesson — teacher/admin only
+ */
 router.put(
   "/:lessonId",
   authenticateToken,
-  authorizeTeacherOrAdmin,
+  isTeacherOrAdmin,
   uploadLessonFiles,
   updateLesson
 );
 
-// Delete lesson
+/**
+ * Delete a lesson — teacher/admin only
+ */
 router.delete(
   "/:lessonId",
   authenticateToken,
-  authorizeTeacherOrAdmin,
+  isTeacherOrAdmin,
   deleteLesson
 );
 
-// Get single lesson
+/**
+ * Get a single lesson (authenticated users only)
+ */
 router.get("/:lessonId", authenticateToken, getLessonById);
 
-// Lessons by course
+/**
+ * Get all lessons for a course
+ */
 router.get("/course/:courseId/all", authenticateToken, getLessonsByCourse);
 
-// Lessons by unit
+/**
+ * Get all lessons for a unit
+ */
 router.get("/unit/:unitId/all", authenticateToken, getLessonsByUnit);
 
 export default router;
