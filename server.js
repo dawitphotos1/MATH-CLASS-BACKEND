@@ -316,7 +316,6 @@
 
 
 
-
 // server.js
 import dotenv from "dotenv";
 dotenv.config();
@@ -327,11 +326,10 @@ import helmet from "helmet";
 import cookieParser from "cookie-parser";
 import listEndpoints from "express-list-endpoints";
 import path from "path";
-import { fileURLToPath } from "url";
 import fs from "fs";
 import sequelize from "./config/db.js";
 
-// Routes
+// routes
 import authRoutes from "./routes/authRoutes.js";
 import adminRoutes from "./routes/admin.js";
 import courseRoutes from "./routes/courses.js";
@@ -347,21 +345,13 @@ import { handleStripeWebhook } from "./controllers/paymentController.js";
 const app = express();
 app.set("trust proxy", 1);
 
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
-
-/* ---------------------------
-   Create Uploads directory
---------------------------- */
-const uploadsDir = path.join(process.cwd(), "Uploads");
-if (!fs.existsSync(uploadsDir)) {
-  fs.mkdirSync(uploadsDir, { recursive: true });
-  console.log("📁 Created Uploads directory:", uploadsDir);
+const UPLOAD_DIR = process.env.UPLOAD_DIR || path.join(process.cwd(), "Uploads");
+if (!fs.existsSync(UPLOAD_DIR)) {
+  fs.mkdirSync(UPLOAD_DIR, { recursive: true });
+  console.log("📁 Created upload directory:", UPLOAD_DIR);
 }
 
-/* ---------------------------
-   Helmet - lighter CSP to allow iframe previews
---------------------------- */
+/* Helmet - relaxed enough for iframe previews */
 app.use(
   helmet({
     crossOriginResourcePolicy: { policy: "cross-origin" },
@@ -371,114 +361,84 @@ app.use(
         scriptSrc: ["'self'", "'unsafe-inline'", "https:"],
         styleSrc: ["'self'", "'unsafe-inline'", "https:"],
         imgSrc: ["'self'", "data:", "blob:", "https:"],
-        connectSrc: ["'self'", "https:", "ws:"],
-        frameSrc: ["'self'", "http://localhost:3000", "https://math-class-platform.netlify.app", "*"],
-        frameAncestors: ["'self'", "http://localhost:3000", "https://math-class-platform.netlify.app", "*"],
+        connectSrc: ["'self'", "https:", "wss:"],
+        frameSrc: ["'self'", process.env.FRONTEND_URL || "http://localhost:3000", "*"],
+        frameAncestors: ["'self'", process.env.FRONTEND_URL || "http://localhost:3000", "*"],
       },
     },
   })
 );
 
-/* ---------------------------
-   Static file headers + serving
-   - Set proper MIME/Disposition for PDFs, images, videos
-   - Allow embedding in iframes
---------------------------- */
+/* File static middleware - set headers for common types and allow iframe embedding */
 app.use("/api/v1/files", (req, res, next) => {
-  // Ensure we don't accidentally send restrictive headers that block embedding
+  // Remove restrictive header (if any)
   res.removeHeader("X-Frame-Options");
-  // Allow cross-origin access for file serving (controlled by CORS below)
-  res.setHeader("Access-Control-Allow-Origin", "*");
+  // Allow cross-origin requests to this route (files can be embedded)
+  res.setHeader("Access-Control-Allow-Origin", process.env.FRONTEND_URL || "*");
   next();
 });
 
-// Serve static files from Uploads directory
 app.use(
   "/api/v1/files",
-  express.static(uploadsDir, {
+  express.static(UPLOAD_DIR, {
     setHeaders: (res, filePath) => {
-      if (filePath.endsWith(".pdf")) {
+      const ext = path.extname(filePath).toLowerCase();
+      if (ext === ".pdf") {
         res.setHeader("Content-Type", "application/pdf");
         res.setHeader("Content-Disposition", "inline");
-      } else if (filePath.endsWith(".mp4")) {
+      } else if (ext === ".mp4") {
         res.setHeader("Content-Type", "video/mp4");
-      } else if (filePath.endsWith(".jpg") || filePath.endsWith(".jpeg")) {
-        res.setHeader("Content-Type", "image/jpeg");
-      } else if (filePath.endsWith(".png")) {
-        res.setHeader("Content-Type", "image/png");
-      } else {
-        // default
-        res.setHeader("Content-Type", "application/octet-stream");
       }
-
-      // allow embedding in front-end
+      // Allow framing for previews
       res.setHeader("X-Frame-Options", "ALLOWALL");
     },
   })
 );
 
-console.log("✅ Static file serving configured for /api/v1/files ->", uploadsDir);
+console.log("✅ Static file serving for /api/v1/files ->", UPLOAD_DIR);
 
-/* ---------------------------
-   Stripe webhook (raw body)
---------------------------- */
+/* Stripe webhook must parse raw */
 app.post(
   "/api/v1/payments/webhook",
   express.raw({ type: "application/json" }),
   handleStripeWebhook
 );
 
-/* ---------------------------
-   JSON / URLencoded middleware
---------------------------- */
+/* Body parsing */
 app.use((req, res, next) => {
-  const skipJson = ["/api/v1/payments/webhook"];
-  if (skipJson.some((s) => req.originalUrl.startsWith(s))) return next();
+  const skip = ["/api/v1/payments/webhook"];
+  if (skip.some((s) => req.originalUrl.startsWith(s))) return next();
   express.json({ limit: "50mb" })(req, res, next);
 });
 app.use(express.urlencoded({ extended: true, limit: "50mb" }));
 app.use(cookieParser());
 
-/* ---------------------------
-   CORS - allow frontend origins
---------------------------- */
+/* CORS */
 const allowedOrigins = [
-  "http://localhost:3000",
+  process.env.FRONTEND_URL || "http://localhost:3000",
   "http://127.0.0.1:3000",
-  "https://math-class-platform.netlify.app",
 ];
-
 app.use(
   cors({
-    origin: function (origin, callback) {
+    origin: (origin, callback) => {
       if (!origin) return callback(null, true);
-      if (
-        allowedOrigins.includes(origin) ||
-        origin.includes("localhost") ||
-        origin.endsWith(".netlify.app")
-      ) {
+      if (allowedOrigins.includes(origin) || origin.includes("localhost") || origin.endsWith(".netlify.app")) {
         return callback(null, true);
       }
-      console.warn("🚫 Blocked CORS origin:", origin);
-      return callback(new Error(`CORS not allowed for: ${origin}`));
+      return callback(new Error(`CORS not allowed for origin ${origin}`));
     },
     credentials: true,
     methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
   })
 );
-app.options("*", cors());
 
-/* ---------------------------
-   Simple logger
---------------------------- */
+/* Simple request logger */
 app.use((req, _, next) => {
   console.log(`📥 [${req.method}] ${req.originalUrl} — Origin: ${req.headers.origin || "N/A"}`);
   next();
 });
 
-/* ---------------------------
-   Routes
---------------------------- */
+/* Routes */
 app.use("/api/v1/auth", authRoutes);
 app.use("/api/v1/admin", adminRoutes);
 app.use("/api/v1/courses", courseRoutes);
@@ -486,13 +446,11 @@ app.use("/api/v1/lessons", lessonRoutes);
 app.use("/api/v1/enrollments", enrollmentRoutes);
 app.use("/api/v1/payments", paymentRoutes);
 app.use("/api/v1/test-email", testEmailRoutes);
-app.use("/api/v1/files", filesRoutes); // router for debug + advanced serving
+app.use("/api/v1/files", filesRoutes); // additional debug + helper endpoints
 app.use("/api/v1/units", unitRoutes);
 app.use("/api/v1/teacher", teacherRoutes);
 
-/* ---------------------------
-   Health + Info
---------------------------- */
+/* Health and info */
 app.get("/api/v1/health", async (req, res) => {
   try {
     await sequelize.authenticate();
@@ -501,12 +459,11 @@ app.get("/api/v1/health", async (req, res) => {
       status: "healthy",
       database: "connected",
       env: process.env.NODE_ENV,
+      uploadsDir: UPLOAD_DIR,
       timestamp: new Date().toISOString(),
-      uploadsDir,
-      uploadsExists: fs.existsSync(uploadsDir),
     });
   } catch (err) {
-    console.error("❌ Health check failed:", err.message);
+    console.error("Health check failed:", err.message);
     res.status(500).json({ success: false, error: "Database disconnected" });
   }
 });
@@ -518,16 +475,14 @@ app.get("/api/v1/info", (req, res) => {
     version: "1.0.0",
     env: process.env.NODE_ENV,
     backendUrl: process.env.BACKEND_URL,
-    uploadsDir,
+    uploadsDir: UPLOAD_DIR,
     endpoints: listEndpoints(app).map((e) => ({ path: e.path, methods: e.methods })),
   });
 });
 
-/* ---------------------------
-   404 + Global error
---------------------------- */
+/* 404 and global error handler */
 app.use((req, res) => {
-  res.status(404).json({ success: false, error: "Route not found", path: req.originalUrl, method: req.method });
+  res.status(404).json({ success: false, error: "Route not found", path: req.originalUrl });
 });
 
 app.use((err, req, res, next) => {
@@ -538,23 +493,18 @@ app.use((err, req, res, next) => {
   res.status(err.statusCode || 500).json({
     success: false,
     error: process.env.NODE_ENV === "production" ? "Internal server error" : err.message,
-    ...(process.env.NODE_ENV === "development" && { stack: err.stack, path: req.originalUrl }),
+    ...(process.env.NODE_ENV === "development" && { stack: err.stack }),
   });
 });
 
-/* ---------------------------
-   Start server
---------------------------- */
+/* Start server */
 const PORT = process.env.PORT || 5000;
-
-const start = async () => {
+const startServer = async () => {
   try {
     await sequelize.authenticate();
     console.log("✅ Database connected");
     await sequelize.sync({ alter: process.env.ALTER_DB === "true" });
     console.log("✅ Models synchronized");
-
-    if (!fs.existsSync(uploadsDir)) fs.mkdirSync(uploadsDir, { recursive: true });
 
     app.listen(PORT, "0.0.0.0", () => {
       console.log(`🚀 Server running on port ${PORT}`);
@@ -562,11 +512,10 @@ const start = async () => {
       console.log(`📁 File serving: ${process.env.BACKEND_URL || `http://localhost:${PORT}`}/api/v1/files/`);
     });
   } catch (err) {
-    console.error("❌ Server start failed:", err.message);
+    console.error("❌ Server startup failed:", err.message);
     process.exit(1);
   }
 };
-
-start();
+startServer();
 
 export default app;

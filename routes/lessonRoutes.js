@@ -54,51 +54,58 @@
 // export default router;
 
 
-
 // routes/lessonRoutes.js
 import express from "express";
+import { authenticateToken, authorizeTeacherOrAdmin } from "../middleware/authMiddleware.js";
 import {
   createLesson,
-  getLessonsByCourse,
-  getLessonsByUnit,
-  getLessonById,
   updateLesson,
   deleteLesson,
+  getLessonById,
+  getLessonsByCourse,
+  getLessonsByUnit,
 } from "../controllers/lessonController.js";
-
-import { authenticateToken } from "../middleware/authMiddleware.js";
-import checkTeacherOrAdmin from "../middleware/checkTeacherOrAdmin.js";
 import { uploadLessonFiles } from "../middleware/uploadMiddleware.js";
 
 const router = express.Router();
 
-/* CREATE */
+/* -----------------------------------------------
+   LESSON ROUTES
+------------------------------------------------ */
+
+// Create lesson (teacher/admin only)
 router.post(
-  "/courses/:courseId/lessons",
+  "/course/:courseId",
   authenticateToken,
-  checkTeacherOrAdmin,
+  authorizeTeacherOrAdmin,
   uploadLessonFiles,
   createLesson
 );
 
-/* LIST */
-router.get("/courses/:courseId/lessons", authenticateToken, getLessonsByCourse);
-router.get("/units/:unitId/lessons", authenticateToken, getLessonsByUnit);
-
-/* PREVIEW (define before generic :lessonId if you prefer, but both work) */
-router.get("/:lessonId/preview", authenticateToken, getLessonById);
-
-/* GET BY ID */
-router.get("/:lessonId", authenticateToken, getLessonById);
-
-/* UPDATE / DELETE */
+// Update lesson
 router.put(
   "/:lessonId",
   authenticateToken,
-  checkTeacherOrAdmin,
+  authorizeTeacherOrAdmin,
   uploadLessonFiles,
   updateLesson
 );
-router.delete("/:lessonId", authenticateToken, checkTeacherOrAdmin, deleteLesson);
+
+// Delete lesson
+router.delete(
+  "/:lessonId",
+  authenticateToken,
+  authorizeTeacherOrAdmin,
+  deleteLesson
+);
+
+// Get single lesson
+router.get("/:lessonId", authenticateToken, getLessonById);
+
+// Lessons by course
+router.get("/course/:courseId/all", authenticateToken, getLessonsByCourse);
+
+// Lessons by unit
+router.get("/unit/:unitId/all", authenticateToken, getLessonsByUnit);
 
 export default router;
