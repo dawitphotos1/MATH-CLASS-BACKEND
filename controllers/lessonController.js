@@ -321,7 +321,6 @@
 
 
 
-
 // controllers/lessonController.js
 import db from "../models/index.js";
 import path from "path";
@@ -610,39 +609,5 @@ export const deleteLesson = async (req, res) => {
   } catch (err) {
     console.error("deleteLesson error:", err);
     return res.status(500).json({ success: false, error: err.message });
-  }
-};
-
-/* -----------------------------------------------------------
-   GET FIRST PREVIEW LESSON (PUBLIC - No authentication required)
------------------------------------------------------------ */
-export const getFirstPreviewLesson = async (req, res) => {
-  try {
-    const { courseId } = req.params;
-
-    const lesson = await Lesson.findOne({
-      where: { course_id: courseId, is_preview: true },
-      order: [["order_index", "ASC"]],
-    });
-
-    if (!lesson) {
-      return res.status(404).json({
-        success: false,
-        error: "No preview lesson found for this course",
-      });
-    }
-
-    res.json({
-      success: true,
-      lessonId: lesson.id,
-      title: lesson.title,
-      courseId: lesson.course_id,
-    });
-  } catch (error) {
-    console.error("❌ getFirstPreviewLesson error:", error.message);
-    res.status(500).json({
-      success: false,
-      error: "Failed to load preview lesson",
-    });
   }
 };

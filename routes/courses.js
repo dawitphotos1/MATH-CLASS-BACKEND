@@ -222,7 +222,6 @@
 
 
 
-
 // routes/courses.js
 import express from "express";
 import {
@@ -235,10 +234,6 @@ import {
   createCourseWithUnits,
   getTeacherCourses,
 } from "../controllers/courseController.js";
-
-import {
-  getFirstPreviewLesson, // ⭐ PUBLIC
-} from "../controllers/lessonController.js";
 
 import authenticateToken from "../middleware/authenticateToken.js";
 import checkTeacherOrAdmin from "../middleware/checkTeacherOrAdmin.js";
@@ -263,8 +258,69 @@ router.get("/id/:id", getCourseById);
 // Get all lessons for a course (public)
 router.get("/:courseId/lessons", getLessonsByCourse);
 
-// ⭐ NEW — PUBLIC: Get first preview lesson
-router.get("/:courseId/preview-lesson", getFirstPreviewLesson);
+// ⭐ PUBLIC: Get first preview lesson with full content
+router.get("/:courseId/preview-lesson", async (req, res) => {
+  try {
+    const { courseId } = req.params;
+
+    console.log("🔍 Finding preview lesson for course:", courseId);
+
+    const lesson = await Lesson.findOne({
+      where: { course_id: courseId, is_preview: true },
+      order: [["order_index", "ASC"]],
+      include: [
+        { 
+          model: Course, 
+          as: "course",
+          attributes: ["id", "title", "description", "teacher_id"]
+        }
+      ],
+    });
+
+    if (!lesson) {
+      console.log("❌ No preview lesson found for course:", courseId);
+      return res.status(404).json({
+        success: false,
+        error: "No preview lesson found for this course",
+      });
+    }
+
+    // Build absolute URLs
+    const backend = (process.env.BACKEND_URL || `http://localhost:${process.env.PORT || 5000}`).replace(/\/+$/, "");
+
+    const clean = (x) => x?.replace(/^Uploads\//, "").replace(/^\/+/, "");
+
+    const lessonData = lesson.toJSON();
+    
+    // Build full URLs for media files
+    if (lessonData.video_url && !lessonData.video_url.startsWith("http")) {
+      lessonData.video_url = `${backend}/api/v1/files/${clean(lessonData.video_url)}`;
+    }
+
+    if (lessonData.file_url && !lessonData.file_url.startsWith("http")) {
+      lessonData.file_url = `${backend}/api/v1/files/${clean(lessonData.file_url)}`;
+    }
+
+    console.log("✅ Preview lesson served publicly:", {
+      lessonId: lessonData.id,
+      title: lessonData.title,
+      course: lessonData.course?.title
+    });
+
+    res.json({
+      success: true,
+      lesson: lessonData,
+      access: "public"
+    });
+
+  } catch (error) {
+    console.error("❌ Preview lesson error:", error.message);
+    res.status(500).json({
+      success: false,
+      error: "Failed to load preview lesson",
+    });
+  }
+});
 
 // ⚠ Slug route MUST be last because it catches all dynamic paths
 router.get("/:slug", getPublicCourseBySlug);

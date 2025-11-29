@@ -140,15 +140,11 @@
 // export default router;
 
 
-
-
-
 // routes/files.js
 import express from "express";
 import path from "path";
 import fs from "fs/promises";
 import fsSync from "fs";
-import { authenticateToken } from "../middleware/authMiddleware.js";
 import { fileURLToPath } from "url";
 
 const router = express.Router();
@@ -167,54 +163,28 @@ if (!fsSync.existsSync(uploadsDir)) {
 }
 
 /* ---------------------------------------------------------------
-   PREVIEW LESSON ENDPOINT (PUBLIC - No authentication required)
+   PUBLIC PREVIEW LESSON ENDPOINT - No authentication required
    URL → /api/v1/files/preview-lesson/:lessonId
 --------------------------------------------------------------- */
 router.get("/preview-lesson/:lessonId", async (req, res) => {
   try {
     const { lessonId } = req.params;
-    
-    // Optional: get user ID if logged in, but don't require it
-    const userId = req.user?.id;
+
+    console.log("🔓 PUBLIC ACCESS - Preview lesson requested:", lessonId);
 
     const db = await import("../models/index.js");
-    const { Lesson, Course, Enrollment } = db.default;
+    const { Lesson, Course } = db.default;
 
     const lesson = await Lesson.findByPk(lessonId, {
       include: [{ model: Course, as: "course" }],
     });
 
     if (!lesson) {
+      console.log("❌ Preview lesson not found:", lessonId);
       return res.status(404).json({
         success: false,
-        error: "Lesson not found",
+        error: "Preview lesson not found",
       });
-    }
-
-    // Permission check - ALLOW PUBLIC ACCESS FOR PREVIEW LESSONS
-    const isPreview = lesson.is_preview;
-    
-    if (!isPreview) {
-      // For non-preview lessons, check authentication and enrollment
-      if (!req.user) {
-        return res.status(401).json({
-          success: false,
-          error: "Login required to access this lesson",
-        });
-      }
-
-      const isAdmin = req.user.role === "admin";
-      const isTeacher = lesson.course?.teacher_id === userId;
-      const isEnrolled = await Enrollment.findOne({
-        where: { user_id: userId, course_id: lesson.course_id, approval_status: "approved" },
-      });
-
-      if (!isAdmin && !isTeacher && !isEnrolled) {
-        return res.status(403).json({
-          success: false,
-          error: "Access denied. Not enrolled.",
-        });
-      }
     }
 
     // Build absolute URLs
@@ -223,6 +193,8 @@ router.get("/preview-lesson/:lessonId", async (req, res) => {
     const clean = (x) => x?.replace(/^Uploads\//, "").replace(/^\/+/, "");
 
     const data = lesson.toJSON();
+    
+    // Build full URLs for media
     if (data.video_url && !data.video_url.startsWith("http")) {
       data.video_url = `${backend}/api/v1/files/${clean(data.video_url)}`;
     }
@@ -231,13 +203,22 @@ router.get("/preview-lesson/:lessonId", async (req, res) => {
       data.file_url = `${backend}/api/v1/files/${clean(data.file_url)}`;
     }
 
+    console.log("✅ Public preview served successfully:", {
+      lessonId: data.id,
+      title: data.title,
+      is_preview: data.is_preview,
+      course: data.course?.title
+    });
+
     return res.json({
       success: true,
       lesson: data,
+      access: "public",
+      message: "Public preview access granted"
     });
 
   } catch (err) {
-    console.error("preview-lesson error:", err);
+    console.error("❌ Public preview error:", err);
     return res.status(500).json({ 
       success: false, 
       error: "Failed to load preview" 
@@ -246,7 +227,7 @@ router.get("/preview-lesson/:lessonId", async (req, res) => {
 });
 
 /* ---------------------------------------------------------------
-   UNIVERSAL FILE SERVER — FIXED V3
+   UNIVERSAL FILE SERVER — Public file access
    Handles EVERYTHING (PDF, MP4, images, docs)
 --------------------------------------------------------------- */
 router.get("/:filename", async (req, res) => {
