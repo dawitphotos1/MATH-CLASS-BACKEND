@@ -205,7 +205,6 @@
 
 
 
-
 // server.js
 import dotenv from "dotenv";
 dotenv.config();
@@ -235,14 +234,26 @@ import { handleStripeWebhook } from "./controllers/paymentController.js";
 const app = express();
 app.set("trust proxy", 1);
 
-/* Uploads folder */
+/* ======================================================
+   FRONTEND ORIGIN (IMPORTANT FOR CORS)
+====================================================== */
+const FRONTEND =
+  process.env.FRONTEND_URL || "http://localhost:3000";
+
+/* ======================================================
+   UPLOADS DIRECTORY
+====================================================== */
 const UPLOAD_DIR =
   process.env.UPLOAD_DIR || path.join(process.cwd(), "Uploads");
+
 if (!fs.existsSync(UPLOAD_DIR)) {
   fs.mkdirSync(UPLOAD_DIR, { recursive: true });
+  console.log("📁 Upload directory created:", UPLOAD_DIR);
 }
 
-/* Helmet: allow iframe from frontend + netlify */
+/* ======================================================
+   HELMET — RELAXED FOR IFAME + PREVIEW
+====================================================== */
 app.use(
   helmet({
     crossOriginResourcePolicy: false,
@@ -250,52 +261,69 @@ app.use(
   })
 );
 
-/* Allow embedding */
+/* ======================================================
+   CORS (THE MOST IMPORTANT PART)
+====================================================== */
+app.use(
+  cors({
+    origin: FRONTEND,       // MUST be exact domain
+    credentials: true,       // allow cookies + JWT
+    methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+    allowedHeaders: ["Content-Type", "Authorization"],
+  })
+);
+
+/* ======================================================
+   FILE STATIC SERVER — FIXED
+   Allows PDF/Video preview + removes frame restrictions
+====================================================== */
 app.use((req, res, next) => {
-  res.removeHeader("X-Frame-Options");
-  res.setHeader("Access-Control-Allow-Origin", "*");
+  res.removeHeader("X-Frame-Options"); // remove block
+  res.setHeader("Access-Control-Allow-Origin", FRONTEND);
+  res.setHeader("Access-Control-Allow-Credentials", "true");
   next();
 });
 
-/* Static file server */
 app.use(
   "/api/v1/files",
   express.static(UPLOAD_DIR, {
     setHeaders: (res, filePath) => {
-      if (filePath.endsWith(".pdf")) {
+      const ext = path.extname(filePath).toLowerCase();
+
+      if (ext === ".pdf") {
         res.setHeader("Content-Type", "application/pdf");
         res.setHeader("Content-Disposition", "inline");
       }
+      if (ext === ".mp4") {
+        res.setHeader("Content-Type", "video/mp4");
+      }
+
       res.setHeader("X-Frame-Options", "ALLOWALL");
     },
   })
 );
 
-/* Stripe webhook */
+console.log("📡 Files served from:", UPLOAD_DIR);
+
+/* ======================================================
+   STRIPE WEBHOOK (MUST USE RAW)
+====================================================== */
 app.post(
   "/api/v1/payments/webhook",
   express.raw({ type: "application/json" }),
   handleStripeWebhook
 );
 
-/* Body parsers */
+/* ======================================================
+   BODY PARSERS
+====================================================== */
 app.use(express.json({ limit: "50mb" }));
 app.use(express.urlencoded({ extended: true, limit: "50mb" }));
 app.use(cookieParser());
 
-/* CORS */
-app.use(
-  cors({
-    origin: [
-      process.env.FRONTEND_URL || "http://localhost:3000",
-      "http://127.0.0.1:3000",
-    ],
-    credentials: true,
-    methods: ["GET", "POST", "PUT", "PATCH", "DELETE"],
-  })
-);
-
-/* Routes */
+/* ======================================================
+   ROUTES
+====================================================== */
 app.use("/api/v1/auth", authRoutes);
 app.use("/api/v1/admin", adminRoutes);
 app.use("/api/v1/courses", courseRoutes);
@@ -307,22 +335,35 @@ app.use("/api/v1/files", filesRoutes);
 app.use("/api/v1/units", unitRoutes);
 app.use("/api/v1/teacher", teacherRoutes);
 
-/* Health */
+/* ======================================================
+   HEALTH CHECK
+====================================================== */
 app.get("/api/v1/health", async (req, res) => {
   try {
     await sequelize.authenticate();
-    res.json({ success: true, status: "healthy" });
+    res.json({
+      success: true,
+      status: "healthy",
+      database: "connected",
+      env: process.env.NODE_ENV,
+    });
   } catch (err) {
-    res.status(500).json({ success: false, error: "Database error" });
+    res.status(500).json({ success: false, error: "Database disconnected" });
   }
 });
 
-/* 404 */
+/* ======================================================
+   404 HANDLER
+====================================================== */
 app.use((req, res) => {
-  res.status(404).json({ success: false, error: "Route not found" });
+  res
+    .status(404)
+    .json({ success: false, error: "Route not found", path: req.originalUrl });
 });
 
-/* Error handler */
+/* ======================================================
+   GLOBAL ERROR HANDLER
+====================================================== */
 app.use((err, req, res, next) => {
   console.error("❌ Server error:", err.message);
   res.status(500).json({
@@ -334,16 +375,29 @@ app.use((err, req, res, next) => {
   });
 });
 
-/* Start server */
+/* ======================================================
+   START SERVER
+====================================================== */
 const PORT = process.env.PORT || 5000;
 
 const start = async () => {
-  await sequelize.authenticate();
-  await sequelize.sync({ alter: process.env.ALTER_DB === "true" });
+  try {
+    await sequelize.authenticate();
+    console.log("🟢 Database connected");
 
-  app.listen(PORT, "0.0.0.0", () => {
-    console.log("🚀 Server ready on port", PORT);
-  });
+    await sequelize.sync({
+      alter: process.env.ALTER_DB === "true",
+    });
+
+    app.listen(PORT, "0.0.0.0", () => {
+      console.log(`🚀 Backend running on port ${PORT}`);
+      console.log(`🌍 Frontend allowed: ${FRONTEND}`);
+      console.log(`📁 Upload directory: ${UPLOAD_DIR}`);
+    });
+  } catch (err) {
+    console.error("❌ Startup failed:", err.message);
+    process.exit(1);
+  }
 };
 
 start();
