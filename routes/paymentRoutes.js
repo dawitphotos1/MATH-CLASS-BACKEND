@@ -1,3 +1,51 @@
+// // routes/paymentRoutes.js
+// import express from "express";
+// import {
+//   getPaymentByCourseId,
+//   createCheckoutSession,
+//   confirmPayment,
+//   handleStripeWebhook,
+// } from "../controllers/paymentController.js";
+// import { authenticateToken } from "../middleware/authMiddleware.js";
+
+// const router = express.Router();
+
+// /* ============================================================
+//    💳 PAYMENT ROUTES (Math Class Platform)
+// ============================================================ */
+
+// /**
+//  * Get course info for payment page
+//  * Used by PaymentPage.jsx to display course details before checkout
+//  */
+// router.get("/:id", authenticateToken, getPaymentByCourseId);
+
+// /**
+//  * Create Stripe checkout session
+//  */
+// router.post("/create-session", authenticateToken, createCheckoutSession);
+// router.post("/create-checkout-session", authenticateToken, createCheckoutSession); // alias
+
+// /**
+//  * Confirm payment (from frontend fallback)
+//  */
+// router.post("/confirm", authenticateToken, confirmPayment);
+// router.post("/confirm-payment", authenticateToken, confirmPayment); // alias
+
+// /**
+//  * Stripe Webhook (⚠️ RAW body required)
+//  */
+// router.post(
+//   "/webhook",
+//   express.raw({ type: "application/json" }),
+//   handleStripeWebhook
+// );
+
+// export default router;
+
+
+
+
 // routes/paymentRoutes.js
 import express from "express";
 import {
@@ -15,25 +63,37 @@ const router = express.Router();
 ============================================================ */
 
 /**
- * Get course info for payment page
- * Used by PaymentPage.jsx to display course details before checkout
+ * @route   GET /api/payments/:id
+ * @desc    Get course info for payment page
+ * @access  Private (Authenticated users)
  */
 router.get("/:id", authenticateToken, getPaymentByCourseId);
 
 /**
- * Create Stripe checkout session
+ * @route   POST /api/payments/create-checkout-session
+ * @desc    Create Stripe checkout session
+ * @access  Private (Students only)
  */
+router.post("/create-checkout-session", authenticateToken, createCheckoutSession);
+
+// Legacy route for backward compatibility
 router.post("/create-session", authenticateToken, createCheckoutSession);
-router.post("/create-checkout-session", authenticateToken, createCheckoutSession); // alias
 
 /**
- * Confirm payment (from frontend fallback)
+ * @route   POST /api/payments/confirm
+ * @desc    Confirm payment (frontend fallback)
+ * @access  Private (Students only)
  */
 router.post("/confirm", authenticateToken, confirmPayment);
-router.post("/confirm-payment", authenticateToken, confirmPayment); // alias
+
+// Legacy route for backward compatibility
+router.post("/confirm-payment", authenticateToken, confirmPayment);
 
 /**
- * Stripe Webhook (⚠️ RAW body required)
+ * @route   POST /api/payments/webhook
+ * @desc    Stripe Webhook endpoint (RAW body required)
+ * @access  Public (Called by Stripe)
+ * @note    This route MUST use express.raw() middleware
  */
 router.post(
   "/webhook",
