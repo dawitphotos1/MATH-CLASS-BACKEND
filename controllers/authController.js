@@ -1,3 +1,249 @@
+// // controllers/authController.js
+// import jwt from "jsonwebtoken";
+// import bcrypt from "bcryptjs";
+// import db from "../models/index.js";
+// import sendEmail from "../utils/sendEmail.js";
+// import adminNewRegistrationAlert from "../utils/emails/adminNewRegistrationAlert.js";
+
+// const { User } = db;
+
+// /* ============================================================
+//    🔑 Helper: Generate JWT
+// ============================================================ */
+// const generateToken = (user) => {
+//   return jwt.sign({ id: user.id, role: user.role }, process.env.JWT_SECRET, {
+//     expiresIn: "7d",
+//   });
+// };
+
+// const cookieOptions = {
+//   httpOnly: true,
+//   secure: process.env.NODE_ENV === "production",
+//   sameSite: process.env.NODE_ENV === "production" ? "None" : "Lax",
+//   maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
+// };
+
+// /* ============================================================
+//    📝 Register (with Admin Alert)
+// ============================================================ */
+// export const register = async (req, res) => {
+//   try {
+//     const { name, email, password, role, subject } = req.body;
+
+//     if (!name || !email || !password) {
+//       return res.status(400).json({ success: false, error: "Missing fields" });
+//     }
+
+//     const existing = await User.findOne({
+//       where: { email: email.toLowerCase() },
+//     });
+//     if (existing) {
+//       return res
+//         .status(400)
+//         .json({ success: false, error: "User already exists" });
+//     }
+
+//     const hashed = await bcrypt.hash(password, 10);
+//     const user = await User.create({
+//       name,
+//       email: email.toLowerCase(),
+//       password: hashed,
+//       role: role || "student",
+//       subject: subject || null,
+//       approval_status: role === "student" ? "pending" : "approved",
+//     });
+
+//     let token = null;
+//     if (user.approval_status === "approved") {
+//       token = generateToken(user);
+//       res.cookie("token", token, cookieOptions);
+//     }
+
+//     // === Notify Admin of new student registration ===
+//     if (user.role === "student") {
+//       try {
+//         const adminEmail = process.env.ADMIN_EMAIL || process.env.MAIL_USER;
+//         const { subject: mailSubject, html } = adminNewRegistrationAlert({
+//           name: user.name,
+//           email: user.email,
+//           subject: user.subject || "N/A",
+//         });
+
+//         await sendEmail({
+//           to: adminEmail,
+//           subject: mailSubject,
+//           html,
+//         });
+
+//         console.log(`📧 Admin notified of new student: ${user.name}`);
+//       } catch (err) {
+//         console.warn("⚠️ Failed to send admin registration alert:", err.message);
+//       }
+//     }
+
+//     res.status(201).json({
+//       success: true,
+//       message:
+//         user.approval_status === "approved"
+//           ? "Registration successful"
+//           : "Registration pending admin approval",
+//       token,
+//       user: {
+//         id: user.id,
+//         name: user.name,
+//         email: user.email,
+//         role: user.role,
+//         subject: user.subject,
+//         approval_status: user.approval_status,
+//       },
+//     });
+//   } catch (err) {
+//     console.error("❌ Register error:", err);
+//     res.status(500).json({ success: false, error: "Server error" });
+//   }
+// };
+
+// /* ============================================================
+//    🔐 Login
+// ============================================================ */
+// export const login = async (req, res) => {
+//   try {
+//     const { email, password } = req.body;
+//     if (!email || !password) {
+//       return res
+//         .status(400)
+//         .json({ success: false, error: "Email and password required" });
+//     }
+
+//     const user = await User.findOne({ where: { email: email.toLowerCase() } });
+//     if (!user) {
+//       return res
+//         .status(401)
+//         .json({ success: false, error: "Invalid credentials" });
+//     }
+
+//     const match = await bcrypt.compare(password, user.password);
+//     if (!match) {
+//       return res
+//         .status(401)
+//         .json({ success: false, error: "Invalid credentials" });
+//     }
+
+//     if (user.approval_status !== "approved") {
+//       return res
+//         .status(403)
+//         .json({ success: false, error: "Account pending approval" });
+//     }
+
+//     const token = generateToken(user);
+//     res.cookie("token", token, cookieOptions);
+
+//     res.json({
+//       success: true,
+//       message: "Login successful",
+//       token,
+//       user: {
+//         id: user.id,
+//         name: user.name,
+//         email: user.email,
+//         role: user.role,
+//         subject: user.subject,
+//         approval_status: user.approval_status,
+//       },
+//     });
+//   } catch (err) {
+//     console.error("❌ Login error:", err);
+//     res.status(500).json({ success: false, error: "Server error" });
+//   }
+// };
+
+// /* ============================================================
+//    👤 Get Current User
+// ============================================================ */
+// export const getMe = async (req, res) => {
+//   try {
+//     if (!req.user) {
+//       return res
+//         .status(401)
+//         .json({ success: false, error: "Not authenticated" });
+//     }
+
+//     const user = await User.findByPk(req.user.id, {
+//       attributes: { exclude: ["password"] },
+//     });
+
+//     if (!user) {
+//       return res.status(404).json({ success: false, error: "User not found" });
+//     }
+
+//     res.json({ success: true, user });
+//   } catch (err) {
+//     console.error("❌ getMe error:", err);
+//     res.status(500).json({ success: false, error: "Server error" });
+//   }
+// };
+
+// /* ============================================================
+//    🚪 Logout
+// ============================================================ */
+// export const logout = (req, res) => {
+//   try {
+//     res.clearCookie("token", cookieOptions);
+//     res.json({ success: true, message: "Logged out successfully" });
+//   } catch (err) {
+//     console.error("❌ Logout error:", err);
+//     res.status(500).json({ success: false, error: "Server error" });
+//   }
+// };
+
+// /* ============================================================
+//    ✅ Confirm Account (via email token)
+// ============================================================ */
+// export const confirmAccount = async (req, res) => {
+//   try {
+//     const { token } = req.query;
+//     if (!token) {
+//       return res
+//         .status(400)
+//         .json({ success: false, error: "Missing confirmation token" });
+//     }
+
+//     const decoded = jwt.verify(token, process.env.JWT_SECRET);
+//     const user = await User.findByPk(decoded.id);
+
+//     if (!user) {
+//       return res
+//         .status(404)
+//         .json({ success: false, error: "User not found or invalid token" });
+//     }
+
+//     if (user.approval_status !== "approved") {
+//       return res.status(400).json({
+//         success: false,
+//         error: "Your account has not yet been approved by admin",
+//       });
+//     }
+
+//     user.email_confirmed = true; // optional DB column
+//     await user.save();
+
+//     return res.json({
+//       success: true,
+//       message: "✅ Your email has been confirmed. You can now log in.",
+//     });
+//   } catch (err) {
+//     console.error("❌ Account confirmation error:", err);
+//     return res
+//       .status(400)
+//       .json({ success: false, error: "Invalid or expired token" });
+//   }
+// };
+
+
+
+
+
+
 // controllers/authController.js
 import jwt from "jsonwebtoken";
 import bcrypt from "bcryptjs";
@@ -8,23 +254,37 @@ import adminNewRegistrationAlert from "../utils/emails/adminNewRegistrationAlert
 const { User } = db;
 
 /* ============================================================
-   🔑 Helper: Generate JWT
+   Helper: Generate JWT
 ============================================================ */
-const generateToken = (user) => {
-  return jwt.sign({ id: user.id, role: user.role }, process.env.JWT_SECRET, {
+const generateToken = (user) =>
+  jwt.sign({ id: user.id, role: user.role }, process.env.JWT_SECRET, {
     expiresIn: "7d",
   });
-};
 
-const cookieOptions = {
-  httpOnly: true,
-  secure: process.env.NODE_ENV === "production",
-  sameSite: process.env.NODE_ENV === "production" ? "None" : "Lax",
-  maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
+/* ============================================================
+   Cookie options (consistent and explicit)
+   - sameSite=None + secure for cross-site cookies in production
+   - httpOnly to prevent XSS stealing
+============================================================ */
+const buildCookieOptions = () => {
+  const isProd = process.env.NODE_ENV === "production";
+  const opts = {
+    httpOnly: true,
+    secure: isProd,
+    sameSite: isProd ? "None" : "Lax",
+    maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
+  };
+
+  // Optional: allow override of cookie domain if you're using subdomains
+  if (process.env.COOKIE_DOMAIN) {
+    opts.domain = process.env.COOKIE_DOMAIN;
+  }
+
+  return opts;
 };
 
 /* ============================================================
-   📝 Register (with Admin Alert)
+   Register
 ============================================================ */
 export const register = async (req, res) => {
   try {
@@ -56,10 +316,10 @@ export const register = async (req, res) => {
     let token = null;
     if (user.approval_status === "approved") {
       token = generateToken(user);
-      res.cookie("token", token, cookieOptions);
+      res.cookie("token", token, buildCookieOptions());
     }
 
-    // === Notify Admin of new student registration ===
+    // Notify admin of new registration (best-effort)
     if (user.role === "student") {
       try {
         const adminEmail = process.env.ADMIN_EMAIL || process.env.MAIL_USER;
@@ -68,16 +328,14 @@ export const register = async (req, res) => {
           email: user.email,
           subject: user.subject || "N/A",
         });
-
         await sendEmail({
           to: adminEmail,
           subject: mailSubject,
           html,
         });
-
-        console.log(`📧 Admin notified of new student: ${user.name}`);
+        console.log(`📧 Admin notified of new student: ${user.email}`);
       } catch (err) {
-        console.warn("⚠️ Failed to send admin registration alert:", err.message);
+        console.warn("⚠️ Failed to send admin registration alert:", err?.message || err);
       }
     }
 
@@ -98,13 +356,15 @@ export const register = async (req, res) => {
       },
     });
   } catch (err) {
-    console.error("❌ Register error:", err);
+    console.error("❌ Register error:", err?.message || err);
     res.status(500).json({ success: false, error: "Server error" });
   }
 };
 
 /* ============================================================
-   🔐 Login
+   Login
+   - Sets cookie (for cookie-based sessions)
+   - Also returns token in JSON so SPA clients can store it if desired
 ============================================================ */
 export const login = async (req, res) => {
   try {
@@ -136,8 +396,10 @@ export const login = async (req, res) => {
     }
 
     const token = generateToken(user);
-    res.cookie("token", token, cookieOptions);
+    // Cookie for browser requests
+    res.cookie("token", token, buildCookieOptions());
 
+    // Also return token in response (useful for API clients / localStorage)
     res.json({
       success: true,
       message: "Login successful",
@@ -152,13 +414,14 @@ export const login = async (req, res) => {
       },
     });
   } catch (err) {
-    console.error("❌ Login error:", err);
+    console.error("❌ Login error:", err?.message || err);
     res.status(500).json({ success: false, error: "Server error" });
   }
 };
 
 /* ============================================================
-   👤 Get Current User
+   Get Current User
+   - protect middleware provides req.user
 ============================================================ */
 export const getMe = async (req, res) => {
   try {
@@ -178,26 +441,28 @@ export const getMe = async (req, res) => {
 
     res.json({ success: true, user });
   } catch (err) {
-    console.error("❌ getMe error:", err);
+    console.error("❌ getMe error:", err?.message || err);
     res.status(500).json({ success: false, error: "Server error" });
   }
 };
 
 /* ============================================================
-   🚪 Logout
+   Logout
+   - Clear cookie on server and return success
 ============================================================ */
 export const logout = (req, res) => {
   try {
-    res.clearCookie("token", cookieOptions);
+    // Clear cookie using the same options to ensure proper deletion
+    res.clearCookie("token", buildCookieOptions());
     res.json({ success: true, message: "Logged out successfully" });
   } catch (err) {
-    console.error("❌ Logout error:", err);
+    console.error("❌ Logout error:", err?.message || err);
     res.status(500).json({ success: false, error: "Server error" });
   }
 };
 
 /* ============================================================
-   ✅ Confirm Account (via email token)
+   Confirm Account (via token)
 ============================================================ */
 export const confirmAccount = async (req, res) => {
   try {
@@ -224,7 +489,7 @@ export const confirmAccount = async (req, res) => {
       });
     }
 
-    user.email_confirmed = true; // optional DB column
+    user.email_confirmed = true;
     await user.save();
 
     return res.json({
@@ -232,7 +497,7 @@ export const confirmAccount = async (req, res) => {
       message: "✅ Your email has been confirmed. You can now log in.",
     });
   } catch (err) {
-    console.error("❌ Account confirmation error:", err);
+    console.error("❌ Account confirmation error:", err?.message || err);
     return res
       .status(400)
       .json({ success: false, error: "Invalid or expired token" });
