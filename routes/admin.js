@@ -16,7 +16,7 @@ import {
   getAllUsers,
 } from "../controllers/adminController.js";
 
-import  authenticateToken from "../middleware/authMiddleware.js";
+import  {authenticateToken} from "../middleware/authMiddleware.js";
 import { isAdmin } from "../middleware/authMiddleware.js";
 const router = express.Router();
 

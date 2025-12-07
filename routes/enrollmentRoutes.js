@@ -13,7 +13,7 @@ import {
   getPendingEnrollments,
   getApprovedEnrollments,
 } from "../controllers/enrollmentController.js";
-import { authenticateToken from "../middleware/authMiddleware.js";
+import  authenticateToken from "../middleware/authMiddleware.js";
 import db from "../models/index.js";
 
 const router = Router();
