@@ -1,7 +1,7 @@
 // routes/enrollments.js
 import express from "express";
 import * as enrollmentController from "../controllers/enrollmentController.js";
-import authenticateToken from "../middleware/authenticateToken.js";
+import {authenticateToken} from "../middleware/authenticateToken.js";
 import roleMiddleware from "../middleware/roleMiddleware.js"; // Optional for admin-only access
 
 const router = express.Router();

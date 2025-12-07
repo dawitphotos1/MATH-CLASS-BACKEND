@@ -1,6 +1,6 @@
 //routes/payments.js
 import express from "express";
-import authenticateToken from "../middleware/authenticateToken.js";
+import {authenticateToken} from "../middleware/authenticateToken.js";
 import {
   createCheckoutSession,
   confirmPayment,

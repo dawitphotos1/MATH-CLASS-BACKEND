@@ -7,7 +7,7 @@ import {
   confirmPayment,
   handleStripeWebhook,
 } from "../controllers/paymentController.js";
-import authenticateToken from "../middleware/authMiddleware.js";
+import {authenticateToken} from "../middleware/authMiddleware.js";
 
 const router = express.Router();
 

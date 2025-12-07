@@ -10,7 +10,7 @@ import {
 } from "../controllers/unitController.js";
 
 // ✅ CORRECT IMPORTS
-import  authenticateToken  from "../middleware/authMiddleware.js";
+import  {authenticateToken}  from "../middleware/authMiddleware.js";
 import checkTeacherOrAdmin from "../middleware/checkTeacherOrAdmin.js"; // Default import
 
 const router = express.Router();

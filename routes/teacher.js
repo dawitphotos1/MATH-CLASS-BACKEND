@@ -4,7 +4,7 @@ import {
   getTeacherDashboard, 
   getCourseAnalytics 
 } from "../controllers/teacherController.js";
-import  authenticateToken from "../middleware/authMiddleware.js";
+import  {authenticateToken} from "../middleware/authMiddleware.js";
 import { isTeacher } from "../middleware/authMiddleware.js";
 
 

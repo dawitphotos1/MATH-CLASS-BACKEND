@@ -11,7 +11,8 @@ import {
   getTeacherCourses,
 } from "../controllers/courseController.js";
 
-import authenticateToken from "../middleware/authenticateToken.js";
+import { authenticateToken } from "../middleware/authMiddleware.js";
+
 import checkTeacherOrAdmin from "../middleware/checkTeacherOrAdmin.js";
 import { isTeacher } from "../middleware/authMiddleware.js";
 import { uploadCourseFiles } from "../middleware/uploadMiddleware.js";
