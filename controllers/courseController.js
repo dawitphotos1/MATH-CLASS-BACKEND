@@ -710,56 +710,36 @@
 // };
 
 
-
 // controllers/courseController.js
 import db from "../models/index.js";
 import path from "path";
 import { fileURLToPath } from "url";
 import fs from "fs";
-import { getFolderForFile, uploadLocalFileToCloudinary } from "../utils/cloudinary.js";
 
 const { Course, Lesson, User, Unit, Enrollment } = db;
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-// Helper function to build full URLs for course files with Cloudinary support
+// Import Cloudinary functions
+import { uploadToCloudinary } from "../middleware/cloudinaryUpload.js";
+
+// Helper function to build full URLs for course files
 const buildCourseFileUrls = (course) => {
   const courseData = course.toJSON ? course.toJSON() : { ...course };
 
-  // Process thumbnail URL
-  if (courseData.thumbnail) {
-    // Already a Cloudinary URL
-    if (courseData.thumbnail.includes('cloudinary.com')) {
-      return courseData;
-    }
-    
-    // Local file path in production (shouldn't happen after migration)
-    if (process.env.NODE_ENV === "production" && !courseData.thumbnail.startsWith("http")) {
-      console.warn(`⚠️ Course ${courseData.id} has local thumbnail in production: ${courseData.thumbnail}`);
-      // Try to construct Cloudinary URL (may not exist)
-      const filename = path.basename(courseData.thumbnail);
-      return courseData;
-    }
-    
-    // Development: Build local URL
-    if (!courseData.thumbnail.startsWith("http")) {
-      courseData.thumbnail = `${process.env.BACKEND_URL || "http://localhost:3000"}${courseData.thumbnail}`;
-    }
+  // If thumbnail is already a Cloudinary URL or full URL, return as-is
+  if (courseData.thumbnail && (courseData.thumbnail.includes('cloudinary.com') || courseData.thumbnail.startsWith('http'))) {
+    return courseData;
+  }
+
+  // If thumbnail is a local path, convert to URL
+  if (courseData.thumbnail && !courseData.thumbnail.startsWith('http')) {
+    const backend = process.env.BACKEND_URL || 'http://localhost:3000';
+    courseData.thumbnail = `${backend}${courseData.thumbnail}`;
   }
 
   return courseData;
-};
-
-// Helper to import buildFileUrls from lessonController
-const importBuildFileUrls = async () => {
-  try {
-    const module = await import('./lessonController.js');
-    return module.buildFileUrls || module.default?.buildFileUrls;
-  } catch (error) {
-    console.warn('Could not import buildFileUrls from lessonController:', error.message);
-    return null;
-  }
 };
 
 /* ============================================================
@@ -768,8 +748,6 @@ const importBuildFileUrls = async () => {
 export const createCourse = async (req, res) => {
   try {
     console.log("📝 Course creation request");
-    console.log("📝 Request body:", req.body);
-    console.log("📁 Uploaded files:", req.files ? Object.keys(req.files) : "None");
     console.log("👤 User:", req.user?.id, req.user?.role);
 
     const { title, slug, description, price, teacher_id } = req.body;
@@ -777,7 +755,6 @@ export const createCourse = async (req, res) => {
 
     // Validate required fields
     if (!title || !slug) {
-      console.log("❌ Missing required fields:", { title, slug });
       return res.status(400).json({
         success: false,
         error: "Title and slug are required",
@@ -785,63 +762,37 @@ export const createCourse = async (req, res) => {
       });
     }
 
-    let thumbnailPath = null;
+    let thumbnailUrl = null;
 
     // Process thumbnail if uploaded
     if (req.files && req.files.thumbnail && req.files.thumbnail[0]) {
       const thumbnail = req.files.thumbnail[0];
       
-      if (process.env.NODE_ENV === "production") {
-        // Production: Upload to Cloudinary
-        try {
-          // Save temporarily to local file
-          const uploadsDir = path.join(__dirname, "../Uploads");
-          if (!fs.existsSync(uploadsDir)) {
-            fs.mkdirSync(uploadsDir, { recursive: true });
-          }
-          
-          const tempFilename = `temp_thumbnail_${Date.now()}_${thumbnail.originalname}`;
-          const tempPath = path.join(uploadsDir, tempFilename);
-          
-          // Write buffer to temp file
-          fs.writeFileSync(tempPath, thumbnail.buffer);
-          
-          // Upload to Cloudinary
-          const folder = getFolderForFile(thumbnail.originalname);
-          thumbnailPath = await uploadLocalFileToCloudinary(tempPath, folder);
-          
-          // Clean up temp file
-          fs.unlinkSync(tempPath);
-          
-          console.log("✅ Thumbnail uploaded to Cloudinary:", thumbnailPath.substring(0, 80) + "...");
-        } catch (cloudinaryError) {
-          console.error("❌ Cloudinary upload failed, falling back to local:", cloudinaryError.message);
-          
-          // Fallback to local storage
-          const uploadsDir = path.join(__dirname, "../Uploads");
-          if (!fs.existsSync(uploadsDir)) {
-            fs.mkdirSync(uploadsDir, { recursive: true });
-          }
-          
-          const thumbnailFilename = `thumbnail-${Date.now()}-${thumbnail.originalname.replace(/\s+/g, "-")}`;
-          const thumbnailFullPath = path.join(uploadsDir, thumbnailFilename);
-          fs.writeFileSync(thumbnailFullPath, thumbnail.buffer);
-          thumbnailPath = `/Uploads/${thumbnailFilename}`;
-          console.log("✅ Thumbnail saved locally (fallback):", thumbnailPath);
-        }
-      } else {
-        // Local development
+      try {
+        // Upload to Cloudinary
+        const result = await uploadToCloudinary(
+          thumbnail.buffer,
+          'mathe-class/course-thumbnails',
+          'image'
+        );
+        
+        thumbnailUrl = result.secure_url;
+        console.log("✅ Thumbnail uploaded to Cloudinary:", thumbnailUrl.substring(0, 80) + "...");
+        
+      } catch (cloudinaryError) {
+        console.error("❌ Cloudinary upload failed:", cloudinaryError.message);
+        
+        // Fallback: Save locally (for development or backup)
         const uploadsDir = path.join(__dirname, "../Uploads");
         if (!fs.existsSync(uploadsDir)) {
           fs.mkdirSync(uploadsDir, { recursive: true });
-          console.log("✅ Created Uploads directory");
         }
         
         const thumbnailFilename = `thumbnail-${Date.now()}-${thumbnail.originalname.replace(/\s+/g, "-")}`;
         const thumbnailFullPath = path.join(uploadsDir, thumbnailFilename);
         fs.writeFileSync(thumbnailFullPath, thumbnail.buffer);
-        thumbnailPath = `/Uploads/${thumbnailFilename}`;
-        console.log("✅ Thumbnail saved locally:", thumbnailPath);
+        thumbnailUrl = `/Uploads/${thumbnailFilename}`;
+        console.log("✅ Thumbnail saved locally (fallback):", thumbnailUrl);
       }
     }
 
@@ -861,16 +812,15 @@ export const createCourse = async (req, res) => {
       description: (description || "").trim(),
       teacher_id: teacherId,
       price: price ? parseFloat(price) : 0,
-      thumbnail: thumbnailPath,
+      thumbnail: thumbnailUrl,
     };
 
     console.log("📊 Creating course with data:", {
       ...courseData,
-      thumbnail: thumbnailPath ? `${thumbnailPath.substring(0, 60)}...` : null
+      thumbnail: thumbnailUrl ? "URL exists" : "No thumbnail"
     });
 
     const course = await Course.create(courseData);
-
     console.log("✅ Course created successfully:", course.id);
 
     // Build response with full URLs
@@ -924,18 +874,15 @@ export const createCourse = async (req, res) => {
 export const createCourseWithUnits = async (req, res) => {
   try {
     console.log("🎯 Advanced course creation requested");
-    console.log("📝 Request body:", req.body);
-    console.log("📁 Uploaded files:", req.files ? Object.keys(req.files) : "None");
     console.log("👤 User:", req.user?.id, req.user?.role);
 
-    // Extract form data
     const {
       title,
       slug,
       description,
       price,
       teacher_id,
-      units = [], // Array of units with lessons
+      units = [],
     } = req.body;
 
     const teacherId = req.user?.id || teacher_id;
@@ -948,59 +895,37 @@ export const createCourseWithUnits = async (req, res) => {
       });
     }
 
-    let thumbnailPath = null;
+    let thumbnailUrl = null;
 
     // Process thumbnail if uploaded
     if (req.files && req.files.thumbnail && req.files.thumbnail[0]) {
       const thumbnail = req.files.thumbnail[0];
       
-      if (process.env.NODE_ENV === "production") {
-        // Production: Upload to Cloudinary
-        try {
-          const uploadsDir = path.join(__dirname, "../Uploads");
-          if (!fs.existsSync(uploadsDir)) {
-            fs.mkdirSync(uploadsDir, { recursive: true });
-          }
-          
-          const tempFilename = `temp_thumbnail_${Date.now()}_${thumbnail.originalname}`;
-          const tempPath = path.join(uploadsDir, tempFilename);
-          
-          fs.writeFileSync(tempPath, thumbnail.buffer);
-          
-          const folder = getFolderForFile(thumbnail.originalname);
-          thumbnailPath = await uploadLocalFileToCloudinary(tempPath, folder);
-          
-          fs.unlinkSync(tempPath);
-          
-          console.log("✅ Thumbnail uploaded to Cloudinary:", thumbnailPath.substring(0, 80) + "...");
-        } catch (cloudinaryError) {
-          console.error("❌ Cloudinary upload failed:", cloudinaryError.message);
-          
-          // Fallback to local
-          const uploadsDir = path.join(__dirname, "../Uploads");
-          if (!fs.existsSync(uploadsDir)) {
-            fs.mkdirSync(uploadsDir, { recursive: true });
-          }
-          
-          const thumbnailFilename = `thumbnail-${Date.now()}-${thumbnail.originalname.replace(/\s+/g, "-")}`;
-          const thumbnailFullPath = path.join(uploadsDir, thumbnailFilename);
-          fs.writeFileSync(thumbnailFullPath, thumbnail.buffer);
-          thumbnailPath = `/Uploads/${thumbnailFilename}`;
-          console.log("✅ Thumbnail saved locally (fallback):", thumbnailPath);
-        }
-      } else {
-        // Local development
+      try {
+        // Upload to Cloudinary
+        const result = await uploadToCloudinary(
+          thumbnail.buffer,
+          'mathe-class/course-thumbnails',
+          'image'
+        );
+        
+        thumbnailUrl = result.secure_url;
+        console.log("✅ Thumbnail uploaded to Cloudinary:", thumbnailUrl.substring(0, 80) + "...");
+        
+      } catch (cloudinaryError) {
+        console.error("❌ Cloudinary upload failed:", cloudinaryError.message);
+        
+        // Fallback: Save locally
         const uploadsDir = path.join(__dirname, "../Uploads");
         if (!fs.existsSync(uploadsDir)) {
           fs.mkdirSync(uploadsDir, { recursive: true });
-          console.log("✅ Created Uploads directory");
         }
         
         const thumbnailFilename = `thumbnail-${Date.now()}-${thumbnail.originalname.replace(/\s+/g, "-")}`;
         const thumbnailFullPath = path.join(uploadsDir, thumbnailFilename);
         fs.writeFileSync(thumbnailFullPath, thumbnail.buffer);
-        thumbnailPath = `/Uploads/${thumbnailFilename}`;
-        console.log("✅ Thumbnail saved locally:", thumbnailPath);
+        thumbnailUrl = `/Uploads/${thumbnailFilename}`;
+        console.log("✅ Thumbnail saved locally (fallback):", thumbnailUrl);
       }
     }
 
@@ -1020,12 +945,12 @@ export const createCourseWithUnits = async (req, res) => {
       description: (description || "").trim(),
       teacher_id: teacherId,
       price: price ? parseFloat(price) : 0,
-      thumbnail: thumbnailPath,
+      thumbnail: thumbnailUrl,
     };
 
-    console.log("📊 Creating advanced course with data:", {
+    console.log("📊 Creating course with data:", {
       ...courseData,
-      thumbnail: thumbnailPath ? `${thumbnailPath.substring(0, 60)}...` : null
+      thumbnail: thumbnailUrl ? "URL exists" : "No thumbnail"
     });
 
     const course = await Course.create(courseData);
@@ -1040,7 +965,7 @@ export const createCourseWithUnits = async (req, res) => {
 
       for (const unit of units) {
         if (unit.title && unit.lessons && Array.isArray(unit.lessons)) {
-          // Create unit header as a lesson with special type
+          // Create unit header
           const unitLesson = await Lesson.create({
             course_id: course.id,
             title: unit.title,
@@ -1096,7 +1021,6 @@ export const createCourseWithUnits = async (req, res) => {
   } catch (error) {
     console.error("❌ Error creating advanced course:", error);
 
-    // Handle specific errors
     if (error.name === "SequelizeUniqueConstraintError") {
       return res.status(400).json({
         success: false,
@@ -1145,7 +1069,6 @@ export const getCourseById = async (req, res) => {
       });
     }
 
-    // Build full URLs for course
     const courseData = buildCourseFileUrls(course);
 
     res.json({
@@ -1198,7 +1121,6 @@ export const getCourses = async (req, res) => {
       order: [["id", "ASC"]],
     });
 
-    // Build full URLs for all courses
     const formattedCourses = courses.map((course) => {
       const courseData = buildCourseFileUrls(course);
       return {
@@ -1263,32 +1185,24 @@ export const getPublicCourseBySlug = async (req, res) => {
       });
     }
 
-    // Build full URLs for course
     const courseData = buildCourseFileUrls(course);
 
-    // Get buildFileUrls function for lessons
-    const buildFileUrlsFunc = await importBuildFileUrls();
-    
     // Build URLs for lessons
     if (courseData.lessons && Array.isArray(courseData.lessons)) {
-      if (buildFileUrlsFunc) {
-        // Use the imported function
-        courseData.lessons = courseData.lessons.map(buildFileUrlsFunc);
-      } else {
-        // Fallback to manual URL building
-        courseData.lessons = courseData.lessons.map((lesson) => {
-          const lessonData = { ...lesson };
-          const backend = process.env.BACKEND_URL || "http://localhost:3000";
-          
-          if (lessonData.video_url && !lessonData.video_url.startsWith("http")) {
-            lessonData.video_url = `${backend}${lessonData.video_url}`;
-          }
-          if (lessonData.file_url && !lessonData.file_url.startsWith("http")) {
-            lessonData.file_url = `${backend}${lessonData.file_url}`;
-          }
-          return lessonData;
-        });
-      }
+      const backend = process.env.BACKEND_URL || "http://localhost:3000";
+      
+      courseData.lessons = courseData.lessons.map((lesson) => {
+        const lessonData = { ...lesson };
+        
+        if (lessonData.video_url && !lessonData.video_url.startsWith("http")) {
+          lessonData.video_url = `${backend}${lessonData.video_url}`;
+        }
+        if (lessonData.file_url && !lessonData.file_url.startsWith("http")) {
+          lessonData.file_url = `${backend}${lessonData.file_url}`;
+        }
+        
+        return lessonData;
+      });
     }
 
     res.json({
@@ -1321,31 +1235,21 @@ export const getLessonsByCourse = async (req, res) => {
       order: [["order_index", "ASC"]],
     });
 
-    // Get buildFileUrls function
-    const buildFileUrlsFunc = await importBuildFileUrls();
+    const backend = process.env.BACKEND_URL || "http://localhost:3000";
     
-    let lessonsWithUrls;
-    
-    if (buildFileUrlsFunc) {
-      // Use the imported function
-      lessonsWithUrls = lessons.map(buildFileUrlsFunc);
-    } else {
-      // Fallback to manual URL building
-      lessonsWithUrls = lessons.map((lesson) => {
-        const lessonData = lesson.toJSON ? lesson.toJSON() : { ...lesson };
-        const backend = process.env.BACKEND_URL || "http://localhost:3000";
+    const lessonsWithUrls = lessons.map((lesson) => {
+      const lessonData = lesson.toJSON ? lesson.toJSON() : { ...lesson };
 
-        if (lessonData.video_url && !lessonData.video_url.startsWith("http")) {
-          lessonData.video_url = `${backend}${lessonData.video_url}`;
-        }
+      if (lessonData.video_url && !lessonData.video_url.startsWith("http")) {
+        lessonData.video_url = `${backend}${lessonData.video_url}`;
+      }
 
-        if (lessonData.file_url && !lessonData.file_url.startsWith("http")) {
-          lessonData.file_url = `${backend}${lessonData.file_url}`;
-        }
+      if (lessonData.file_url && !lessonData.file_url.startsWith("http")) {
+        lessonData.file_url = `${backend}${lessonData.file_url}`;
+      }
 
-        return lessonData;
-      });
-    }
+      return lessonData;
+    });
 
     res.json({
       success: true,
@@ -1362,7 +1266,7 @@ export const getLessonsByCourse = async (req, res) => {
 };
 
 /* ============================================================
-   Delete course - ENHANCED VERSION
+   Delete course
 ============================================================ */
 export const deleteCourse = async (req, res) => {
   try {
@@ -1376,7 +1280,6 @@ export const deleteCourse = async (req, res) => {
       userRole,
     });
 
-    // Find the course with teacher info
     const course = await Course.findByPk(id, {
       include: [
         {
@@ -1388,28 +1291,14 @@ export const deleteCourse = async (req, res) => {
     });
 
     if (!course) {
-      console.log("❌ Course not found:", id);
       return res.status(404).json({
         success: false,
         message: "Course not found",
       });
     }
 
-    console.log("📋 Course found:", {
-      id: course.id,
-      title: course.title,
-      teacher_id: course.teacher_id,
-      current_user_id: userId,
-      user_role: userRole,
-    });
-
-    // Check authorization - only admin or the course teacher can delete
+    // Check authorization
     if (userRole !== "admin" && course.teacher_id !== userId) {
-      console.log("❌ Unauthorized delete attempt:", {
-        course_teacher: course.teacher_id,
-        current_user: userId,
-        user_role: userRole,
-      });
       return res.status(403).json({
         success: false,
         message: "Not authorized to delete this course",
@@ -1417,23 +1306,20 @@ export const deleteCourse = async (req, res) => {
       });
     }
 
-    // Check for existing enrollments before deletion
+    // Check for existing enrollments
     const enrollmentCount = await Enrollment.count({
       where: { course_id: id },
     });
 
     if (enrollmentCount > 0) {
-      console.log("⚠️ Course has existing enrollments:", enrollmentCount);
       return res.status(400).json({
         success: false,
         message: "Cannot delete course with existing enrollments",
-        details: `This course has ${enrollmentCount} student enrollment(s). Please contact admin for assistance.`,
+        details: `This course has ${enrollmentCount} student enrollment(s).`,
       });
     }
 
-    console.log("✅ Authorization passed, proceeding with deletion...");
-
-    // Delete the course (cascades to lessons, units)
+    // Delete the course
     await course.destroy();
 
     console.log("✅ Course deleted successfully:", id);
@@ -1449,12 +1335,10 @@ export const deleteCourse = async (req, res) => {
   } catch (error) {
     console.error("❌ Error deleting course:", error);
 
-    // Handle foreign key constraint errors
     if (error.name === "SequelizeForeignKeyConstraintError") {
       return res.status(400).json({
         success: false,
         message: "Cannot delete course. There are existing enrollments or related data.",
-        error: "Database constraint violation",
       });
     }
 
@@ -1467,7 +1351,7 @@ export const deleteCourse = async (req, res) => {
 };
 
 /* ============================================================
-   Get teacher's courses with enhanced error handling
+   Get teacher's courses
 ============================================================ */
 export const getTeacherCourses = async (req, res) => {
   try {
@@ -1505,7 +1389,6 @@ export const getTeacherCourses = async (req, res) => {
       order: [["created_at", "DESC"]],
     });
 
-    // Build URLs and add counts to each course
     const coursesWithCounts = courses.map((course) => {
       const courseData = buildCourseFileUrls(course);
       return {
@@ -1567,43 +1450,21 @@ export const updateCourse = async (req, res) => {
     if (req.files && req.files.thumbnail && req.files.thumbnail[0]) {
       const thumbnail = req.files.thumbnail[0];
       
-      if (process.env.NODE_ENV === "production") {
-        // Production: Upload to Cloudinary
-        try {
-          const uploadsDir = path.join(__dirname, "../Uploads");
-          if (!fs.existsSync(uploadsDir)) {
-            fs.mkdirSync(uploadsDir, { recursive: true });
-          }
-          
-          const tempFilename = `temp_thumbnail_${Date.now()}_${thumbnail.originalname}`;
-          const tempPath = path.join(uploadsDir, tempFilename);
-          
-          fs.writeFileSync(tempPath, thumbnail.buffer);
-          
-          const folder = getFolderForFile(thumbnail.originalname);
-          const cloudinaryUrl = await uploadLocalFileToCloudinary(tempPath, folder);
-          
-          fs.unlinkSync(tempPath);
-          
-          course.thumbnail = cloudinaryUrl;
-          console.log("✅ Thumbnail updated on Cloudinary:", cloudinaryUrl.substring(0, 80) + "...");
-        } catch (cloudinaryError) {
-          console.error("❌ Cloudinary upload failed:", cloudinaryError.message);
-          
-          // Fallback to local
-          const uploadsDir = path.join(__dirname, "../Uploads");
-          if (!fs.existsSync(uploadsDir)) {
-            fs.mkdirSync(uploadsDir, { recursive: true });
-          }
-          
-          const thumbnailFilename = `thumbnail-${Date.now()}-${thumbnail.originalname.replace(/\s+/g, "-")}`;
-          const thumbnailFullPath = path.join(uploadsDir, thumbnailFilename);
-          fs.writeFileSync(thumbnailFullPath, thumbnail.buffer);
-          course.thumbnail = `/Uploads/${thumbnailFilename}`;
-          console.log("✅ Thumbnail updated locally (fallback):", course.thumbnail);
-        }
-      } else {
-        // Local development
+      try {
+        // Upload to Cloudinary
+        const result = await uploadToCloudinary(
+          thumbnail.buffer,
+          'mathe-class/course-thumbnails',
+          'image'
+        );
+        
+        course.thumbnail = result.secure_url;
+        console.log("✅ Thumbnail updated on Cloudinary");
+        
+      } catch (cloudinaryError) {
+        console.error("❌ Cloudinary upload failed:", cloudinaryError.message);
+        
+        // Fallback: Save locally
         const uploadsDir = path.join(__dirname, "../Uploads");
         if (!fs.existsSync(uploadsDir)) {
           fs.mkdirSync(uploadsDir, { recursive: true });
@@ -1613,7 +1474,7 @@ export const updateCourse = async (req, res) => {
         const thumbnailFullPath = path.join(uploadsDir, thumbnailFilename);
         fs.writeFileSync(thumbnailFullPath, thumbnail.buffer);
         course.thumbnail = `/Uploads/${thumbnailFilename}`;
-        console.log("✅ Thumbnail updated locally:", course.thumbnail);
+        console.log("✅ Thumbnail updated locally");
       }
     }
 
@@ -1636,137 +1497,6 @@ export const updateCourse = async (req, res) => {
   }
 };
 
-/* ============================================================
-   Search courses
-============================================================ */
-export const searchCourses = async (req, res) => {
-  try {
-    const { query, minPrice, maxPrice } = req.query;
-
-    const whereClause = {};
-
-    if (query) {
-      whereClause[db.Sequelize.Op.or] = [
-        { title: { [db.Sequelize.Op.iLike]: `%${query}%` } },
-        { description: { [db.Sequelize.Op.iLike]: `%${query}%` } },
-      ];
-    }
-
-    if (minPrice || maxPrice) {
-      whereClause.price = {};
-      if (minPrice) whereClause.price[db.Sequelize.Op.gte] = parseFloat(minPrice);
-      if (maxPrice) whereClause.price[db.Sequelize.Op.lte] = parseFloat(maxPrice);
-    }
-
-    const courses = await Course.findAll({
-      where: whereClause,
-      attributes: ["id", "title", "description", "price", "thumbnail", "slug"],
-      include: [
-        {
-          model: User,
-          as: "teacher",
-          attributes: ["id", "name", "email"],
-        },
-      ],
-      order: [["title", "ASC"]],
-    });
-
-    // Build URLs for all courses
-    const formattedCourses = courses.map((course) => {
-      const courseData = buildCourseFileUrls(course);
-      return {
-        ...courseData,
-        price: courseData.price !== undefined && courseData.price !== null
-          ? Number(courseData.price)
-          : 0,
-      };
-    });
-
-    res.json({
-      success: true,
-      courses: formattedCourses,
-      count: formattedCourses.length,
-    });
-  } catch (error) {
-    console.error("❌ Error searching courses:", error);
-    res.status(500).json({
-      success: false,
-      error: "Failed to search courses",
-      details: process.env.NODE_ENV === "development" ? error.message : undefined,
-    });
-  }
-};
-
-/* ============================================================
-   Get course analytics
-============================================================ */
-export const getCourseAnalytics = async (req, res) => {
-  try {
-    const { id } = req.params;
-    const userId = req.user.id;
-    const userRole = req.user.role;
-
-    const course = await Course.findByPk(id, {
-      attributes: ["id", "title", "description", "price", "thumbnail", "teacher_id"],
-      include: [
-        {
-          model: Lesson,
-          as: "lessons",
-          attributes: ["id", "title"],
-        },
-        {
-          model: Enrollment,
-          as: "enrollments",
-          attributes: ["id", "approval_status", "payment_status"],
-        },
-      ],
-    });
-
-    if (!course) {
-      return res.status(404).json({
-        success: false,
-        error: "Course not found",
-      });
-    }
-
-    // Check authorization
-    if (userRole !== "admin" && course.teacher_id !== userId) {
-      return res.status(403).json({
-        success: false,
-        error: "Not authorized to view analytics for this course",
-      });
-    }
-
-    const analytics = {
-      course: {
-        id: course.id,
-        title: course.title,
-        price: course.price,
-        thumbnail: buildCourseFileUrls(course).thumbnail,
-      },
-      stats: {
-        totalLessons: course.lessons?.length || 0,
-        totalEnrollments: course.enrollments?.length || 0,
-        approvedEnrollments: course.enrollments?.filter(e => e.approval_status === "approved").length || 0,
-        pendingEnrollments: course.enrollments?.filter(e => e.approval_status === "pending").length || 0,
-        paidEnrollments: course.enrollments?.filter(e => e.payment_status === "paid").length || 0,
-      },
-    };
-
-    res.json({
-      success: true,
-      analytics,
-    });
-  } catch (error) {
-    console.error("❌ Error fetching course analytics:", error);
-    res.status(500).json({
-      success: false,
-      error: "Failed to fetch course analytics",
-      details: process.env.NODE_ENV === "development" ? error.message : undefined,
-    });
-  }
-};
-
 export default {
   createCourse,
   createCourseWithUnits,
@@ -1777,6 +1507,4 @@ export default {
   deleteCourse,
   getTeacherCourses,
   updateCourse,
-  searchCourses,
-  getCourseAnalytics,
 };
