@@ -98,13 +98,11 @@
 
 
 
-// middleware/cloudinaryUpload.js
-const multer = require('multer');
-const { v2: cloudinary } = require('cloudinary');
-const streamifier = require('streamifier');
-const dotenv = require('dotenv');
 
-dotenv.config();
+// middleware/cloudinaryUpload.js - ES Module version
+import multer from 'multer';
+import { v2 as cloudinary } from 'cloudinary';
+import streamifier from 'streamifier';
 
 // Configure Cloudinary
 cloudinary.config({
@@ -114,7 +112,7 @@ cloudinary.config({
   secure: true,
 });
 
-// Memory storage for multer
+// Memory storage
 const storage = multer.memoryStorage();
 
 const fileFilter = (req, file, cb) => {
@@ -145,7 +143,7 @@ const upload = multer({
 /**
  * Upload file to Cloudinary
  */
-const uploadToCloudinary = (buffer, folder = 'mathe-class', resourceType = 'auto') => {
+export const uploadToCloudinary = (buffer, folder = 'mathe-class', resourceType = 'auto') => {
   return new Promise((resolve, reject) => {
     const uploadStream = cloudinary.uploader.upload_stream(
       {
@@ -169,24 +167,18 @@ const uploadToCloudinary = (buffer, folder = 'mathe-class', resourceType = 'auto
 };
 
 // Middleware configurations
-const uploadCourseFiles = upload.fields([
+export const uploadCourseFiles = upload.fields([
   { name: 'thumbnail', maxCount: 1 },
   { name: 'attachments', maxCount: 10 },
 ]);
 
-const uploadLessonFiles = upload.fields([
+export const uploadLessonFiles = upload.fields([
   { name: 'video', maxCount: 1 },
   { name: 'file', maxCount: 1 },
   { name: 'pdf', maxCount: 1 },
   { name: 'attachments', maxCount: 10 },
 ]);
 
-const singleUpload = upload.single('file');
+export const singleUpload = upload.single('file');
 
-module.exports = {
-  upload,
-  uploadToCloudinary,
-  uploadCourseFiles,
-  uploadLessonFiles,
-  singleUpload
-};
+export default upload;
