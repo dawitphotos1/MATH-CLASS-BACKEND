@@ -641,11 +641,11 @@
 
 
 
-
 // controllers/lessonController.js
 import db from "../models/index.js";
 import path from "path";
 import { v2 as cloudinary } from "cloudinary";
+import fs from "fs";
 
 const { Lesson, Course, Unit, LessonView, Enrollment, sequelize } = db;
 
@@ -670,55 +670,72 @@ const getBackendUrl = () => {
 
 /* -------------------------
    Helper: normalize and build file/video URLs
-   - Accepts a lesson instance or plain object (from Sequelize)
-   - Returns a plain JS object with camelCase keys
    ------------------------- */
 export const buildFileUrls = (lesson) => {
   if (!lesson) return null;
-  // Convert Sequelize instance to plain object if needed
+  
   const raw = typeof lesson.toJSON === "function" ? lesson.toJSON() : { ...lesson };
-
   const backend = getBackendUrl();
 
   const resolveUrl = (url, preferRawForPdf = true) => {
     if (!url) return null;
     
+    console.log(`🔄 Resolving URL: ${url}`);
+    
     // Already an absolute URL -> return as-is
     if (typeof url === "string" && (url.startsWith("http://") || url.startsWith("https://"))) {
       // If Cloudinary PDF stored under image/upload, convert to raw/upload
       if (preferRawForPdf && url.toLowerCase().endsWith(".pdf") && url.includes("/image/upload/")) {
-        return url.replace("/image/upload/", "/raw/upload/");
+        const correctedUrl = url.replace("/image/upload/", "/raw/upload/");
+        console.log(`📄 Converted Cloudinary PDF URL: ${correctedUrl.substring(0, 80)}...`);
+        return correctedUrl;
       }
       return url;
     }
 
-    // If Cloudinary public id or local path
-    if (typeof url === "string" && url.includes("cloudinary.com")) {
-      return url;
+    // If it's a Cloudinary public_id (not full URL)
+    if (typeof url === "string" && !url.includes("/") && !url.includes("\\")) {
+      try {
+        // Try to build Cloudinary URL
+        const cloudinaryUrl = cloudinary.url(url, {
+          resource_type: url.toLowerCase().endsWith('.pdf') ? 'raw' : 'image',
+          secure: true
+        });
+        console.log(`☁️ Built Cloudinary URL from public_id: ${cloudinaryUrl.substring(0, 80)}...`);
+        return cloudinaryUrl;
+      } catch (e) {
+        // Fallback to file server
+      }
     }
 
-    // If Uploads path (development or production with local files)
+    // If Uploads path
     if (typeof url === "string" && (url.startsWith("/Uploads/") || url.startsWith("Uploads/"))) {
       const filename = url.replace(/^\/?Uploads\//, "");
-      return `${backend}/api/v1/files/${encodeURIComponent(filename)}`;
+      const fileUrl = `${backend}/api/v1/files/${encodeURIComponent(filename)}`;
+      console.log(`📁 Converted Uploads path to URL: ${fileUrl}`);
+      return fileUrl;
     }
 
     // If it's just a filename without path
     if (typeof url === "string" && !url.includes("/") && !url.includes("\\")) {
-      return `${backend}/api/v1/files/${encodeURIComponent(url)}`;
+      const fileUrl = `${backend}/api/v1/files/${encodeURIComponent(url)}`;
+      console.log(`📄 Converted filename to URL: ${fileUrl}`);
+      return fileUrl;
     }
 
     // If it's a local file path
     if (typeof url === "string" && (url.includes("/") || url.includes("\\"))) {
       const filename = path.basename(url);
-      return `${backend}/api/v1/files/${encodeURIComponent(filename)}`;
+      const fileUrl = `${backend}/api/v1/files/${encodeURIComponent(filename)}`;
+      console.log(`🛣️ Converted local path to URL: ${fileUrl}`);
+      return fileUrl;
     }
 
-    // Unknown shape
-    return null;
+    console.log(`❓ Unknown URL format: ${url}`);
+    return url;
   };
 
-  // Map / normalize fields (DB snake_case -> response camelCase)
+  // Map / normalize fields
   const result = {
     id: raw.id ?? null,
     title: raw.title ?? "",
@@ -758,7 +775,113 @@ export const buildFileUrls = (lesson) => {
 };
 
 /* -------------------------
-   Track Lesson View (safe)
+   DEBUG: Get lesson with detailed file info
+   ------------------------- */
+export const debugLessonFile = async (req, res) => {
+  try {
+    const { lessonId } = req.params;
+    
+    if (!lessonId || isNaN(parseInt(lessonId, 10))) {
+      return res.status(400).json({ success: false, error: "Valid lesson ID is required" });
+    }
+    
+    const id = parseInt(lessonId, 10);
+    
+    // Get lesson with all details
+    const lesson = await Lesson.findByPk(id, {
+      include: [
+        { model: Course, as: "course", attributes: ["id", "title", "teacher_id"] },
+      ],
+      attributes: ["id", "title", "file_url", "video_url", "content_type", "is_preview", "created_at", "updated_at"],
+    });
+    
+    if (!lesson) {
+      return res.status(404).json({ success: false, error: "Lesson not found" });
+    }
+    
+    // Check if file exists locally
+    let fileExists = false;
+    let filePath = null;
+    
+    if (lesson.file_url) {
+      const uploadsDir = path.join(process.cwd(), "Uploads");
+      
+      // Extract filename from URL
+      let filename = lesson.file_url;
+      if (filename.includes("/")) {
+        filename = path.basename(filename);
+      }
+      
+      filePath = path.join(uploadsDir, filename);
+      
+      // Check if file exists
+      try {
+        fileExists = fs.existsSync(filePath);
+      } catch (err) {
+        console.log("File existence check error:", err.message);
+      }
+    }
+    
+    // Get file info
+    let fileInfo = null;
+    if (fileExists && filePath) {
+      try {
+        const stats = fs.statSync(filePath);
+        fileInfo = {
+          size: stats.size,
+          created: stats.birthtime,
+          modified: stats.mtime,
+          path: filePath,
+        };
+      } catch (err) {
+        console.log("File stat error:", err.message);
+      }
+    }
+    
+    // Build file URL using the helper
+    const builtUrl = buildFileUrls(lesson);
+    
+    res.json({
+      success: true,
+      lesson: {
+        id: lesson.id,
+        title: lesson.title,
+        database_file_url: lesson.file_url,
+        database_video_url: lesson.video_url,
+        content_type: lesson.content_type,
+        built_file_url: builtUrl?.fileUrl,
+        built_video_url: builtUrl?.videoUrl,
+        course: lesson.course,
+        created_at: lesson.created_at,
+        updated_at: lesson.updated_at,
+      },
+      file: {
+        exists: fileExists,
+        path: filePath,
+        info: fileInfo,
+      },
+      environment: {
+        node_env: process.env.NODE_ENV,
+        backend_url: process.env.BACKEND_URL,
+        cloudinary_configured: !!(process.env.CLOUDINARY_CLOUD_NAME),
+        use_cloudinary: process.env.USE_CLOUDINARY === "true",
+        uploads_dir: path.join(process.cwd(), "Uploads"),
+      },
+      message: "Debug information for lesson file",
+    });
+    
+  } catch (err) {
+    console.error("debugLessonFile error:", err?.message || err);
+    return res.status(500).json({
+      success: false,
+      error: "Debug failed",
+      details: process.env.NODE_ENV === "development" ? err?.message : undefined,
+    });
+  }
+};
+
+/* -------------------------
+   Track Lesson View
    ------------------------- */
 const trackLessonView = async (userId, lessonId) => {
   try {
@@ -768,51 +891,54 @@ const trackLessonView = async (userId, lessonId) => {
       defaults: { viewed_at: new Date() },
     });
   } catch (err) {
-    // Non-fatal
     console.warn("trackLessonView error:", err?.message || err);
   }
 };
 
 /* -------------------------
-   Handle multer file uploads (if used)
-   - returns { videoUrl, fileUrl } values (paths or locations)
+   Handle multer file uploads
    ------------------------- */
 const handleFileUploads = (req) => {
   const out = {};
+  console.log("📤 Handling file uploads:", req.files ? Object.keys(req.files) : "No files");
+  
   try {
     if (req.files?.video?.[0]) {
       const f = req.files.video[0];
       out.videoUrl = f.path || f.location || f.filename || null;
+      console.log("🎥 Video uploaded:", out.videoUrl);
     }
     if (req.files?.pdf?.[0]) {
       const f = req.files.pdf[0];
       out.fileUrl = f.path || f.location || f.filename || null;
+      console.log("📄 PDF uploaded:", out.fileUrl);
     }
     if (req.files?.file?.[0]) {
       const f = req.files.file[0];
       out.fileUrl = f.path || f.location || f.filename || null;
+      console.log("📎 File uploaded:", out.fileUrl);
     }
   } catch (e) {
-    // swallow
     console.warn("handleFileUploads warning:", e?.message || e);
   }
+  
   return out;
 };
 
 /* -------------------------
-   GET LESSON BY ID (camelCase output)
-   - permission checks: admin / teacher-owner / enrolled student / preview access
+   GET LESSON BY ID
    ------------------------- */
 export const getLessonById = async (req, res) => {
   const t = await sequelize.transaction();
   try {
-    // Accept either :lessonId or :id route naming
     const lessonId = req.params.lessonId ?? req.params.id;
     if (!lessonId || isNaN(parseInt(lessonId, 10))) {
       await t.rollback();
       return res.status(400).json({ success: false, error: "Valid lesson ID is required" });
     }
     const id = parseInt(lessonId, 10);
+
+    console.log(`📖 Fetching lesson ${id} for user:`, req.user?.id);
 
     const lesson = await Lesson.findByPk(id, {
       include: [
@@ -857,12 +983,10 @@ export const getLessonById = async (req, res) => {
           }
         }
       } else {
-        // other roles - default deny unless preview
         hasAccess = Boolean(lesson.is_preview);
         accessReason = lesson.is_preview ? "preview" : "forbidden_role";
       }
     } else {
-      // public access only for preview lessons
       hasAccess = Boolean(lesson.is_preview);
       accessReason = lesson.is_preview ? "public_preview" : "requires_login";
     }
@@ -880,18 +1004,21 @@ export const getLessonById = async (req, res) => {
       });
     }
 
-    // Track view (non-blocking)
+    // Track view
     if (user?.id) {
-      // best-effort tracking
       try {
         await trackLessonView(user.id, lesson.id);
       } catch (e) {
-        // don't fail on tracking errors
         console.warn("trackLessonView failed:", e?.message || e);
       }
     }
 
     const payload = buildFileUrls(lesson);
+    console.log(`✅ Lesson ${id} payload built:`, {
+      title: payload.title,
+      fileUrl: payload.fileUrl ? `${payload.fileUrl.substring(0, 80)}...` : "No file",
+      videoUrl: payload.videoUrl ? `${payload.videoUrl.substring(0, 80)}...` : "No video"
+    });
 
     await t.commit();
     return res.json({ success: true, lesson: payload, access: { reason: accessReason } });
@@ -907,8 +1034,7 @@ export const getLessonById = async (req, res) => {
 };
 
 /* -------------------------
-   GET PREVIEW LESSON FOR COURSE (public)
-   - returns first preview lesson or first lesson for course
+   GET PREVIEW LESSON FOR COURSE
    ------------------------- */
 export const getPreviewLessonForCourse = async (req, res) => {
   try {
@@ -921,7 +1047,6 @@ export const getPreviewLessonForCourse = async (req, res) => {
     const course = await Course.findByPk(cId, { attributes: ["id", "title", "slug", "teacher_id"] });
     if (!course) return res.status(404).json({ success: false, error: "Course not found" });
 
-    // prefer explicit preview lesson
     let lesson = await Lesson.findOne({
       where: { course_id: cId, is_preview: true },
       order: [["order_index", "ASC"]],
@@ -929,7 +1054,6 @@ export const getPreviewLessonForCourse = async (req, res) => {
     });
 
     if (!lesson) {
-      // fallback to first lesson
       lesson = await Lesson.findOne({
         where: { course_id: cId },
         order: [["order_index", "ASC"]],
@@ -955,7 +1079,6 @@ export const getPreviewLessonForCourse = async (req, res) => {
 
 /* -------------------------
    GET PUBLIC PREVIEW BY LESSON ID
-   - allows public access only when lesson.is_preview === true
    ------------------------- */
 export const getPublicPreviewByLessonId = async (req, res) => {
   try {
@@ -992,8 +1115,6 @@ export const getPublicPreviewByLessonId = async (req, res) => {
 
 /* -------------------------
    CREATE LESSON
-   - expects POST /courses/:courseId/lessons or similar
-   - returns created lesson in camelCase
    ------------------------- */
 export const createLesson = async (req, res) => {
   const t = await sequelize.transaction();
@@ -1014,12 +1135,14 @@ export const createLesson = async (req, res) => {
     const body = req.body ?? {};
     const uploads = handleFileUploads(req);
 
+    console.log("📝 Creating lesson with uploads:", uploads);
+
     // Determine content type
     let contentType = (body.contentType ?? body.content_type ?? "text").toString();
     if (uploads.fileUrl) contentType = "pdf";
     if (uploads.videoUrl) contentType = "video";
 
-    // Determine orderIndex auto if missing
+    // Determine orderIndex
     let orderIndex = (body.orderIndex ?? body.order_index);
     if (orderIndex === undefined || orderIndex === null || isNaN(parseInt(orderIndex, 10))) {
       const where = body.unitId ? { unit_id: body.unitId } : { course_id: cId };
@@ -1046,7 +1169,8 @@ export const createLesson = async (req, res) => {
       { transaction: t }
     );
 
-    // re-fetch with includes
+    console.log("✅ Lesson created:", created.id, "File URL:", created.file_url);
+
     const full = await Lesson.findByPk(created.id, {
       include: [
         { model: Course, as: "course", attributes: ["id", "title"] },
@@ -1070,7 +1194,6 @@ export const createLesson = async (req, res) => {
 
 /* -------------------------
    UPDATE LESSON
-   - PATCH /lessons/:lessonId
    ------------------------- */
 export const updateLesson = async (req, res) => {
   const t = await sequelize.transaction();
@@ -1082,13 +1205,15 @@ export const updateLesson = async (req, res) => {
     }
     const id = parseInt(lessonId, 10);
 
+    console.log(`🔄 Updating lesson ${id}, user:`, req.user?.id);
+
     const existing = await Lesson.findByPk(id, { transaction: t });
     if (!existing) {
       await t.rollback();
       return res.status(404).json({ success: false, error: "Lesson not found" });
     }
 
-    // Authorization: teachers can only edit their own course lessons (admin can edit)
+    // Authorization
     if (req.user && req.user.role === "teacher") {
       const course = await Course.findByPk(existing.course_id, { transaction: t });
       if (!course || course.teacher_id !== req.user.id) {
@@ -1099,6 +1224,9 @@ export const updateLesson = async (req, res) => {
 
     const body = req.body ?? {};
     const uploads = handleFileUploads(req);
+
+    console.log("📤 Uploaded files:", uploads);
+    console.log("📦 Request body:", body);
 
     const updates = {};
 
@@ -1111,20 +1239,23 @@ export const updateLesson = async (req, res) => {
     if (body.orderIndex !== undefined) updates.order_index = parseInt(body.orderIndex, 10);
     if (body.isPreview !== undefined) updates.is_preview = Boolean(body.isPreview);
 
-    // prioritize uploaded files if present
+    // Prioritize uploaded files
     if (uploads.videoUrl) {
       updates.video_url = uploads.videoUrl;
       updates.file_url = null;
       updates.content_type = "video";
+      console.log("🎥 Setting video URL:", uploads.videoUrl);
     }
     if (uploads.fileUrl) {
       updates.file_url = uploads.fileUrl;
       updates.video_url = null;
       updates.content_type = "pdf";
+      console.log("📄 Setting file URL:", uploads.fileUrl);
     }
 
-    // apply updates object if not empty
+    // Apply updates
     if (Object.keys(updates).length > 0) {
+      console.log("💾 Updating database with:", updates);
       await existing.update(updates, { transaction: t });
     }
 
@@ -1135,6 +1266,8 @@ export const updateLesson = async (req, res) => {
       ],
       transaction: t,
     });
+
+    console.log("✅ Lesson updated. New file_url:", updated.file_url);
 
     await t.commit();
     return res.json({ success: true, lesson: buildFileUrls(updated), message: "Lesson updated" });
@@ -1151,7 +1284,6 @@ export const updateLesson = async (req, res) => {
 
 /* -------------------------
    GET LESSONS BY COURSE
-   - returns lessons[] in camelCase
    ------------------------- */
 export const getLessonsByCourse = async (req, res) => {
   try {
@@ -1180,7 +1312,6 @@ export const getLessonsByCourse = async (req, res) => {
 
 /* -------------------------
    GET LESSONS BY UNIT
-   - returns lessons[] in camelCase
    ------------------------- */
 export const getLessonsByUnit = async (req, res) => {
   try {
@@ -1208,7 +1339,6 @@ export const getLessonsByUnit = async (req, res) => {
 
 /* -------------------------
    DELETE LESSON
-   - authorization: teacher-owner or admin
    ------------------------- */
 export const deleteLesson = async (req, res) => {
   const t = await sequelize.transaction();
@@ -1254,6 +1384,7 @@ export const deleteLesson = async (req, res) => {
    ------------------------- */
 export default {
   buildFileUrls,
+  debugLessonFile,
   getLessonById,
   getPreviewLessonForCourse,
   getPublicPreviewByLessonId,

@@ -163,7 +163,6 @@
 
 
 
-
 // routes/files.js
 import express from "express";
 import path from "path";
@@ -178,7 +177,7 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 /* ---------------------------------------------------------------
-   UPLOADS DIRECTORY - For development/local files only
+   UPLOADS DIRECTORY
 --------------------------------------------------------------- */
 const UPLOADS_DIR = path.join(process.cwd(), "Uploads");
 
@@ -192,32 +191,87 @@ if (!fsSync.existsSync(UPLOADS_DIR)) {
 --------------------------------------------------------------- */
 router.get("/debug/list", async (req, res) => {
   try {
+    console.log("🔍 Debug endpoint called");
+    
     // List all files in Uploads directory
-    const files = await fs.readdir(UPLOADS_DIR);
+    let files = [];
+    try {
+      files = await fs.readdir(UPLOADS_DIR);
+      console.log(`📁 Found ${files.length} files in ${UPLOADS_DIR}`);
+    } catch (err) {
+      console.log("No files in Uploads directory:", err.message);
+    }
     
     // Get database connection
     const db = await import("../models/index.js");
     const { Lesson, Course } = db.default;
     
     // Get all lessons with file URLs
-    const lessonsWithFiles = await Lesson.findAll({
-      where: {
-        [db.default.Sequelize.Op.or]: [
-          { file_url: { [db.default.Sequelize.Op.ne]: null } },
-          { video_url: { [db.default.Sequelize.Op.ne]: null } }
-        ]
-      },
-      attributes: ['id', 'title', 'file_url', 'video_url', 'content_type'],
-      order: [['id', 'ASC']]
-    });
+    let lessonsWithFiles = [];
+    try {
+      lessonsWithFiles = await Lesson.findAll({
+        where: {
+          [db.default.Sequelize.Op.or]: [
+            { file_url: { [db.default.Sequelize.Op.ne]: null } },
+            { video_url: { [db.default.Sequelize.Op.ne]: null } }
+          ]
+        },
+        attributes: ['id', 'title', 'file_url', 'video_url', 'content_type'],
+        order: [['id', 'ASC']],
+        limit: 50
+      });
+      console.log(`📚 Found ${lessonsWithFiles.length} lessons with files`);
+    } catch (err) {
+      console.log("Database query error:", err.message);
+    }
     
     // Get all courses with thumbnails
-    const coursesWithThumbnails = await Course.findAll({
-      where: {
-        thumbnail: { [db.default.Sequelize.Op.ne]: null }
-      },
-      attributes: ['id', 'title', 'thumbnail'],
-      order: [['id', 'ASC']]
+    let coursesWithThumbnails = [];
+    try {
+      coursesWithThumbnails = await Course.findAll({
+        where: {
+          thumbnail: { [db.default.Sequelize.Op.ne]: null }
+        },
+        attributes: ['id', 'title', 'thumbnail'],
+        order: [['id', 'ASC']],
+        limit: 20
+      });
+      console.log(`🎓 Found ${coursesWithThumbnails.length} courses with thumbnails`);
+    } catch (err) {
+      console.log("Courses query error:", err.message);
+    }
+    
+    // Check file existence
+    const lessonsWithFileCheck = lessonsWithFiles.map(lesson => {
+      let fileExists = false;
+      let localPath = null;
+      
+      if (lesson.file_url) {
+        // Extract filename
+        let filename = lesson.file_url;
+        if (filename.includes("/")) {
+          filename = path.basename(filename);
+        }
+        
+        localPath = path.join(UPLOADS_DIR, filename);
+        
+        try {
+          fileExists = fsSync.existsSync(localPath);
+        } catch (err) {
+          console.log(`File check error for ${filename}:`, err.message);
+        }
+      }
+      
+      return {
+        id: lesson.id,
+        title: lesson.title,
+        file_url: lesson.file_url,
+        video_url: lesson.video_url,
+        content_type: lesson.content_type,
+        file_exists: fileExists,
+        local_path: localPath,
+        is_cloudinary: lesson.file_url?.includes('cloudinary.com') || false
+      };
     });
     
     res.json({
@@ -225,16 +279,14 @@ router.get("/debug/list", async (req, res) => {
       uploads_directory: UPLOADS_DIR,
       local_files: files,
       total_local_files: files.length,
-      lessons_with_files: lessonsWithFiles.map(lesson => ({
-        id: lesson.id,
-        title: lesson.title,
-        file_url: lesson.file_url,
-        video_url: lesson.video_url,
-        content_type: lesson.content_type,
-        file_exists: lesson.file_url ? fsSync.existsSync(path.join(UPLOADS_DIR, path.basename(lesson.file_url))) : false
-      })),
+      lessons_with_files: lessonsWithFileCheck,
       courses_with_thumbnails: coursesWithThumbnails,
-      environment: process.env.NODE_ENV
+      environment: {
+        node_env: process.env.NODE_ENV,
+        use_cloudinary: process.env.USE_CLOUDINARY,
+        cloudinary_configured: !!(process.env.CLOUDINARY_CLOUD_NAME),
+        backend_url: process.env.BACKEND_URL
+      }
     });
   } catch (err) {
     console.error("Debug endpoint error:", err);
@@ -247,12 +299,58 @@ router.get("/debug/list", async (req, res) => {
 });
 
 /* ---------------------------------------------------------------
+   TEST FILE ENDPOINT
+--------------------------------------------------------------- */
+router.get("/test/:filename", async (req, res) => {
+  try {
+    const { filename } = req.params;
+    const localPath = path.join(UPLOADS_DIR, filename);
+    
+    console.log(`🧪 Testing file: ${filename}`);
+    console.log(`📁 Local path: ${localPath}`);
+    
+    const exists = fsSync.existsSync(localPath);
+    
+    if (exists) {
+      const stats = fsSync.statSync(localPath);
+      res.json({
+        success: true,
+        filename,
+        exists: true,
+        path: localPath,
+        size: stats.size,
+        created: stats.birthtime,
+        modified: stats.mtime,
+        uploads_dir: UPLOADS_DIR,
+        message: "File exists and is accessible"
+      });
+    } else {
+      res.json({
+        success: true,
+        filename,
+        exists: false,
+        path: localPath,
+        uploads_dir: UPLOADS_DIR,
+        message: "File not found in Uploads directory"
+      });
+    }
+  } catch (err) {
+    console.error("Test endpoint error:", err);
+    res.status(500).json({ 
+      success: false, 
+      error: err.message,
+      filename: req.params.filename
+    });
+  }
+});
+
+/* ---------------------------------------------------------------
    PUBLIC PREVIEW LESSON ENDPOINT
 --------------------------------------------------------------- */
 router.get("/preview-lesson/:lessonId", getPublicPreviewByLessonId);
 
 /* ---------------------------------------------------------------
-   UNIVERSAL FILE SERVER - Handles local and Cloudinary files
+   UNIVERSAL FILE SERVER
 --------------------------------------------------------------- */
 router.get("/:filename", async (req, res) => {
   try {
@@ -263,6 +361,7 @@ router.get("/:filename", async (req, res) => {
 
     // If it's already a Cloudinary URL, redirect to it
     if (filename.includes("cloudinary.com")) {
+      console.log(`☁️ Redirecting to Cloudinary URL: ${filename.substring(0, 80)}...`);
       return res.redirect(301, filename);
     }
 
@@ -270,8 +369,13 @@ router.get("/:filename", async (req, res) => {
     const basename = path.basename(filename);
     const localPath = path.join(UPLOADS_DIR, basename);
 
-    // Try local file first (development)
+    console.log(`🔍 Looking for file: ${basename}`);
+    console.log(`📁 Local path: ${localPath}`);
+
+    // Try local file first
     if (fsSync.existsSync(localPath)) {
+      console.log(`✅ File found locally: ${basename}`);
+      
       const ext = path.extname(basename).toLowerCase();
       const mimeTypes = {
         ".pdf": "application/pdf",
@@ -307,57 +411,61 @@ router.get("/:filename", async (req, res) => {
       const fileStream = fsSync.createReadStream(localPath);
       fileStream.pipe(res);
 
-      console.log(`✅ Local file served: ${basename}`);
+      console.log(`🚀 Serving file: ${basename} (${mime})`);
       return;
     }
 
-    // In production, files should be on Cloudinary
+    // In production, check database for Cloudinary URLs
     if (process.env.NODE_ENV === "production") {
-      console.log(`☁️ Looking for file in Cloudinary: ${basename}`);
+      console.log(`☁️ Production mode - checking Cloudinary for: ${basename}`);
       
-      // Check if the file exists in the database with a Cloudinary URL
-      const db = await import("../models/index.js");
-      const { Lesson, Course } = db.default;
+      try {
+        const db = await import("../models/index.js");
+        const { Lesson, Course } = db.default;
 
-      // Search in lessons
-      const lessons = await Lesson.findAll({
-        where: {
-          [db.default.Sequelize.Op.or]: [
-            { file_url: { [db.default.Sequelize.Op.like]: `%${basename}%` } },
-            { video_url: { [db.default.Sequelize.Op.like]: `%${basename}%` } },
-          ],
-        },
-        attributes: ["file_url", "video_url"],
-      });
+        // Search in lessons
+        const lessons = await Lesson.findAll({
+          where: {
+            [db.default.Sequelize.Op.or]: [
+              { file_url: { [db.default.Sequelize.Op.like]: `%${basename}%` } },
+              { video_url: { [db.default.Sequelize.Op.like]: `%${basename}%` } },
+            ],
+          },
+          attributes: ["file_url", "video_url"],
+          limit: 5
+        });
 
-      // Search in courses
-      const courses = await Course.findAll({
-        where: {
-          thumbnail: { [db.default.Sequelize.Op.like]: `%${basename}%` },
-        },
-        attributes: ["thumbnail"],
-      });
+        // Search in courses
+        const courses = await Course.findAll({
+          where: {
+            thumbnail: { [db.default.Sequelize.Op.like]: `%${basename}%` },
+          },
+          attributes: ["thumbnail"],
+          limit: 5
+        });
 
-      // Check all found URLs
-      const allUrls = [];
-      lessons.forEach(lesson => {
-        if (lesson.file_url?.includes(basename)) allUrls.push(lesson.file_url);
-        if (lesson.video_url?.includes(basename)) allUrls.push(lesson.video_url);
-      });
-      courses.forEach(course => {
-        if (course.thumbnail?.includes(basename)) allUrls.push(course.thumbnail);
-      });
+        // Check all found URLs
+        const allUrls = [];
+        lessons.forEach(lesson => {
+          if (lesson.file_url?.includes(basename)) allUrls.push(lesson.file_url);
+          if (lesson.video_url?.includes(basename)) allUrls.push(lesson.video_url);
+        });
+        courses.forEach(course => {
+          if (course.thumbnail?.includes(basename)) allUrls.push(course.thumbnail);
+        });
 
-      // If we found a Cloudinary URL, redirect to it
-      for (const url of allUrls) {
-        if (url.includes('cloudinary.com')) {
-          console.log(`✅ Found Cloudinary URL: ${url.substring(0, 80)}...`);
-          return res.redirect(301, url);
+        // If we found a Cloudinary URL, redirect to it
+        for (const url of allUrls) {
+          if (url.includes('cloudinary.com')) {
+            console.log(`✅ Found Cloudinary URL: ${url.substring(0, 80)}...`);
+            return res.redirect(301, url);
+          }
         }
-      }
 
-      // No Cloudinary URL found, return 404
-      console.log(`❌ File not found in Cloudinary: ${basename}`);
+        console.log(`❌ No Cloudinary URL found for: ${basename}`);
+      } catch (dbErr) {
+        console.log(`Database search error: ${dbErr.message}`);
+      }
     }
 
     // File not found
@@ -370,6 +478,8 @@ router.get("/:filename", async (req, res) => {
         ? "This file may have been uploaded to Cloudinary. Please check if the file URL in the database is a Cloudinary URL."
         : "Make sure the file exists in the Uploads directory.",
       environment: process.env.NODE_ENV,
+      requested: filename,
+      searched_path: localPath,
     });
 
   } catch (err) {
