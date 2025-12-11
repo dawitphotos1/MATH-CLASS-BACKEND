@@ -639,8 +639,6 @@
 // };
 
 
-
-
 // controllers/lessonController.js
 import db from "../models/index.js";
 import path from "path";
@@ -659,7 +657,7 @@ cloudinary.config({
 
 /* -------------------------
    Helper: backend URL
-   ------------------------- */
+------------------------- */
 const getBackendUrl = () => {
   if (process.env.BACKEND_URL) return process.env.BACKEND_URL.replace(/\/+$/g, "");
   if (process.env.RENDER_EXTERNAL_URL) return process.env.RENDER_EXTERNAL_URL.replace(/\/+$/g, "");
@@ -670,15 +668,22 @@ const getBackendUrl = () => {
 
 /* -------------------------
    Helper: normalize and build file/video URLs
-   ------------------------- */
+------------------------- */
 export const buildFileUrls = (lesson) => {
   if (!lesson) return null;
-  
   const raw = typeof lesson.toJSON === "function" ? lesson.toJSON() : { ...lesson };
   const backend = getBackendUrl();
-
+  
+  console.log(`🔄 Building URLs for lesson ${raw.id}:`, {
+    file_url: raw.file_url,
+    content_type: raw.content_type
+  });
+  
   const resolveUrl = (url, preferRawForPdf = true) => {
-    if (!url) return null;
+    if (!url || url.trim() === "") {
+      console.log(`❌ Empty URL for lesson ${raw.id}`);
+      return null;
+    }
     
     console.log(`🔄 Resolving URL: ${url}`);
     
@@ -692,9 +697,9 @@ export const buildFileUrls = (lesson) => {
       }
       return url;
     }
-
+    
     // If it's a Cloudinary public_id (not full URL)
-    if (typeof url === "string" && !url.includes("/") && !url.includes("\\")) {
+    if (typeof url === "string" && !url.includes("/") && !url.includes("\\") && url.includes("_")) {
       try {
         // Try to build Cloudinary URL
         const cloudinaryUrl = cloudinary.url(url, {
@@ -707,22 +712,22 @@ export const buildFileUrls = (lesson) => {
         // Fallback to file server
       }
     }
-
-    // If Uploads path
+    
+    // If Uploads path (starts with /Uploads/ or Uploads/)
     if (typeof url === "string" && (url.startsWith("/Uploads/") || url.startsWith("Uploads/"))) {
       const filename = url.replace(/^\/?Uploads\//, "");
       const fileUrl = `${backend}/api/v1/files/${encodeURIComponent(filename)}`;
       console.log(`📁 Converted Uploads path to URL: ${fileUrl}`);
       return fileUrl;
     }
-
+    
     // If it's just a filename without path
     if (typeof url === "string" && !url.includes("/") && !url.includes("\\")) {
       const fileUrl = `${backend}/api/v1/files/${encodeURIComponent(url)}`;
       console.log(`📄 Converted filename to URL: ${fileUrl}`);
       return fileUrl;
     }
-
+    
     // If it's a local file path
     if (typeof url === "string" && (url.includes("/") || url.includes("\\"))) {
       const filename = path.basename(url);
@@ -730,11 +735,11 @@ export const buildFileUrls = (lesson) => {
       console.log(`🛣️ Converted local path to URL: ${fileUrl}`);
       return fileUrl;
     }
-
-    console.log(`❓ Unknown URL format: ${url}`);
-    return url;
+    
+    console.log(`❓ Unknown URL format for lesson ${raw.id}: ${url}`);
+    return null;
   };
-
+  
   // Map / normalize fields
   const result = {
     id: raw.id ?? null,
@@ -752,7 +757,7 @@ export const buildFileUrls = (lesson) => {
     createdAt: raw.created_at ?? raw.createdAt ?? raw.createdAt ?? null,
     updatedAt: raw.updated_at ?? raw.updatedAt ?? null,
   };
-
+  
   // Include minimal course/unit objects if present
   if (raw.course) {
     result.course = {
@@ -762,7 +767,7 @@ export const buildFileUrls = (lesson) => {
       teacherId: raw.course.teacher_id ?? raw.course.teacherId ?? null,
     };
   }
-
+  
   if (raw.unit) {
     result.unit = {
       id: raw.unit.id ?? raw.unit_id ?? null,
@@ -770,17 +775,78 @@ export const buildFileUrls = (lesson) => {
       orderIndex: raw.unit.order_index ?? raw.unit.orderIndex ?? null,
     };
   }
-
+  
   return result;
 };
 
 /* -------------------------
+   FIX: Manually set lesson file URL
+------------------------- */
+export const fixLessonFileUrl = async (req, res) => {
+  try {
+    const { lessonId } = req.params;
+    const { fileUrl, contentType = "pdf" } = req.body;
+    
+    if (!lessonId || !fileUrl) {
+      return res.status(400).json({ 
+        success: false, 
+        error: "Lesson ID and file URL are required" 
+      });
+    }
+    
+    const lesson = await Lesson.findByPk(lessonId);
+    if (!lesson) {
+      return res.status(404).json({ success: false, error: "Lesson not found" });
+    }
+    
+    // Authorization
+    if (req.user && req.user.role === "teacher") {
+      const course = await Course.findByPk(lesson.course_id);
+      if (!course || course.teacher_id !== req.user.id) {
+        return res.status(403).json({ 
+          success: false, 
+          error: "You can only edit your own lessons" 
+        });
+      }
+    }
+    
+    console.log(`🔧 Fixing lesson ${lessonId}:`, {
+      before: { file_url: lesson.file_url, content_type: lesson.content_type },
+      after: { fileUrl, contentType }
+    });
+    
+    lesson.file_url = fileUrl;
+    lesson.content_type = contentType;
+    await lesson.save();
+    
+    const updated = buildFileUrls(lesson);
+    
+    res.json({
+      success: true,
+      message: "Lesson file URL updated",
+      lesson: updated,
+      before: {
+        file_url: lesson.file_url,
+        content_type: lesson.content_type
+      }
+    });
+    
+  } catch (err) {
+    console.error("fixLessonFileUrl error:", err?.message || err);
+    return res.status(500).json({
+      success: false,
+      error: "Failed to fix lesson",
+      details: process.env.NODE_ENV === "development" ? err?.message : undefined,
+    });
+  }
+};
+
+/* -------------------------
    DEBUG: Get lesson with detailed file info
-   ------------------------- */
+------------------------- */
 export const debugLessonFile = async (req, res) => {
   try {
     const { lessonId } = req.params;
-    
     if (!lessonId || isNaN(parseInt(lessonId, 10))) {
       return res.status(400).json({ success: false, error: "Valid lesson ID is required" });
     }
@@ -802,16 +868,13 @@ export const debugLessonFile = async (req, res) => {
     // Check if file exists locally
     let fileExists = false;
     let filePath = null;
-    
-    if (lesson.file_url) {
+    if (lesson.file_url && lesson.file_url.trim() !== "") {
       const uploadsDir = path.join(process.cwd(), "Uploads");
-      
       // Extract filename from URL
       let filename = lesson.file_url;
       if (filename.includes("/")) {
         filename = path.basename(filename);
       }
-      
       filePath = path.join(uploadsDir, filename);
       
       // Check if file exists
@@ -869,7 +932,6 @@ export const debugLessonFile = async (req, res) => {
       },
       message: "Debug information for lesson file",
     });
-    
   } catch (err) {
     console.error("debugLessonFile error:", err?.message || err);
     return res.status(500).json({
@@ -882,7 +944,7 @@ export const debugLessonFile = async (req, res) => {
 
 /* -------------------------
    Track Lesson View
-   ------------------------- */
+------------------------- */
 const trackLessonView = async (userId, lessonId) => {
   try {
     if (!userId || !lessonId) return;
@@ -897,7 +959,7 @@ const trackLessonView = async (userId, lessonId) => {
 
 /* -------------------------
    Handle multer file uploads
-   ------------------------- */
+------------------------- */
 const handleFileUploads = (req) => {
   const out = {};
   console.log("📤 Handling file uploads:", req.files ? Object.keys(req.files) : "No files");
@@ -908,11 +970,13 @@ const handleFileUploads = (req) => {
       out.videoUrl = f.path || f.location || f.filename || null;
       console.log("🎥 Video uploaded:", out.videoUrl);
     }
+    
     if (req.files?.pdf?.[0]) {
       const f = req.files.pdf[0];
       out.fileUrl = f.path || f.location || f.filename || null;
       console.log("📄 PDF uploaded:", out.fileUrl);
     }
+    
     if (req.files?.file?.[0]) {
       const f = req.files.file[0];
       out.fileUrl = f.path || f.location || f.filename || null;
@@ -927,7 +991,7 @@ const handleFileUploads = (req) => {
 
 /* -------------------------
    GET LESSON BY ID
-   ------------------------- */
+------------------------- */
 export const getLessonById = async (req, res) => {
   const t = await sequelize.transaction();
   try {
@@ -936,10 +1000,10 @@ export const getLessonById = async (req, res) => {
       await t.rollback();
       return res.status(400).json({ success: false, error: "Valid lesson ID is required" });
     }
+    
     const id = parseInt(lessonId, 10);
-
     console.log(`📖 Fetching lesson ${id} for user:`, req.user?.id);
-
+    
     const lesson = await Lesson.findByPk(id, {
       include: [
         { model: Course, as: "course", attributes: ["id", "title", "slug", "teacher_id"] },
@@ -947,17 +1011,17 @@ export const getLessonById = async (req, res) => {
       ],
       transaction: t,
     });
-
+    
     if (!lesson) {
       await t.rollback();
       return res.status(404).json({ success: false, error: "Lesson not found" });
     }
-
+    
     // Access checks
     let hasAccess = false;
     let accessReason = "unknown";
-
     const user = req.user ?? null;
+    
     if (user) {
       if (user.role === "admin") {
         hasAccess = true;
@@ -971,9 +1035,14 @@ export const getLessonById = async (req, res) => {
           accessReason = "preview";
         } else {
           const enrollment = await Enrollment.findOne({
-            where: { user_id: user.id, course_id: lesson.course_id, approval_status: "approved" },
+            where: {
+              user_id: user.id,
+              course_id: lesson.course_id,
+              approval_status: "approved"
+            },
             transaction: t,
           });
+          
           if (enrollment) {
             hasAccess = true;
             accessReason = "enrolled";
@@ -990,20 +1059,19 @@ export const getLessonById = async (req, res) => {
       hasAccess = Boolean(lesson.is_preview);
       accessReason = lesson.is_preview ? "public_preview" : "requires_login";
     }
-
+    
     if (!hasAccess) {
       await t.rollback();
       return res.status(accessReason === "requires_login" ? 401 : 403).json({
         success: false,
-        error:
-          accessReason === "requires_login"
-            ? "Please log in to access this lesson"
-            : "You do not have permission to access this lesson",
+        error: accessReason === "requires_login"
+          ? "Please log in to access this lesson"
+          : "You do not have permission to access this lesson",
         reason: accessReason,
         canPreview: Boolean(lesson.is_preview),
       });
     }
-
+    
     // Track view
     if (user?.id) {
       try {
@@ -1012,16 +1080,21 @@ export const getLessonById = async (req, res) => {
         console.warn("trackLessonView failed:", e?.message || e);
       }
     }
-
+    
     const payload = buildFileUrls(lesson);
+    
     console.log(`✅ Lesson ${id} payload built:`, {
       title: payload.title,
       fileUrl: payload.fileUrl ? `${payload.fileUrl.substring(0, 80)}...` : "No file",
       videoUrl: payload.videoUrl ? `${payload.videoUrl.substring(0, 80)}...` : "No video"
     });
-
+    
     await t.commit();
-    return res.json({ success: true, lesson: payload, access: { reason: accessReason } });
+    return res.json({
+      success: true,
+      lesson: payload,
+      access: { reason: accessReason }
+    });
   } catch (err) {
     await t.rollback();
     console.error("getLessonById error:", err?.message || err);
@@ -1035,24 +1108,27 @@ export const getLessonById = async (req, res) => {
 
 /* -------------------------
    GET PREVIEW LESSON FOR COURSE
-   ------------------------- */
+------------------------- */
 export const getPreviewLessonForCourse = async (req, res) => {
   try {
     const { courseId } = req.params;
     if (!courseId || isNaN(parseInt(courseId, 10))) {
       return res.status(400).json({ success: false, error: "Valid course ID is required" });
     }
+    
     const cId = parseInt(courseId, 10);
-
-    const course = await Course.findByPk(cId, { attributes: ["id", "title", "slug", "teacher_id"] });
+    const course = await Course.findByPk(cId, {
+      attributes: ["id", "title", "slug", "teacher_id"]
+    });
+    
     if (!course) return res.status(404).json({ success: false, error: "Course not found" });
-
+    
     let lesson = await Lesson.findOne({
       where: { course_id: cId, is_preview: true },
       order: [["order_index", "ASC"]],
       include: [{ model: Course, as: "course", attributes: ["id", "title", "slug"] }],
     });
-
+    
     if (!lesson) {
       lesson = await Lesson.findOne({
         where: { course_id: cId },
@@ -1060,13 +1136,18 @@ export const getPreviewLessonForCourse = async (req, res) => {
         include: [{ model: Course, as: "course", attributes: ["id", "title", "slug"] }],
       });
     }
-
+    
     if (!lesson) {
       return res.status(404).json({ success: false, error: "No lessons found for this course" });
     }
-
+    
     const payload = buildFileUrls(lesson);
-    return res.json({ success: true, lesson: payload, course: { id: course.id, title: course.title, slug: course.slug } });
+    
+    return res.json({
+      success: true,
+      lesson: payload,
+      course: { id: course.id, title: course.title, slug: course.slug }
+    });
   } catch (err) {
     console.error("getPreviewLessonForCourse error:", err?.message || err);
     return res.status(500).json({
@@ -1079,30 +1160,35 @@ export const getPreviewLessonForCourse = async (req, res) => {
 
 /* -------------------------
    GET PUBLIC PREVIEW BY LESSON ID
-   ------------------------- */
+------------------------- */
 export const getPublicPreviewByLessonId = async (req, res) => {
   try {
     const lessonId = req.params.lessonId ?? req.params.id;
     if (!lessonId || isNaN(parseInt(lessonId, 10))) {
       return res.status(400).json({ success: false, error: "Valid lesson ID is required" });
     }
+    
     const id = parseInt(lessonId, 10);
-
     const lesson = await Lesson.findByPk(id, {
       include: [{ model: Course, as: "course", attributes: ["id", "title", "slug"] }],
     });
-
+    
     if (!lesson) return res.status(404).json({ success: false, error: "Lesson not found" });
-
+    
     if (!lesson.is_preview && !req.user) {
       return res.status(403).json({
         success: false,
         error: "This lesson is not available for public preview. Please enroll or log in.",
       });
     }
-
+    
     const payload = buildFileUrls(lesson);
-    return res.json({ success: true, lesson: payload, access: lesson.is_preview ? "public" : "restricted" });
+    
+    return res.json({
+      success: true,
+      lesson: payload,
+      access: lesson.is_preview ? "public" : "restricted"
+    });
   } catch (err) {
     console.error("getPublicPreviewByLessonId error:", err?.message || err);
     return res.status(500).json({
@@ -1115,7 +1201,7 @@ export const getPublicPreviewByLessonId = async (req, res) => {
 
 /* -------------------------
    CREATE LESSON
-   ------------------------- */
+------------------------- */
 export const createLesson = async (req, res) => {
   const t = await sequelize.transaction();
   try {
@@ -1124,24 +1210,25 @@ export const createLesson = async (req, res) => {
       await t.rollback();
       return res.status(400).json({ success: false, error: "Valid course ID is required" });
     }
+    
     const cId = parseInt(courseId, 10);
-
     const course = await Course.findByPk(cId, { transaction: t });
+    
     if (!course) {
       await t.rollback();
       return res.status(404).json({ success: false, error: "Course not found" });
     }
-
+    
     const body = req.body ?? {};
     const uploads = handleFileUploads(req);
-
+    
     console.log("📝 Creating lesson with uploads:", uploads);
-
+    
     // Determine content type
     let contentType = (body.contentType ?? body.content_type ?? "text").toString();
     if (uploads.fileUrl) contentType = "pdf";
     if (uploads.videoUrl) contentType = "video";
-
+    
     // Determine orderIndex
     let orderIndex = (body.orderIndex ?? body.order_index);
     if (orderIndex === undefined || orderIndex === null || isNaN(parseInt(orderIndex, 10))) {
@@ -1153,7 +1240,7 @@ export const createLesson = async (req, res) => {
       });
       orderIndex = last ? (last.order_index ?? 0) + 1 : 1;
     }
-
+    
     const created = await Lesson.create(
       {
         title: (body.title ?? "Untitled Lesson").toString().trim(),
@@ -1168,9 +1255,9 @@ export const createLesson = async (req, res) => {
       },
       { transaction: t }
     );
-
+    
     console.log("✅ Lesson created:", created.id, "File URL:", created.file_url);
-
+    
     const full = await Lesson.findByPk(created.id, {
       include: [
         { model: Course, as: "course", attributes: ["id", "title"] },
@@ -1178,9 +1265,13 @@ export const createLesson = async (req, res) => {
       ],
       transaction: t,
     });
-
+    
     await t.commit();
-    return res.status(201).json({ success: true, lesson: buildFileUrls(full), message: "Lesson created" });
+    return res.status(201).json({
+      success: true,
+      lesson: buildFileUrls(full),
+      message: "Lesson created"
+    });
   } catch (err) {
     await t.rollback();
     console.error("createLesson error:", err?.message || err);
@@ -1193,8 +1284,8 @@ export const createLesson = async (req, res) => {
 };
 
 /* -------------------------
-   UPDATE LESSON
-   ------------------------- */
+   UPDATE LESSON (WITH FIX FOR EMPTY FILE_URL)
+------------------------- */
 export const updateLesson = async (req, res) => {
   const t = await sequelize.transaction();
   try {
@@ -1203,33 +1294,48 @@ export const updateLesson = async (req, res) => {
       await t.rollback();
       return res.status(400).json({ success: false, error: "Valid lesson ID is required" });
     }
+    
     const id = parseInt(lessonId, 10);
-
     console.log(`🔄 Updating lesson ${id}, user:`, req.user?.id);
-
+    
     const existing = await Lesson.findByPk(id, { transaction: t });
     if (!existing) {
       await t.rollback();
       return res.status(404).json({ success: false, error: "Lesson not found" });
     }
-
+    
     // Authorization
     if (req.user && req.user.role === "teacher") {
       const course = await Course.findByPk(existing.course_id, { transaction: t });
       if (!course || course.teacher_id !== req.user.id) {
         await t.rollback();
-        return res.status(403).json({ success: false, error: "You may only edit lessons in your own courses" });
+        return res.status(403).json({
+          success: false,
+          error: "You may only edit lessons in your own courses"
+        });
       }
     }
-
+    
+    console.log("=== UPDATE LESSON DEBUG ===");
+    console.log("Lesson ID:", id);
+    console.log("Existing lesson:", {
+      id: existing.id,
+      title: existing.title,
+      file_url: existing.file_url,
+      content_type: existing.content_type
+    });
+    
+    // Add detailed logging for req.files
+    console.log("Request files:", req.files ? JSON.stringify(Object.keys(req.files), null, 2) : "No files");
+    console.log("Request body:", JSON.stringify(req.body, null, 2));
+    
     const body = req.body ?? {};
     const uploads = handleFileUploads(req);
-
-    console.log("📤 Uploaded files:", uploads);
-    console.log("📦 Request body:", body);
-
+    
+    console.log("Uploads result:", uploads);
+    console.log("===========================");
+    
     const updates = {};
-
     if (body.title !== undefined && body.title !== null) updates.title = body.title.toString().trim();
     if (body.textContent !== undefined) updates.content = body.textContent;
     if (body.contentType !== undefined) updates.content_type = body.contentType;
@@ -1238,27 +1344,39 @@ export const updateLesson = async (req, res) => {
     if (body.unitId !== undefined) updates.unit_id = body.unitId;
     if (body.orderIndex !== undefined) updates.order_index = parseInt(body.orderIndex, 10);
     if (body.isPreview !== undefined) updates.is_preview = Boolean(body.isPreview);
-
-    // Prioritize uploaded files
-    if (uploads.videoUrl) {
-      updates.video_url = uploads.videoUrl;
-      updates.file_url = null;
-      updates.content_type = "video";
-      console.log("🎥 Setting video URL:", uploads.videoUrl);
-    }
+    
+    // IMPORTANT FIX: Check if uploaded file is actually saved
     if (uploads.fileUrl) {
+      console.log("📄 Setting file URL from upload:", uploads.fileUrl);
       updates.file_url = uploads.fileUrl;
       updates.video_url = null;
       updates.content_type = "pdf";
-      console.log("📄 Setting file URL:", uploads.fileUrl);
+      
+      // Verify the file exists locally
+      const uploadsDir = path.join(process.cwd(), "Uploads");
+      const filename = path.basename(uploads.fileUrl);
+      const localPath = path.join(uploadsDir, filename);
+      
+      if (fs.existsSync(localPath)) {
+        console.log(`✅ Uploaded file verified at: ${localPath}`);
+      } else {
+        console.log(`⚠️ WARNING: Uploaded file not found at: ${localPath}`);
+      }
     }
-
+    
+    if (uploads.videoUrl) {
+      console.log("🎥 Setting video URL from upload:", uploads.videoUrl);
+      updates.video_url = uploads.videoUrl;
+      updates.file_url = null;
+      updates.content_type = "video";
+    }
+    
     // Apply updates
     if (Object.keys(updates).length > 0) {
       console.log("💾 Updating database with:", updates);
       await existing.update(updates, { transaction: t });
     }
-
+    
     const updated = await Lesson.findByPk(id, {
       include: [
         { model: Course, as: "course", attributes: ["id", "title"] },
@@ -1266,11 +1384,15 @@ export const updateLesson = async (req, res) => {
       ],
       transaction: t,
     });
-
+    
     console.log("✅ Lesson updated. New file_url:", updated.file_url);
-
+    
     await t.commit();
-    return res.json({ success: true, lesson: buildFileUrls(updated), message: "Lesson updated" });
+    return res.json({
+      success: true,
+      lesson: buildFileUrls(updated),
+      message: "Lesson updated"
+    });
   } catch (err) {
     await t.rollback();
     console.error("updateLesson error:", err?.message || err);
@@ -1284,22 +1406,26 @@ export const updateLesson = async (req, res) => {
 
 /* -------------------------
    GET LESSONS BY COURSE
-   ------------------------- */
+------------------------- */
 export const getLessonsByCourse = async (req, res) => {
   try {
     const courseId = req.params.courseId ?? req.params.id;
     if (!courseId || isNaN(parseInt(courseId, 10))) {
       return res.status(400).json({ success: false, error: "Valid course ID is required" });
     }
+    
     const cId = parseInt(courseId, 10);
-
     const lessons = await Lesson.findAll({
       where: { course_id: cId },
       include: [{ model: Unit, as: "unit", attributes: ["id", "title", "order_index"] }],
       order: [["order_index", "ASC"]],
     });
-
-    return res.json({ success: true, lessons: lessons.map(buildFileUrls), count: lessons.length });
+    
+    return res.json({
+      success: true,
+      lessons: lessons.map(buildFileUrls),
+      count: lessons.length
+    });
   } catch (err) {
     console.error("getLessonsByCourse error:", err?.message || err);
     return res.status(500).json({
@@ -1312,21 +1438,25 @@ export const getLessonsByCourse = async (req, res) => {
 
 /* -------------------------
    GET LESSONS BY UNIT
-   ------------------------- */
+------------------------- */
 export const getLessonsByUnit = async (req, res) => {
   try {
     const unitId = req.params.unitId ?? req.params.id;
     if (!unitId || isNaN(parseInt(unitId, 10))) {
       return res.status(400).json({ success: false, error: "Valid unit ID is required" });
     }
+    
     const uId = parseInt(unitId, 10);
-
     const lessons = await Lesson.findAll({
       where: { unit_id: uId },
       order: [["order_index", "ASC"]],
     });
-
-    return res.json({ success: true, lessons: lessons.map(buildFileUrls), count: lessons.length });
+    
+    return res.json({
+      success: true,
+      lessons: lessons.map(buildFileUrls),
+      count: lessons.length
+    });
   } catch (err) {
     console.error("getLessonsByUnit error:", err?.message || err);
     return res.status(500).json({
@@ -1339,7 +1469,7 @@ export const getLessonsByUnit = async (req, res) => {
 
 /* -------------------------
    DELETE LESSON
-   ------------------------- */
+------------------------- */
 export const deleteLesson = async (req, res) => {
   const t = await sequelize.transaction();
   try {
@@ -1348,26 +1478,35 @@ export const deleteLesson = async (req, res) => {
       await t.rollback();
       return res.status(400).json({ success: false, error: "Valid lesson ID is required" });
     }
+    
     const id = parseInt(lessonId, 10);
-
     const lesson = await Lesson.findByPk(id, { transaction: t });
+    
     if (!lesson) {
       await t.rollback();
       return res.status(404).json({ success: false, error: "Lesson not found" });
     }
-
+    
     // Authorization
     if (req.user && req.user.role === "teacher") {
       const course = await Course.findByPk(lesson.course_id, { transaction: t });
       if (!course || course.teacher_id !== req.user.id) {
         await t.rollback();
-        return res.status(403).json({ success: false, error: "You can only delete lessons from your courses" });
+        return res.status(403).json({
+          success: false,
+          error: "You can only delete lessons from your courses"
+        });
       }
     }
-
+    
     await lesson.destroy({ transaction: t });
     await t.commit();
-    return res.json({ success: true, message: "Lesson deleted", deletedId: id });
+    
+    return res.json({
+      success: true,
+      message: "Lesson deleted",
+      deletedId: id
+    });
   } catch (err) {
     await t.rollback();
     console.error("deleteLesson error:", err?.message || err);
@@ -1381,10 +1520,11 @@ export const deleteLesson = async (req, res) => {
 
 /* -------------------------
    Default export
-   ------------------------- */
+------------------------- */
 export default {
   buildFileUrls,
   debugLessonFile,
+  fixLessonFileUrl,
   getLessonById,
   getPreviewLessonForCourse,
   getPublicPreviewByLessonId,

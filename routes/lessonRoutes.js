@@ -71,7 +71,6 @@
 
 
 
-
 // routes/lessonRoutes.js
 import express from "express";
 import { authenticateToken } from "../middleware/authMiddleware.js";
@@ -84,6 +83,7 @@ import {
   getLessonsByCourse,
   getLessonsByUnit,
   debugLessonFile,
+  fixLessonFileUrl  // ✅ ADD THIS IMPORT
 } from "../controllers/lessonController.js";
 import { uploadLessonFiles } from "../middleware/cloudinaryUpload.js";
 
@@ -97,6 +97,11 @@ const router = express.Router();
  * Debug lesson file info
  */
 router.get("/debug/:lessonId/file-info", authenticateToken, debugLessonFile);
+
+/**
+ * Fix lesson file URL manually
+ */
+router.post("/:lessonId/fix-file", authenticateToken, fixLessonFileUrl);  // ✅ ADD THIS ROUTE
 
 /**
  * Create a new lesson — allowed for teachers or admins only

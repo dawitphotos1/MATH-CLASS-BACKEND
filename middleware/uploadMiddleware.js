@@ -159,7 +159,6 @@
 
 
 
-
 // middleware/uploadMiddleware.js
 import multer from "multer";
 import path from "path";
@@ -168,10 +167,10 @@ import { v2 as cloudinary } from "cloudinary";
 import streamifier from "streamifier";
 
 // Configure Cloudinary
-console.log("☁️ Cloudinary Configuration:", {
+console.log("☁️ Cloudinary Configuration Check:", {
   cloud_name: process.env.CLOUDINARY_CLOUD_NAME ? "Set" : "Not set",
   api_key: process.env.CLOUDINARY_API_KEY ? "Set" : "Not set",
-  use_cloudinary: process.env.USE_CLOUDINARY
+  use_cloudinary: process.env.USE_CLOUDINARY || "false"
 });
 
 cloudinary.config({
@@ -181,7 +180,7 @@ cloudinary.config({
   secure: true,
 });
 
-// Create local storage only for development
+// Create local storage directory
 const LOCAL_UPLOAD_DIR = process.env.UPLOAD_DIR || path.join(process.cwd(), "Uploads");
 if (!fs.existsSync(LOCAL_UPLOAD_DIR)) {
   fs.mkdirSync(LOCAL_UPLOAD_DIR, { recursive: true });
@@ -192,7 +191,6 @@ const createCloudinaryStorage = () => {
   return {
     _handleFile: (req, file, cb) => {
       console.log(`☁️ Uploading to Cloudinary: ${file.originalname} (${file.mimetype})`);
-      
       const buffer = file.buffer;
       const originalname = file.originalname;
       
@@ -233,12 +231,10 @@ const createCloudinaryStorage = () => {
         (error, result) => {
           if (error) {
             console.error("❌ Cloudinary upload error:", error.message);
-            
             // Fallback to local storage
             console.log("📁 Falling back to local storage...");
             const localPath = path.join(LOCAL_UPLOAD_DIR, `${safeName}_${timestamp}${ext}`);
             fs.writeFileSync(localPath, buffer);
-            
             cb(null, {
               filename: `${safeName}_${timestamp}${ext}`,
               path: `/Uploads/${safeName}_${timestamp}${ext}`,
@@ -249,7 +245,6 @@ const createCloudinaryStorage = () => {
             });
           } else {
             console.log(`✅ Cloudinary upload successful: ${result.secure_url.substring(0, 80)}...`);
-            
             // Return file info with Cloudinary URL
             cb(null, {
               filename: originalname,
@@ -290,14 +285,17 @@ const localStorage = multer.diskStorage({
   },
 });
 
-// Choose storage based on environment and configuration
+// IMPORTANT FIX: Always use local storage for now to ensure files are saved
 const shouldUseCloudinary = process.env.USE_CLOUDINARY === "true" && 
                            process.env.CLOUDINARY_CLOUD_NAME && 
-                           process.env.CLOUDINARY_API_KEY;
+                           process.env.CLOUDINARY_API_KEY &&
+                           process.env.CLOUDINARY_API_SECRET &&
+                           process.env.NODE_ENV === "production";
 
-console.log(`🔄 Storage selection: ${shouldUseCloudinary ? 'Cloudinary' : 'Local'}`);
+console.log(`🔄 Storage selection: ${shouldUseCloudinary ? 'Cloudinary' : 'Local'} (FORCED LOCAL FOR DEBUG)`);
 
-const storage = shouldUseCloudinary ? createCloudinaryStorage() : localStorage;
+// FORCE LOCAL STORAGE to fix the issue
+const storage = localStorage;
 
 const allowedMimes = [
   "image/jpeg", "image/jpg", "image/png", "image/gif", "image/webp",
@@ -310,7 +308,6 @@ const allowedMimes = [
 
 const fileFilter = (req, file, cb) => {
   console.log(`🔍 Checking file type: ${file.originalname} (${file.mimetype})`);
-  
   if (allowedMimes.includes(file.mimetype)) {
     console.log(`✅ File type allowed: ${file.mimetype}`);
     cb(null, true);
