@@ -159,6 +159,7 @@
 
 
 
+
 // middleware/uploadMiddleware.js
 import multer from "multer";
 import path from "path";
@@ -166,25 +167,38 @@ import fs from "fs";
 import { v2 as cloudinary } from "cloudinary";
 import streamifier from "streamifier";
 
-// Configure Cloudinary
-console.log("☁️ Cloudinary Configuration Check:", {
-  cloud_name: process.env.CLOUDINARY_CLOUD_NAME ? "Set" : "Not set",
-  api_key: process.env.CLOUDINARY_API_KEY ? "Set" : "Not set",
-  use_cloudinary: process.env.USE_CLOUDINARY || "false"
-});
+console.log("=== FILE UPLOAD MIDDLEWARE INIT ===");
+console.log(`📁 Upload directory: ${process.env.UPLOAD_DIR || './Uploads'}`);
+console.log(`☁️ USE_CLOUDINARY: ${process.env.USE_CLOUDINARY || 'false'}`);
+console.log(`🏠 NODE_ENV: ${process.env.NODE_ENV || 'development'}`);
+console.log(`☁️ Cloudinary configured: ${!!(process.env.CLOUDINARY_CLOUD_NAME && process.env.CLOUDINARY_API_KEY)}`);
 
-cloudinary.config({
-  cloud_name: process.env.CLOUDINARY_CLOUD_NAME || "",
-  api_key: process.env.CLOUDINARY_API_KEY || "",
-  api_secret: process.env.CLOUDINARY_API_SECRET || "",
-  secure: true,
-});
+// Configure Cloudinary if credentials exist
+if (process.env.CLOUDINARY_CLOUD_NAME && process.env.CLOUDINARY_API_KEY) {
+  cloudinary.config({
+    cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
+    api_key: process.env.CLOUDINARY_API_KEY,
+    api_secret: process.env.CLOUDINARY_API_SECRET || "",
+    secure: true,
+  });
+  console.log("✅ Cloudinary configured successfully");
+} else {
+  console.log("⚠️ Cloudinary not configured - using local storage only");
+}
 
-// Create local storage directory
-const LOCAL_UPLOAD_DIR = process.env.UPLOAD_DIR || path.join(process.cwd(), "Uploads");
+// Create local storage directory for development/fallback
+const LOCAL_UPLOAD_DIR = path.join(process.cwd(), "Uploads");
 if (!fs.existsSync(LOCAL_UPLOAD_DIR)) {
+  console.log(`📁 Creating uploads directory: ${LOCAL_UPLOAD_DIR}`);
   fs.mkdirSync(LOCAL_UPLOAD_DIR, { recursive: true });
 }
+
+// Determine if we should use Cloudinary
+const shouldUseCloudinary = process.env.USE_CLOUDINARY === "true" && 
+                           process.env.CLOUDINARY_CLOUD_NAME && 
+                           process.env.CLOUDINARY_API_KEY;
+
+console.log(`🔄 Storage selection: ${shouldUseCloudinary ? 'CLOUDINARY ☁️' : 'LOCAL 📁'}`);
 
 // Custom Cloudinary storage engine
 const createCloudinaryStorage = () => {
@@ -269,7 +283,7 @@ const createCloudinaryStorage = () => {
   };
 };
 
-// Local storage for development
+// Local storage for development/fallback
 const localStorage = multer.diskStorage({
   destination: (req, file, cb) => {
     console.log(`📁 Saving locally to: ${LOCAL_UPLOAD_DIR}`);
@@ -285,17 +299,8 @@ const localStorage = multer.diskStorage({
   },
 });
 
-// IMPORTANT FIX: Always use local storage for now to ensure files are saved
-const shouldUseCloudinary = process.env.USE_CLOUDINARY === "true" && 
-                           process.env.CLOUDINARY_CLOUD_NAME && 
-                           process.env.CLOUDINARY_API_KEY &&
-                           process.env.CLOUDINARY_API_SECRET &&
-                           process.env.NODE_ENV === "production";
-
-console.log(`🔄 Storage selection: ${shouldUseCloudinary ? 'Cloudinary' : 'Local'} (FORCED LOCAL FOR DEBUG)`);
-
-// FORCE LOCAL STORAGE to fix the issue
-const storage = localStorage;
+// Choose storage based on configuration
+const storage = shouldUseCloudinary ? createCloudinaryStorage() : localStorage;
 
 const allowedMimes = [
   "image/jpeg", "image/jpg", "image/png", "image/gif", "image/webp",
@@ -307,7 +312,8 @@ const allowedMimes = [
 ];
 
 const fileFilter = (req, file, cb) => {
-  console.log(`🔍 Checking file type: ${file.originalname} (${file.mimetype})`);
+  console.log(`🔍 Checking file: ${file.originalname} (${file.mimetype})`);
+  
   if (allowedMimes.includes(file.mimetype)) {
     console.log(`✅ File type allowed: ${file.mimetype}`);
     cb(null, true);
@@ -324,6 +330,8 @@ const upload = multer({
     fileSize: process.env.MAX_FILE_SIZE ? Number(process.env.MAX_FILE_SIZE) : 150 * 1024 * 1024 // 150MB default
   }
 });
+
+console.log("✅ File upload middleware initialized successfully");
 
 // Middleware configurations
 export const uploadCourseFiles = upload.fields([

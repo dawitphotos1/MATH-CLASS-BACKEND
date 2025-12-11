@@ -162,6 +162,9 @@
 
 
 
+
+
+
 // routes/files.js
 import express from "express";
 import path from "path";
@@ -270,7 +273,7 @@ router.get("/debug/list", async (req, res) => {
         where: {
           [db.default.Sequelize.Op.or]: [
             { file_url: { [db.default.Sequelize.Op.ne]: null } },
-            { file_url: { [db.default.Sequelize.Op.ne]: "" } }, // Also check empty strings
+            { file_url: { [db.default.Sequelize.Op.ne]: "" } },
             { video_url: { [db.default.Sequelize.Op.ne]: null } }
           ]
         },
@@ -407,7 +410,7 @@ router.get("/test/:filename", async (req, res) => {
 router.get("/preview-lesson/:lessonId", getPublicPreviewByLessonId);
 
 /* ---------------------------------------------------------------
-   UNIVERSAL FILE SERVER
+   UNIVERSAL FILE SERVER - HANDLES LOCAL AND CLOUDINARY FILES
 ---------------------------------------------------------------- */
 router.get("/:filename", async (req, res) => {
   try {
@@ -419,6 +422,14 @@ router.get("/:filename", async (req, res) => {
     // If it's already a Cloudinary URL, redirect to it
     if (filename.includes("cloudinary.com")) {
       console.log(`☁️ Redirecting to Cloudinary URL: ${filename.substring(0, 80)}...`);
+      
+      // Fix PDF URLs in Cloudinary
+      if (filename.includes("/image/upload/") && filename.toLowerCase().endsWith('.pdf')) {
+        const correctedUrl = filename.replace("/image/upload/", "/raw/upload/");
+        console.log(`📄 Fixed Cloudinary PDF URL: ${correctedUrl.substring(0, 80)}...`);
+        return res.redirect(301, correctedUrl);
+      }
+      
       return res.redirect(301, filename);
     }
     
@@ -472,9 +483,9 @@ router.get("/:filename", async (req, res) => {
       return;
     }
     
-    // In production, check database for Cloudinary URLs
-    if (process.env.NODE_ENV === "production") {
-      console.log(`☁️ Production mode - checking Cloudinary for: ${basename}`);
+    // In production with Cloudinary, check database for Cloudinary URLs
+    if (process.env.NODE_ENV === "production" && process.env.USE_CLOUDINARY === "true") {
+      console.log(`☁️ Production + Cloudinary mode - checking database for: ${basename}`);
       
       try {
         const db = await import("../models/index.js");
@@ -515,6 +526,14 @@ router.get("/:filename", async (req, res) => {
         for (const url of allUrls) {
           if (url.includes('cloudinary.com')) {
             console.log(`✅ Found Cloudinary URL: ${url.substring(0, 80)}...`);
+            
+            // Fix PDF URLs in Cloudinary
+            if (url.includes("/image/upload/") && url.toLowerCase().endsWith('.pdf')) {
+              const correctedUrl = url.replace("/image/upload/", "/raw/upload/");
+              console.log(`📄 Fixed Cloudinary PDF URL: ${correctedUrl.substring(0, 80)}...`);
+              return res.redirect(301, correctedUrl);
+            }
+            
             return res.redirect(301, url);
           }
         }
@@ -531,10 +550,14 @@ router.get("/:filename", async (req, res) => {
       success: false,
       error: `File not found: ${basename}`,
       message: "The requested file could not be found on the server.",
-      suggestion: process.env.NODE_ENV === "production"
+      suggestion: process.env.NODE_ENV === "production" && process.env.USE_CLOUDINARY === "true"
         ? "This file may have been uploaded to Cloudinary. Please check if the file URL in the database is a Cloudinary URL."
         : "Make sure the file exists in the Uploads directory.",
-      environment: process.env.NODE_ENV,
+      environment: {
+        node_env: process.env.NODE_ENV,
+        use_cloudinary: process.env.USE_CLOUDINARY,
+        backend_url: process.env.BACKEND_URL,
+      },
       requested: filename,
       searched_path: localPath,
     });

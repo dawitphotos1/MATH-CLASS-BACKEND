@@ -639,6 +639,10 @@
 // };
 
 
+
+
+
+
 // controllers/lessonController.js
 import db from "../models/index.js";
 import path from "path";
@@ -647,7 +651,7 @@ import fs from "fs";
 
 const { Lesson, Course, Unit, LessonView, Enrollment, sequelize } = db;
 
-// Configure Cloudinary (safe no-op if env vars missing)
+// Configure Cloudinary
 cloudinary.config({
   cloud_name: process.env.CLOUDINARY_CLOUD_NAME || "",
   api_key: process.env.CLOUDINARY_API_KEY || "",
@@ -672,11 +676,11 @@ const getBackendUrl = () => {
 export const buildFileUrls = (lesson) => {
   if (!lesson) return null;
   const raw = typeof lesson.toJSON === "function" ? lesson.toJSON() : { ...lesson };
-  const backend = getBackendUrl();
   
   console.log(`🔄 Building URLs for lesson ${raw.id}:`, {
     file_url: raw.file_url,
-    content_type: raw.content_type
+    content_type: raw.content_type,
+    use_cloudinary: process.env.USE_CLOUDINARY
   });
   
   const resolveUrl = (url, preferRawForPdf = true) => {
@@ -689,33 +693,35 @@ export const buildFileUrls = (lesson) => {
     
     // Already an absolute URL -> return as-is
     if (typeof url === "string" && (url.startsWith("http://") || url.startsWith("https://"))) {
-      // If Cloudinary PDF stored under image/upload, convert to raw/upload
-      if (preferRawForPdf && url.toLowerCase().endsWith(".pdf") && url.includes("/image/upload/")) {
+      // Fix Cloudinary PDF URLs
+      if (url.includes("cloudinary.com") && url.includes("/image/upload/") && url.toLowerCase().endsWith(".pdf")) {
         const correctedUrl = url.replace("/image/upload/", "/raw/upload/");
-        console.log(`📄 Converted Cloudinary PDF URL: ${correctedUrl.substring(0, 80)}...`);
+        console.log(`📄 Fixed Cloudinary PDF URL: ${correctedUrl.substring(0, 80)}...`);
         return correctedUrl;
       }
       return url;
     }
     
-    // If it's a Cloudinary public_id (not full URL)
+    // If it's a Cloudinary public_id (stored in DB as just ID)
     if (typeof url === "string" && !url.includes("/") && !url.includes("\\") && url.includes("_")) {
       try {
-        // Try to build Cloudinary URL
+        // Try to build Cloudinary URL from public_id
         const cloudinaryUrl = cloudinary.url(url, {
-          resource_type: url.toLowerCase().endsWith('.pdf') ? 'raw' : 'image',
+          resource_type: 'raw', // Assume raw for PDFs
           secure: true
         });
         console.log(`☁️ Built Cloudinary URL from public_id: ${cloudinaryUrl.substring(0, 80)}...`);
         return cloudinaryUrl;
       } catch (e) {
         // Fallback to file server
+        console.log(`❌ Couldn't build Cloudinary URL: ${e.message}`);
       }
     }
     
     // If Uploads path (starts with /Uploads/ or Uploads/)
     if (typeof url === "string" && (url.startsWith("/Uploads/") || url.startsWith("Uploads/"))) {
       const filename = url.replace(/^\/?Uploads\//, "");
+      const backend = getBackendUrl();
       const fileUrl = `${backend}/api/v1/files/${encodeURIComponent(filename)}`;
       console.log(`📁 Converted Uploads path to URL: ${fileUrl}`);
       return fileUrl;
@@ -723,16 +729,9 @@ export const buildFileUrls = (lesson) => {
     
     // If it's just a filename without path
     if (typeof url === "string" && !url.includes("/") && !url.includes("\\")) {
+      const backend = getBackendUrl();
       const fileUrl = `${backend}/api/v1/files/${encodeURIComponent(url)}`;
       console.log(`📄 Converted filename to URL: ${fileUrl}`);
-      return fileUrl;
-    }
-    
-    // If it's a local file path
-    if (typeof url === "string" && (url.includes("/") || url.includes("\\"))) {
-      const filename = path.basename(url);
-      const fileUrl = `${backend}/api/v1/files/${encodeURIComponent(filename)}`;
-      console.log(`🛣️ Converted local path to URL: ${fileUrl}`);
       return fileUrl;
     }
     
@@ -958,35 +957,304 @@ const trackLessonView = async (userId, lessonId) => {
 };
 
 /* -------------------------
-   Handle multer file uploads
+   Handle multer file uploads - UPDATED FOR CLOUDINARY
 ------------------------- */
 const handleFileUploads = (req) => {
   const out = {};
-  console.log("📤 Handling file uploads:", req.files ? Object.keys(req.files) : "No files");
+  console.log("=== FILE UPLOADS DEBUG START ===");
+  console.log(`☁️ Using Cloudinary: ${process.env.USE_CLOUDINARY === 'true'}`);
   
-  try {
-    if (req.files?.video?.[0]) {
-      const f = req.files.video[0];
-      out.videoUrl = f.path || f.location || f.filename || null;
-      console.log("🎥 Video uploaded:", out.videoUrl);
-    }
-    
-    if (req.files?.pdf?.[0]) {
-      const f = req.files.pdf[0];
-      out.fileUrl = f.path || f.location || f.filename || null;
-      console.log("📄 PDF uploaded:", out.fileUrl);
-    }
-    
-    if (req.files?.file?.[0]) {
-      const f = req.files.file[0];
-      out.fileUrl = f.path || f.location || f.filename || null;
-      console.log("📎 File uploaded:", out.fileUrl);
-    }
-  } catch (e) {
-    console.warn("handleFileUploads warning:", e?.message || e);
+  if (!req.files) {
+    console.log("📭 No files in request");
+    console.log("=== FILE UPLOADS DEBUG END ===");
+    return out;
   }
   
+  console.log("📦 Files received fields:", Object.keys(req.files));
+  
+  try {
+    // Check video files
+    if (req.files.video && req.files.video[0]) {
+      const file = req.files.video[0];
+      console.log("🎥 Video file:", {
+        originalname: file.originalname,
+        filename: file.filename,
+        path: file.path,
+        location: file.location,
+        size: file.size,
+        mimetype: file.mimetype
+      });
+      
+      // Store the location (Cloudinary URL or local path)
+      out.videoUrl = file.location || file.path || `/Uploads/${file.filename}`;
+      console.log(`🎥 Video URL set to: ${out.videoUrl}`);
+    }
+    
+    // Check PDF files
+    if (req.files.pdf && req.files.pdf[0]) {
+      const file = req.files.pdf[0];
+      console.log("📄 PDF file:", {
+        originalname: file.originalname,
+        filename: file.filename,
+        path: file.path,
+        location: file.location,
+        size: file.size,
+        mimetype: file.mimetype,
+        cloudinary: file.cloudinary || false
+      });
+      
+      // IMPORTANT: For PDFs on Cloudinary, ensure they use raw/upload
+      if (file.location && file.location.includes("cloudinary.com") && file.location.includes("/image/upload/")) {
+        out.fileUrl = file.location.replace("/image/upload/", "/raw/upload/");
+        console.log(`📄 Fixed Cloudinary PDF URL: ${out.fileUrl.substring(0, 80)}...`);
+      } else {
+        out.fileUrl = file.location || file.path || `/Uploads/${file.filename}`;
+      }
+      console.log(`📄 File URL set to: ${out.fileUrl}`);
+    }
+    
+    // Check generic file uploads
+    if (req.files.file && req.files.file[0]) {
+      const file = req.files.file[0];
+      console.log("📎 Generic file:", {
+        originalname: file.originalname,
+        filename: file.filename,
+        path: file.path,
+        location: file.location,
+        size: file.size,
+        mimetype: file.mimetype,
+        cloudinary: file.cloudinary || false
+      });
+      
+      // For Cloudinary files, ensure PDFs use raw/upload
+      if (file.location && file.location.includes("cloudinary.com") && 
+          file.location.includes("/image/upload/") && 
+          file.originalname.toLowerCase().endsWith('.pdf')) {
+        out.fileUrl = file.location.replace("/image/upload/", "/raw/upload/");
+        console.log(`📎 Fixed Cloudinary PDF URL: ${out.fileUrl.substring(0, 80)}...`);
+      } else {
+        out.fileUrl = file.location || file.path || `/Uploads/${file.filename}`;
+      }
+      console.log(`📎 File URL set to: ${out.fileUrl}`);
+    }
+    
+  } catch (e) {
+    console.error("❌ handleFileUploads error:", e?.message || e);
+  }
+  
+  console.log("📤 Final uploads result:", out);
+  console.log("=== FILE UPLOADS DEBUG END ===");
+  
   return out;
+};
+
+/* -------------------------
+   UPDATE LESSON - UPDATED FOR CLOUDINARY
+------------------------- */
+export const updateLesson = async (req, res) => {
+  const t = await sequelize.transaction();
+  try {
+    const lessonId = req.params.lessonId ?? req.params.id;
+    if (!lessonId || isNaN(parseInt(lessonId, 10))) {
+      await t.rollback();
+      return res.status(400).json({ success: false, error: "Valid lesson ID is required" });
+    }
+    
+    const id = parseInt(lessonId, 10);
+    console.log(`=== UPDATE LESSON ${id} START ===`);
+    console.log(`👤 User: ${req.user?.id} (${req.user?.role})`);
+    console.log(`☁️ Cloudinary enabled: ${process.env.USE_CLOUDINARY === 'true'}`);
+    
+    const existing = await Lesson.findByPk(id, { transaction: t });
+    if (!existing) {
+      await t.rollback();
+      return res.status(404).json({ success: false, error: "Lesson not found" });
+    }
+    
+    console.log(`📝 Existing lesson: "${existing.title}"`);
+    console.log(`   Current file_url: ${existing.file_url}`);
+    console.log(`   Current content_type: ${existing.content_type}`);
+    
+    // Authorization
+    if (req.user && req.user.role === "teacher") {
+      const course = await Course.findByPk(existing.course_id, { transaction: t });
+      if (!course || course.teacher_id !== req.user.id) {
+        await t.rollback();
+        return res.status(403).json({
+          success: false,
+          error: "You may only edit lessons in your own courses"
+        });
+      }
+    }
+    
+    const body = req.body ?? {};
+    const uploads = handleFileUploads(req);
+    
+    console.log("📦 Request body:", JSON.stringify(body, null, 2));
+    
+    const updates = {};
+    if (body.title !== undefined && body.title !== null) updates.title = body.title.toString().trim();
+    if (body.textContent !== undefined) updates.content = body.textContent;
+    if (body.contentType !== undefined) updates.content_type = body.contentType;
+    if (body.videoUrl !== undefined) updates.video_url = body.videoUrl;
+    if (body.fileUrl !== undefined) updates.file_url = body.fileUrl;
+    if (body.unitId !== undefined) updates.unit_id = body.unitId;
+    if (body.orderIndex !== undefined) updates.order_index = parseInt(body.orderIndex, 10);
+    if (body.isPreview !== undefined) updates.is_preview = Boolean(body.isPreview);
+    
+    // Handle uploaded files
+    if (uploads.videoUrl) {
+      console.log(`🎥 Setting video URL from upload: ${uploads.videoUrl}`);
+      updates.video_url = uploads.videoUrl;
+      updates.file_url = null;
+      updates.content_type = "video";
+    }
+    
+    if (uploads.fileUrl) {
+      console.log(`📄 Setting file URL from upload: ${uploads.fileUrl}`);
+      updates.file_url = uploads.fileUrl;
+      updates.video_url = null;
+      
+      // Determine content type based on file extension or Cloudinary URL
+      if (uploads.fileUrl.toLowerCase().endsWith('.pdf') || 
+          (uploads.fileUrl.includes("cloudinary.com") && uploads.fileUrl.toLowerCase().includes(".pdf"))) {
+        updates.content_type = "pdf";
+      } else if (uploads.fileUrl.match(/\.(jpg|jpeg|png|gif)$/i) ||
+                (uploads.fileUrl.includes("cloudinary.com") && uploads.fileUrl.includes("/image/"))) {
+        updates.content_type = "image";
+      } else {
+        updates.content_type = "file";
+      }
+    }
+    
+    // Apply updates
+    if (Object.keys(updates).length > 0) {
+      console.log("💾 Updating database with:", updates);
+      await existing.update(updates, { transaction: t });
+    }
+    
+    const updated = await Lesson.findByPk(id, {
+      include: [
+        { model: Course, as: "course", attributes: ["id", "title"] },
+        { model: Unit, as: "unit", attributes: ["id", "title"] },
+      ],
+      transaction: t,
+    });
+    
+    console.log(`✅ Lesson ${id} updated successfully`);
+    console.log(`   New file_url: ${updated.file_url}`);
+    console.log(`   New content_type: ${updated.content_type}`);
+    
+    await t.commit();
+    
+    // Build response with proper URLs
+    const response = buildFileUrls(updated);
+    
+    console.log(`📤 Sending response:`, {
+      fileUrl: response.fileUrl ? `${response.fileUrl.substring(0, 80)}...` : "No file",
+      videoUrl: response.videoUrl ? `${response.videoUrl.substring(0, 80)}...` : "No video"
+    });
+    console.log(`=== UPDATE LESSON ${id} END ===`);
+    
+    return res.json({
+      success: true,
+      lesson: response,
+      message: "Lesson updated successfully"
+    });
+  } catch (err) {
+    await t.rollback();
+    console.error("❌ updateLesson error:", err?.message || err);
+    console.error("Stack trace:", err?.stack);
+    return res.status(500).json({
+      success: false,
+      error: "Failed to update lesson",
+      details: process.env.NODE_ENV === "development" ? err?.message : undefined,
+    });
+  }
+};
+
+/* -------------------------
+   CREATE LESSON
+------------------------- */
+export const createLesson = async (req, res) => {
+  const t = await sequelize.transaction();
+  try {
+    const courseId = req.params.courseId ?? req.body.courseId;
+    if (!courseId || isNaN(parseInt(courseId, 10))) {
+      await t.rollback();
+      return res.status(400).json({ success: false, error: "Valid course ID is required" });
+    }
+    
+    const cId = parseInt(courseId, 10);
+    const course = await Course.findByPk(cId, { transaction: t });
+    
+    if (!course) {
+      await t.rollback();
+      return res.status(404).json({ success: false, error: "Course not found" });
+    }
+    
+    const body = req.body ?? {};
+    const uploads = handleFileUploads(req);
+    
+    console.log("📝 Creating lesson with uploads:", uploads);
+    
+    // Determine content type
+    let contentType = (body.contentType ?? body.content_type ?? "text").toString();
+    if (uploads.fileUrl) contentType = "pdf";
+    if (uploads.videoUrl) contentType = "video";
+    
+    // Determine orderIndex
+    let orderIndex = (body.orderIndex ?? body.order_index);
+    if (orderIndex === undefined || orderIndex === null || isNaN(parseInt(orderIndex, 10))) {
+      const where = body.unitId ? { unit_id: body.unitId } : { course_id: cId };
+      const last = await Lesson.findOne({
+        where,
+        order: [["order_index", "DESC"]],
+        transaction: t,
+      });
+      orderIndex = last ? (last.order_index ?? 0) + 1 : 1;
+    }
+    
+    const created = await Lesson.create(
+      {
+        title: (body.title ?? "Untitled Lesson").toString().trim(),
+        content: body.textContent ?? body.content ?? "",
+        course_id: cId,
+        unit_id: body.unitId ?? null,
+        order_index: parseInt(orderIndex, 10),
+        content_type: contentType,
+        video_url: uploads.videoUrl ?? body.videoUrl ?? null,
+        file_url: uploads.fileUrl ?? body.fileUrl ?? null,
+        is_preview: Boolean(body.isPreview ?? body.is_preview ?? false),
+      },
+      { transaction: t }
+    );
+    
+    console.log("✅ Lesson created:", created.id, "File URL:", created.file_url);
+    
+    const full = await Lesson.findByPk(created.id, {
+      include: [
+        { model: Course, as: "course", attributes: ["id", "title"] },
+        { model: Unit, as: "unit", attributes: ["id", "title"] },
+      ],
+      transaction: t,
+    });
+    
+    await t.commit();
+    return res.status(201).json({
+      success: true,
+      lesson: buildFileUrls(full),
+      message: "Lesson created"
+    });
+  } catch (err) {
+    await t.rollback();
+    console.error("createLesson error:", err?.message || err);
+    return res.status(500).json({
+      success: false,
+      error: "Failed to create lesson",
+      details: process.env.NODE_ENV === "development" ? err?.message : undefined,
+    });
+  }
 };
 
 /* -------------------------
@@ -1194,211 +1462,6 @@ export const getPublicPreviewByLessonId = async (req, res) => {
     return res.status(500).json({
       success: false,
       error: "Failed to load preview",
-      details: process.env.NODE_ENV === "development" ? err?.message : undefined,
-    });
-  }
-};
-
-/* -------------------------
-   CREATE LESSON
-------------------------- */
-export const createLesson = async (req, res) => {
-  const t = await sequelize.transaction();
-  try {
-    const courseId = req.params.courseId ?? req.body.courseId;
-    if (!courseId || isNaN(parseInt(courseId, 10))) {
-      await t.rollback();
-      return res.status(400).json({ success: false, error: "Valid course ID is required" });
-    }
-    
-    const cId = parseInt(courseId, 10);
-    const course = await Course.findByPk(cId, { transaction: t });
-    
-    if (!course) {
-      await t.rollback();
-      return res.status(404).json({ success: false, error: "Course not found" });
-    }
-    
-    const body = req.body ?? {};
-    const uploads = handleFileUploads(req);
-    
-    console.log("📝 Creating lesson with uploads:", uploads);
-    
-    // Determine content type
-    let contentType = (body.contentType ?? body.content_type ?? "text").toString();
-    if (uploads.fileUrl) contentType = "pdf";
-    if (uploads.videoUrl) contentType = "video";
-    
-    // Determine orderIndex
-    let orderIndex = (body.orderIndex ?? body.order_index);
-    if (orderIndex === undefined || orderIndex === null || isNaN(parseInt(orderIndex, 10))) {
-      const where = body.unitId ? { unit_id: body.unitId } : { course_id: cId };
-      const last = await Lesson.findOne({
-        where,
-        order: [["order_index", "DESC"]],
-        transaction: t,
-      });
-      orderIndex = last ? (last.order_index ?? 0) + 1 : 1;
-    }
-    
-    const created = await Lesson.create(
-      {
-        title: (body.title ?? "Untitled Lesson").toString().trim(),
-        content: body.textContent ?? body.content ?? "",
-        course_id: cId,
-        unit_id: body.unitId ?? null,
-        order_index: parseInt(orderIndex, 10),
-        content_type: contentType,
-        video_url: uploads.videoUrl ?? body.videoUrl ?? null,
-        file_url: uploads.fileUrl ?? body.fileUrl ?? null,
-        is_preview: Boolean(body.isPreview ?? body.is_preview ?? false),
-      },
-      { transaction: t }
-    );
-    
-    console.log("✅ Lesson created:", created.id, "File URL:", created.file_url);
-    
-    const full = await Lesson.findByPk(created.id, {
-      include: [
-        { model: Course, as: "course", attributes: ["id", "title"] },
-        { model: Unit, as: "unit", attributes: ["id", "title"] },
-      ],
-      transaction: t,
-    });
-    
-    await t.commit();
-    return res.status(201).json({
-      success: true,
-      lesson: buildFileUrls(full),
-      message: "Lesson created"
-    });
-  } catch (err) {
-    await t.rollback();
-    console.error("createLesson error:", err?.message || err);
-    return res.status(500).json({
-      success: false,
-      error: "Failed to create lesson",
-      details: process.env.NODE_ENV === "development" ? err?.message : undefined,
-    });
-  }
-};
-
-/* -------------------------
-   UPDATE LESSON (WITH FIX FOR EMPTY FILE_URL)
-------------------------- */
-export const updateLesson = async (req, res) => {
-  const t = await sequelize.transaction();
-  try {
-    const lessonId = req.params.lessonId ?? req.params.id;
-    if (!lessonId || isNaN(parseInt(lessonId, 10))) {
-      await t.rollback();
-      return res.status(400).json({ success: false, error: "Valid lesson ID is required" });
-    }
-    
-    const id = parseInt(lessonId, 10);
-    console.log(`🔄 Updating lesson ${id}, user:`, req.user?.id);
-    
-    const existing = await Lesson.findByPk(id, { transaction: t });
-    if (!existing) {
-      await t.rollback();
-      return res.status(404).json({ success: false, error: "Lesson not found" });
-    }
-    
-    // Authorization
-    if (req.user && req.user.role === "teacher") {
-      const course = await Course.findByPk(existing.course_id, { transaction: t });
-      if (!course || course.teacher_id !== req.user.id) {
-        await t.rollback();
-        return res.status(403).json({
-          success: false,
-          error: "You may only edit lessons in your own courses"
-        });
-      }
-    }
-    
-    console.log("=== UPDATE LESSON DEBUG ===");
-    console.log("Lesson ID:", id);
-    console.log("Existing lesson:", {
-      id: existing.id,
-      title: existing.title,
-      file_url: existing.file_url,
-      content_type: existing.content_type
-    });
-    
-    // Add detailed logging for req.files
-    console.log("Request files:", req.files ? JSON.stringify(Object.keys(req.files), null, 2) : "No files");
-    console.log("Request body:", JSON.stringify(req.body, null, 2));
-    
-    const body = req.body ?? {};
-    const uploads = handleFileUploads(req);
-    
-    console.log("Uploads result:", uploads);
-    console.log("===========================");
-    
-    const updates = {};
-    if (body.title !== undefined && body.title !== null) updates.title = body.title.toString().trim();
-    if (body.textContent !== undefined) updates.content = body.textContent;
-    if (body.contentType !== undefined) updates.content_type = body.contentType;
-    if (body.videoUrl !== undefined) updates.video_url = body.videoUrl;
-    if (body.fileUrl !== undefined) updates.file_url = body.fileUrl;
-    if (body.unitId !== undefined) updates.unit_id = body.unitId;
-    if (body.orderIndex !== undefined) updates.order_index = parseInt(body.orderIndex, 10);
-    if (body.isPreview !== undefined) updates.is_preview = Boolean(body.isPreview);
-    
-    // IMPORTANT FIX: Check if uploaded file is actually saved
-    if (uploads.fileUrl) {
-      console.log("📄 Setting file URL from upload:", uploads.fileUrl);
-      updates.file_url = uploads.fileUrl;
-      updates.video_url = null;
-      updates.content_type = "pdf";
-      
-      // Verify the file exists locally
-      const uploadsDir = path.join(process.cwd(), "Uploads");
-      const filename = path.basename(uploads.fileUrl);
-      const localPath = path.join(uploadsDir, filename);
-      
-      if (fs.existsSync(localPath)) {
-        console.log(`✅ Uploaded file verified at: ${localPath}`);
-      } else {
-        console.log(`⚠️ WARNING: Uploaded file not found at: ${localPath}`);
-      }
-    }
-    
-    if (uploads.videoUrl) {
-      console.log("🎥 Setting video URL from upload:", uploads.videoUrl);
-      updates.video_url = uploads.videoUrl;
-      updates.file_url = null;
-      updates.content_type = "video";
-    }
-    
-    // Apply updates
-    if (Object.keys(updates).length > 0) {
-      console.log("💾 Updating database with:", updates);
-      await existing.update(updates, { transaction: t });
-    }
-    
-    const updated = await Lesson.findByPk(id, {
-      include: [
-        { model: Course, as: "course", attributes: ["id", "title"] },
-        { model: Unit, as: "unit", attributes: ["id", "title"] },
-      ],
-      transaction: t,
-    });
-    
-    console.log("✅ Lesson updated. New file_url:", updated.file_url);
-    
-    await t.commit();
-    return res.json({
-      success: true,
-      lesson: buildFileUrls(updated),
-      message: "Lesson updated"
-    });
-  } catch (err) {
-    await t.rollback();
-    console.error("updateLesson error:", err?.message || err);
-    return res.status(500).json({
-      success: false,
-      error: "Failed to update lesson",
       details: process.env.NODE_ENV === "development" ? err?.message : undefined,
     });
   }
