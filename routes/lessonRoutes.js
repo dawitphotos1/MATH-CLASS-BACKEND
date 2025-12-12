@@ -82,19 +82,61 @@
 
 
 
-
 // routes/lessonRoutes.js
 import express from "express";
 import lessonController from "../controllers/lessonController.js";
 import uploadMiddleware from "../middleware/uploadMiddleware.js";
-import { requireAuth, requireRole } from "../middleware/authMiddleware.js"; // adjust to your auth middleware
+import { requireAuth, requireRole } from "../middleware/authMiddleware.js";
 
 const router = express.Router();
+
+/* =======================================================
+   1. PREVIEW ROUTES (most specific)
+   ======================================================= */
+router.get(
+  "/preview/course/:courseId",
+  lessonController.getPreviewLessonForCourse
+);
+
+router.get(
+  "/public-preview/:id",
+  lessonController.getPublicPreviewByLessonId
+);
+
+/* =======================================================
+   2. DEBUG / FIX ROUTES
+   ======================================================= */
+router.get(
+  "/:lessonId/debug-file",
+  lessonController.debugLessonFile
+);
+
+router.post(
+  "/:lessonId/fix-file",
+  lessonController.fixLessonFileUrl
+);
+
+/* =======================================================
+   3. LISTING ROUTES
+   ======================================================= */
+router.get(
+  "/course/:courseId/all",
+  lessonController.getLessonsByCourse
+);
+
+router.get(
+  "/unit/:unitId/all",
+  lessonController.getLessonsByUnit
+);
+
+/* =======================================================
+   4. CREATE + UPDATE ROUTES
+   ======================================================= */
 
 // Create lesson (multipart)
 router.post(
   "/course/:courseId/lessons",
-  uploadMiddleware.uploadLessonFiles, // parses multipart into memory
+  uploadMiddleware.uploadLessonFiles,
   lessonController.createLesson
 );
 
@@ -105,20 +147,21 @@ router.put(
   lessonController.updateLesson
 );
 
-// Get lesson
-router.get("/:id", lessonController.getLessonById);
-router.get("/preview/course/:courseId", lessonController.getPreviewLessonForCourse);
-router.get("/public-preview/:id", lessonController.getPublicPreviewByLessonId);
+/* =======================================================
+   5. DELETE ROUTE
+   ======================================================= */
+router.delete(
+  "/:lessonId",
+  lessonController.deleteLesson
+);
 
-// Debug
-router.get("/:lessonId/debug-file", lessonController.debugLessonFile);
-router.post("/:lessonId/fix-file", lessonController.fixLessonFileUrl);
-
-// Get lessons by course/unit
-router.get("/course/:courseId/all", lessonController.getLessonsByCourse);
-router.get("/unit/:unitId/all", lessonController.getLessonsByUnit);
-
-// Delete
-router.delete("/:lessonId", lessonController.deleteLesson);
+/* =======================================================
+   6. FINAL FALLBACK — GET BY ID
+   (MUST BE LAST)
+   ======================================================= */
+router.get(
+  "/:id",
+  lessonController.getLessonById
+);
 
 export default router;
