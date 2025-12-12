@@ -957,17 +957,18 @@
 
 
 
-
 // controllers/lessonController.js
 import db from "../models/index.js";
 import path from "path";
 import { v2 as cloudinary } from "cloudinary";
 import fs from "fs";
-import uploadMiddleware from "../middleware/uploadMiddleware.js"; // UPDATED import
+import uploadMiddleware from "../middleware/uploadMiddleware.js";
 
 const { Lesson, Course, Unit, LessonView, Enrollment, sequelize } = db;
 
-// Configure Cloudinary (redundant but safe)
+/* -------------------------
+   Cloudinary
+------------------------- */
 if (process.env.CLOUDINARY_CLOUD_NAME && process.env.CLOUDINARY_API_KEY) {
   cloudinary.config({
     cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
@@ -977,9 +978,6 @@ if (process.env.CLOUDINARY_CLOUD_NAME && process.env.CLOUDINARY_API_KEY) {
   });
 }
 
-/* -------------------------
-   Helper: backend URL
-------------------------- */
 const getBackendUrl = () => {
   if (process.env.BACKEND_URL) return process.env.BACKEND_URL.replace(/\/+$/g, "");
   if (process.env.RENDER_EXTERNAL_URL) return process.env.RENDER_EXTERNAL_URL.replace(/\/+$/g, "");
@@ -989,7 +987,7 @@ const getBackendUrl = () => {
 };
 
 /* -------------------------
-   Helper: normalize and build file/video URLs
+   buildFileUrls
 ------------------------- */
 export const buildFileUrls = (lesson) => {
   if (!lesson) return null;
@@ -997,62 +995,61 @@ export const buildFileUrls = (lesson) => {
 
   const resolveUrl = (url, preferRawForPdf = true) => {
     if (!url || url.trim() === "") return null;
-    if (typeof url === "string" && (url.startsWith("http://") || url.startsWith("https://"))) {
-      // Fix Cloudinary PDF URLs to use raw/upload
+
+    if (url.startsWith("http://") || url.startsWith("https://")) {
       if (url.includes("cloudinary.com") && url.includes("/image/upload/") && url.toLowerCase().endsWith(".pdf")) {
         return url.replace("/image/upload/", "/raw/upload/");
       }
       return url;
     }
-    if (typeof url === "string" && !url.includes("/") && !url.includes("\\") && url.includes("_")) {
+
+    if (!url.includes("/") && !url.includes("\\") && url.includes("_")) {
       try {
-        const cloudinaryUrl = cloudinary.url(url, { resource_type: "raw", secure: true });
-        return cloudinaryUrl;
-      } catch (e) {}
+        return cloudinary.url(url, { resource_type: "raw", secure: true });
+      } catch {}
     }
-    if (typeof url === "string" && (url.startsWith("/Uploads/") || url.startsWith("Uploads/"))) {
+
+    if (url.startsWith("/Uploads/") || url.startsWith("Uploads/")) {
       const filename = url.replace(/^\/?Uploads\//, "");
-      const backend = getBackendUrl();
-      return `${backend}/api/v1/files/${encodeURIComponent(filename)}`;
+      return `${getBackendUrl()}/api/v1/files/${encodeURIComponent(filename)}`;
     }
-    if (typeof url === "string" && !url.includes("/") && !url.includes("\\")) {
-      const backend = getBackendUrl();
-      return `${backend}/api/v1/files/${encodeURIComponent(url)}`;
+
+    if (!url.includes("/") && !url.includes("\\")) {
+      return `${getBackendUrl()}/api/v1/files/${encodeURIComponent(url)}`;
     }
+
     return null;
   };
 
   const result = {
-    id: raw.id ?? null,
-    title: raw.title ?? "",
+    id: raw.id,
+    title: raw.title,
     contentType: raw.content_type ?? raw.type ?? "text",
     textContent: raw.content ?? raw.text_content ?? "",
-    videoUrl: resolveUrl(raw.video_url ?? raw.videoUrl ?? null, false),
-    fileUrl: resolveUrl(raw.file_url ?? raw.fileUrl ?? null, true),
-    isPreview: Boolean(raw.is_preview ?? raw.isPreview ?? false),
-    unitId: raw.unit_id ?? raw.unitId ?? null,
-    courseId: raw.course_id ?? raw.courseId ?? null,
-    orderIndex: Number.isFinite(raw.order_index ?? raw.orderIndex ?? null)
-      ? (raw.order_index ?? raw.orderIndex)
-      : null,
-    createdAt: raw.created_at ?? raw.createdAt ?? raw.createdAt ?? null,
-    updatedAt: raw.updated_at ?? raw.updatedAt ?? null,
+    videoUrl: resolveUrl(raw.video_url),
+    fileUrl: resolveUrl(raw.file_url),
+    isPreview: Boolean(raw.is_preview),
+    unitId: raw.unit_id,
+    courseId: raw.course_id,
+    orderIndex: raw.order_index,
+    createdAt: raw.created_at,
+    updatedAt: raw.updated_at,
   };
 
   if (raw.course) {
     result.course = {
-      id: raw.course.id ?? raw.course_id ?? null,
-      title: raw.course.title ?? "",
-      slug: raw.course.slug ?? null,
-      teacherId: raw.course.teacher_id ?? raw.course.teacherId ?? null,
+      id: raw.course.id,
+      title: raw.course.title,
+      slug: raw.course.slug,
+      teacherId: raw.course.teacher_id,
     };
   }
 
   if (raw.unit) {
     result.unit = {
-      id: raw.unit.id ?? raw.unit_id ?? null,
-      title: raw.unit.title ?? "",
-      orderIndex: raw.unit.order_index ?? raw.unit.orderIndex ?? null,
+      id: raw.unit.id,
+      title: raw.unit.title,
+      orderIndex: raw.unit.order_index,
     };
   }
 
@@ -1060,7 +1057,7 @@ export const buildFileUrls = (lesson) => {
 };
 
 /* -------------------------
-   FIX: Manually set lesson file URL
+   FIX FILE URL
 ------------------------- */
 export const fixLessonFileUrl = async (req, res) => {
   try {
@@ -1074,10 +1071,10 @@ export const fixLessonFileUrl = async (req, res) => {
     const lesson = await Lesson.findByPk(lessonId);
     if (!lesson) return res.status(404).json({ success: false, error: "Lesson not found" });
 
-    if (req.user && req.user.role === "teacher") {
+    if (req.user?.role === "teacher") {
       const course = await Course.findByPk(lesson.course_id);
       if (!course || course.teacher_id !== req.user.id) {
-        return res.status(403).json({ success: false, error: "You can only edit your own lessons" });
+        return res.status(403).json({ success: false, error: "Not authorized" });
       }
     }
 
@@ -1085,84 +1082,55 @@ export const fixLessonFileUrl = async (req, res) => {
     lesson.content_type = contentType;
     await lesson.save();
 
-    const updated = buildFileUrls(lesson);
-
-    return res.json({ success: true, message: "Lesson file URL updated", lesson: updated });
+    return res.json({ success: true, lesson: buildFileUrls(lesson) });
   } catch (err) {
-    console.error("fixLessonFileUrl error:", err?.message || err);
-    return res.status(500).json({ success: false, error: "Failed to fix lesson", details: process.env.NODE_ENV === "development" ? err?.message : undefined });
+    return res.status(500).json({ success: false, error: err.message });
   }
 };
 
 /* -------------------------
-   DEBUG: Get lesson with detailed file info
+   DEBUG FILE
 ------------------------- */
 export const debugLessonFile = async (req, res) => {
   try {
     const { lessonId } = req.params;
-    if (!lessonId || isNaN(parseInt(lessonId, 10))) {
-      return res.status(400).json({ success: false, error: "Valid lesson ID is required" });
-    }
 
-    const id = parseInt(lessonId, 10);
-
-    const lesson = await Lesson.findByPk(id, {
+    const lesson = await Lesson.findByPk(lessonId, {
       include: [{ model: Course, as: "course", attributes: ["id", "title", "teacher_id"] }],
-      attributes: ["id", "title", "file_url", "video_url", "content_type", "is_preview", "created_at", "updated_at"],
     });
 
     if (!lesson) return res.status(404).json({ success: false, error: "Lesson not found" });
 
-    // If file_url looks like a local Uploads path, show file details
-    let fileExists = false;
     let filePath = null;
-    if (lesson.file_url && lesson.file_url.trim() !== "") {
+    let exists = false;
+
+    if (lesson.file_url) {
       const uploadsDir = path.join(process.cwd(), "Uploads");
-      let filename = lesson.file_url;
-      if (filename.includes("/")) filename = path.basename(filename);
+      const filename = path.basename(lesson.file_url);
       filePath = path.join(uploadsDir, filename);
-      try {
-        fileExists = fs.existsSync(filePath);
-      } catch (err) {
-        console.log("File existence check error:", err.message);
-      }
+      exists = fs.existsSync(filePath);
     }
-
-    let fileInfo = null;
-    if (fileExists && filePath) {
-      try {
-        const stats = fs.statSync(filePath);
-        fileInfo = { size: stats.size, created: stats.birthtime, modified: stats.mtime, path: filePath };
-      } catch (err) {
-        console.log("File stat error:", err.message);
-      }
-    }
-
-    const builtUrl = buildFileUrls(lesson);
 
     return res.json({
       success: true,
-      lesson: { id: lesson.id, title: lesson.title, database_file_url: lesson.file_url, database_video_url: lesson.video_url, content_type: lesson.content_type, built_file_url: builtUrl?.fileUrl, built_video_url: builtUrl?.videoUrl, course: lesson.course, created_at: lesson.created_at, updated_at: lesson.updated_at },
-      file: { exists: fileExists, path: filePath, info: fileInfo },
-      environment: { node_env: process.env.NODE_ENV, backend_url: process.env.BACKEND_URL, cloudinary_configured: !!(process.env.CLOUDINARY_CLOUD_NAME), use_cloudinary: process.env.USE_CLOUDINARY === "true", uploads_dir: path.join(process.cwd(), "Uploads") },
-      message: "Debug information for lesson file",
+      urls: buildFileUrls(lesson),
+      file: { exists, path: filePath },
     });
   } catch (err) {
-    console.error("debugLessonFile error:", err?.message || err);
-    return res.status(500).json({ success: false, error: "Debug failed", details: process.env.NODE_ENV === "development" ? err?.message : undefined });
+    return res.status(500).json({ success: false, error: err.message });
   }
 };
 
 /* -------------------------
-   Track Lesson View
+   TRACK VIEW
 ------------------------- */
 const trackLessonView = async (userId, lessonId) => {
   try {
-    if (!userId || !lessonId) return;
-    await LessonView.findOrCreate({ where: { user_id: userId, lesson_id: lessonId }, defaults: { viewed_at: new Date() } });
-  } catch (err) {
-    console.warn("trackLessonView error:", err?.message || err);
-  }
+    await LessonView.findOrCreate({
+      where: { user_id: userId, lesson_id: lessonId },
+      defaults: { viewed_at: new Date() },
+    });
+  } catch {}
 };
 
 /* -------------------------
@@ -1171,77 +1139,43 @@ const trackLessonView = async (userId, lessonId) => {
 export const updateLesson = async (req, res) => {
   const t = await sequelize.transaction();
   try {
-    const lessonId = req.params.lessonId ?? req.params.id;
-    if (!lessonId || isNaN(parseInt(lessonId, 10))) {
-      await t.rollback();
-      return res.status(400).json({ success: false, error: "Valid lesson ID is required" });
-    }
+    const lessonId = req.params.lessonId;
+    const existing = await Lesson.findByPk(lessonId, { transaction: t });
 
-    const id = parseInt(lessonId, 10);
-    const existing = await Lesson.findByPk(id, { transaction: t });
     if (!existing) {
       await t.rollback();
       return res.status(404).json({ success: false, error: "Lesson not found" });
     }
 
-    // Auth: teacher must own course
-    if (req.user && req.user.role === "teacher") {
-      const course = await Course.findByPk(existing.course_id, { transaction: t });
-      if (!course || course.teacher_id !== req.user.id) {
-        await t.rollback();
-        return res.status(403).json({ success: false, error: "You may only edit lessons in your own courses" });
-      }
-    }
-
-    // Parse body
     const body = req.body ?? {};
-
-    // Process uploaded files (if any) using middleware helper
-    const uploads = typeof uploadMiddleware.processUploadedFiles === "function" ? await uploadMiddleware.processUploadedFiles(req) : (req.processedUploads || {});
+    const uploads = await uploadMiddleware.processUploadedFiles?.(req);
 
     const updates = {};
-    if (body.title !== undefined && body.title !== null) updates.title = body.title.toString().trim();
-    if (body.textContent !== undefined) updates.content = body.textContent;
-    if (body.contentType !== undefined) updates.content_type = body.contentType;
-    if (body.videoUrl !== undefined) updates.video_url = body.videoUrl;
-    if (body.fileUrl !== undefined) updates.file_url = body.fileUrl;
-    if (body.unitId !== undefined) updates.unit_id = body.unitId;
-    if (body.orderIndex !== undefined) updates.order_index = parseInt(body.orderIndex, 10);
-    if (body.isPreview !== undefined) updates.is_preview = Boolean(body.isPreview);
 
-    // Apply uploads => set file_url / video_url accordingly
-    if (uploads.videoUrl) {
+    if (body.title) updates.title = body.title;
+    if (body.textContent !== undefined) updates.content = body.textContent;
+
+    if (uploads?.videoUrl) {
       updates.video_url = uploads.videoUrl;
       updates.file_url = null;
       updates.content_type = "video";
     }
-    if (uploads.fileUrl) {
+
+    if (uploads?.fileUrl) {
       updates.file_url = uploads.fileUrl;
       updates.video_url = null;
-      if (uploads.fileUrl.toLowerCase().endsWith(".pdf") || (uploads.fileUrl.includes("cloudinary.com") && uploads.fileUrl.toLowerCase().includes(".pdf"))) {
-        updates.content_type = "pdf";
-      } else if (uploads.fileUrl.match(/\.(jpg|jpeg|png|gif)$/i) || (uploads.fileUrl.includes("cloudinary.com") && uploads.fileUrl.includes("/image/"))) {
-        updates.content_type = "image";
-      } else {
-        updates.content_type = "file";
-      }
+      updates.content_type = "file";
     }
 
-    if (Object.keys(updates).length > 0) {
-      await existing.update(updates, { transaction: t });
-    }
+    await existing.update(updates, { transaction: t });
 
-    const updated = await Lesson.findByPk(id, {
-      include: [{ model: Course, as: "course", attributes: ["id", "title"] }, { model: Unit, as: "unit", attributes: ["id", "title"] }],
-      transaction: t,
-    });
-
+    const updated = await Lesson.findByPk(lessonId, { transaction: t });
     await t.commit();
-    return res.json({ success: true, lesson: buildFileUrls(updated), message: "Lesson updated successfully" });
+
+    return res.json({ success: true, lesson: buildFileUrls(updated) });
   } catch (err) {
     await t.rollback();
-    console.error("updateLesson error:", err?.message || err);
-    return res.status(500).json({ success: false, error: "Failed to update lesson", details: process.env.NODE_ENV === "development" ? err?.message : undefined });
+    return res.status(500).json({ success: false, error: err.message });
   }
 };
 
@@ -1251,253 +1185,118 @@ export const updateLesson = async (req, res) => {
 export const createLesson = async (req, res) => {
   const t = await sequelize.transaction();
   try {
-    const courseId = req.params.courseId ?? req.body.courseId;
-    if (!courseId || isNaN(parseInt(courseId, 10))) {
-      await t.rollback();
-      return res.status(400).json({ success: false, error: "Valid course ID is required" });
-    }
+    const courseId = req.params.courseId;
+    const course = await Course.findByPk(courseId);
 
-    const cId = parseInt(courseId, 10);
-    const course = await Course.findByPk(cId, { transaction: t });
     if (!course) {
       await t.rollback();
       return res.status(404).json({ success: false, error: "Course not found" });
     }
 
     const body = req.body ?? {};
-    const uploads = typeof uploadMiddleware.processUploadedFiles === "function" ? await uploadMiddleware.processUploadedFiles(req) : (req.processedUploads || {});
-
-    // Determine content type
-    let contentType = (body.contentType ?? body.content_type ?? "text").toString();
-    if (uploads.fileUrl) contentType = "pdf";
-    if (uploads.videoUrl) contentType = "video";
-
-    // Determine orderIndex
-    let orderIndex = (body.orderIndex ?? body.order_index);
-    if (orderIndex === undefined || orderIndex === null || isNaN(parseInt(orderIndex, 10))) {
-      const where = body.unitId ? { unit_id: body.unitId } : { course_id: cId };
-      const last = await Lesson.findOne({ where, order: [["order_index", "DESC"]], transaction: t });
-      orderIndex = last ? (last.order_index ?? 0) + 1 : 1;
-    }
+    const uploads = await uploadMiddleware.processUploadedFiles?.(req);
 
     const created = await Lesson.create({
-      title: (body.title ?? "Untitled Lesson").toString().trim(),
-      content: body.textContent ?? body.content ?? "",
-      course_id: cId,
-      unit_id: body.unitId ?? null,
-      order_index: parseInt(orderIndex, 10),
-      content_type: contentType,
-      video_url: uploads.videoUrl ?? body.videoUrl ?? null,
-      file_url: uploads.fileUrl ?? body.fileUrl ?? null,
-      is_preview: Boolean(body.isPreview ?? body.is_preview ?? false),
+      title: body.title || "Untitled Lesson",
+      content: body.textContent || "",
+      course_id: courseId,
+      unit_id: body.unitId || null,
+      order_index: body.orderIndex || 1,
+      content_type: body.contentType || "text",
+      video_url: uploads?.videoUrl || body.videoUrl || null,
+      file_url: uploads?.fileUrl || body.fileUrl || null,
+      is_preview: Boolean(body.isPreview),
     }, { transaction: t });
 
     const full = await Lesson.findByPk(created.id, {
-      include: [{ model: Course, as: "course", attributes: ["id", "title"] }, { model: Unit, as: "unit", attributes: ["id", "title"] }],
+      include: [
+        { model: Course, as: "course", attributes: ["id", "title"] },
+        { model: Unit, as: "unit", attributes: ["id", "title"] },
+      ],
       transaction: t,
     });
 
     await t.commit();
-    return res.status(201).json({ success: true, lesson: buildFileUrls(full), message: "Lesson created" });
+    return res.status(201).json({ success: true, lesson: buildFileUrls(full) });
   } catch (err) {
     await t.rollback();
-    console.error("createLesson error:", err?.message || err);
-    return res.status(500).json({ success: false, error: "Failed to create lesson", details: process.env.NODE_ENV === "development" ? err?.message : undefined });
+    return res.status(500).json({ success: false, error: err.message });
   }
 };
 
 /* -------------------------
    GET LESSON BY ID
-   (unchanged: uses buildFileUrls)
 ------------------------- */
 export const getLessonById = async (req, res) => {
-  const t = await sequelize.transaction();
   try {
-    const lessonId = req.params.lessonId ?? req.params.id;
-    if (!lessonId || isNaN(parseInt(lessonId, 10))) {
-      await t.rollback();
-      return res.status(400).json({ success: false, error: "Valid lesson ID is required" });
-    }
+    const id = req.params.id;
 
-    const id = parseInt(lessonId, 10);
     const lesson = await Lesson.findByPk(id, {
-      include: [{ model: Course, as: "course", attributes: ["id", "title", "slug", "teacher_id"] }, { model: Unit, as: "unit", attributes: ["id", "title", "order_index"] }],
-      transaction: t,
+      include: [
+        { model: Course, as: "course", attributes: ["id", "title", "teacher_id"] },
+        { model: Unit, as: "unit", attributes: ["id", "title"] },
+      ],
     });
 
-    if (!lesson) {
-      await t.rollback();
-      return res.status(404).json({ success: false, error: "Lesson not found" });
-    }
+    if (!lesson) return res.status(404).json({ success: false, error: "Lesson not found" });
 
-    // Access checks (same as before)
-    let hasAccess = false;
-    let accessReason = "unknown";
-    const user = req.user ?? null;
-
-    if (user) {
-      if (user.role === "admin") {
-        hasAccess = true;
-        accessReason = "admin";
-      } else if (user.role === "teacher" && lesson.course?.teacher_id === user.id) {
-        hasAccess = true;
-        accessReason = "teacher_owner";
-      } else if (user.role === "student") {
-        if (lesson.is_preview) {
-          hasAccess = true;
-          accessReason = "preview";
-        } else {
-          const enrollment = await Enrollment.findOne({ where: { user_id: user.id, course_id: lesson.course_id, approval_status: "approved" }, transaction: t });
-          if (enrollment) {
-            hasAccess = true;
-            accessReason = "enrolled";
-          } else {
-            hasAccess = false;
-            accessReason = "not_enrolled";
-          }
-        }
-      } else {
-        hasAccess = Boolean(lesson.is_preview);
-        accessReason = lesson.is_preview ? "preview" : "forbidden_role";
-      }
-    } else {
-      hasAccess = Boolean(lesson.is_preview);
-      accessReason = lesson.is_preview ? "public_preview" : "requires_login";
-    }
-
-    if (!hasAccess) {
-      await t.rollback();
-      return res.status(accessReason === "requires_login" ? 401 : 403).json({ success: false, error: accessReason === "requires_login" ? "Please log in to access this lesson" : "You do not have permission to access this lesson", reason: accessReason, canPreview: Boolean(lesson.is_preview) });
-    }
-
-    if (user?.id) {
-      try { await trackLessonView(user.id, lesson.id); } catch (e) { console.warn("trackLessonView failed:", e?.message || e); }
-    }
-
-    const payload = buildFileUrls(lesson);
-    await t.commit();
-    return res.json({ success: true, lesson: payload, access: { reason: accessReason } });
+    return res.json({ success: true, lesson: buildFileUrls(lesson) });
   } catch (err) {
-    await t.rollback();
-    console.error("getLessonById error:", err?.message || err);
-    return res.status(500).json({ success: false, error: "Failed to load lesson", details: process.env.NODE_ENV === "development" ? err?.message : undefined });
+    return res.status(500).json({ success: false, error: err.message });
   }
 };
 
 /* -------------------------
-   Other list / preview / delete functions unchanged
-   (export remains the same)
+   LISTING ROUTES
 ------------------------- */
-
-export const getPreviewLessonForCourse = async (req, res) => {
-  // same as previous implementation in your file
-  try {
-    const { courseId } = req.params;
-    if (!courseId || isNaN(parseInt(courseId, 10))) return res.status(400).json({ success: false, error: "Valid course ID is required" });
-    const cId = parseInt(courseId, 10);
-    const course = await Course.findByPk(cId, { attributes: ["id", "title", "slug", "teacher_id"] });
-    if (!course) return res.status(404).json({ success: false, error: "Course not found" });
-
-    let lesson = await Lesson.findOne({ where: { course_id: cId, is_preview: true }, order: [["order_index", "ASC"]], include: [{ model: Course, as: "course", attributes: ["id", "title", "slug"] }] });
-    if (!lesson) lesson = await Lesson.findOne({ where: { course_id: cId }, order: [["order_index", "ASC"]], include: [{ model: Course, as: "course", attributes: ["id", "title", "slug"] }] });
-    if (!lesson) return res.status(404).json({ success: false, error: "No lessons found for this course" });
-    const payload = buildFileUrls(lesson);
-    return res.json({ success: true, lesson: payload, course: { id: course.id, title: course.title, slug: course.slug } });
-  } catch (err) {
-    console.error("getPreviewLessonForCourse error:", err?.message || err);
-    return res.status(500).json({ success: false, error: "Failed to load preview lesson", details: process.env.NODE_ENV === "development" ? err?.message : undefined });
-  }
-};
-
-export const getPublicPreviewByLessonId = async (req, res) => {
-  try {
-    const lessonId = req.params.lessonId ?? req.params.id;
-    if (!lessonId || isNaN(parseInt(lessonId, 10))) return res.status(400).json({ success: false, error: "Valid lesson ID is required" });
-    const id = parseInt(lessonId, 10);
-    const lesson = await Lesson.findByPk(id, { include: [{ model: Course, as: "course", attributes: ["id", "title", "slug"] }] });
-    if (!lesson) return res.status(404).json({ success: false, error: "Lesson not found" });
-    if (!lesson.is_preview && !req.user) return res.status(403).json({ success: false, error: "This lesson is not available for public preview. Please enroll or log in." });
-    const payload = buildFileUrls(lesson);
-    return res.json({ success: true, lesson: payload, access: lesson.is_preview ? "public" : "restricted" });
-  } catch (err) {
-    console.error("getPublicPreviewByLessonId error:", err?.message || err);
-    return res.status(500).json({ success: false, error: "Failed to load preview", details: process.env.NODE_ENV === "development" ? err?.message : undefined });
-  }
-};
-
 export const getLessonsByCourse = async (req, res) => {
   try {
-    const courseId = req.params.courseId ?? req.params.id;
-    if (!courseId || isNaN(parseInt(courseId, 10))) return res.status(400).json({ success: false, error: "Valid course ID is required" });
-    const cId = parseInt(courseId, 10);
-    const lessons = await Lesson.findAll({ where: { course_id: cId }, include: [{ model: Unit, as: "unit", attributes: ["id", "title", "order_index"] }], order: [["order_index", "ASC"]] });
-    return res.json({ success: true, lessons: lessons.map(buildFileUrls), count: lessons.length });
+    const courseId = req.params.courseId;
+    const lessons = await Lesson.findAll({ where: { course_id: courseId } });
+
+    return res.json({
+      success: true,
+      lessons: lessons.map(buildFileUrls),
+    });
   } catch (err) {
-    console.error("getLessonsByCourse error:", err?.message || err);
-    return res.status(500).json({ success: false, error: "Failed to fetch lessons", details: process.env.NODE_ENV === "development" ? err?.message : undefined });
+    return res.status(500).json({ success: false, error: err.message });
   }
 };
 
 export const getLessonsByUnit = async (req, res) => {
   try {
-    const unitId = req.params.unitId ?? req.params.id;
-    if (!unitId || isNaN(parseInt(unitId, 10))) return res.status(400).json({ success: false, error: "Valid unit ID is required" });
-    const uId = parseInt(unitId, 10);
-    const lessons = await Lesson.findAll({ where: { unit_id: uId }, order: [["order_index", "ASC"]] });
-    return res.json({ success: true, lessons: lessons.map(buildFileUrls), count: lessons.length });
+    const unitId = req.params.unitId;
+    const lessons = await Lesson.findAll({ where: { unit_id: unitId } });
+
+    return res.json({
+      success: true,
+      lessons: lessons.map(buildFileUrls),
+    });
   } catch (err) {
-    console.error("getLessonsByUnit error:", err?.message || err);
-    return res.status(500).json({ success: false, error: "Failed to fetch unit lessons", details: process.env.NODE_ENV === "development" ? err?.message : undefined });
+    return res.status(500).json({ success: false, error: err.message });
   }
 };
 
+/* -------------------------
+   DELETE LESSON
+------------------------- */
 export const deleteLesson = async (req, res) => {
   const t = await sequelize.transaction();
   try {
-    const lessonId = req.params.lessonId ?? req.params.id;
-    if (!lessonId || isNaN(parseInt(lessonId, 10))) {
-      await t.rollback();
-      return res.status(400).json({ success: false, error: "Valid lesson ID is required" });
-    }
-    const id = parseInt(lessonId, 10);
+    const id = req.params.lessonId;
     const lesson = await Lesson.findByPk(id, { transaction: t });
+
     if (!lesson) {
       await t.rollback();
       return res.status(404).json({ success: false, error: "Lesson not found" });
     }
 
-    if (req.user && req.user.role === "teacher") {
-      const course = await Course.findByPk(lesson.course_id, { transaction: t });
-      if (!course || course.teacher_id !== req.user.id) {
-        await t.rollback();
-        return res.status(403).json({ success: false, error: "You can only delete lessons from your courses" });
-      }
-    }
-
-    // Optionally: delete Cloudinary files (not implemented automatically)
     await lesson.destroy({ transaction: t });
     await t.commit();
-    return res.json({ success: true, message: "Lesson deleted", deletedId: id });
+
+    return res.json({ success: true, message: "Lesson deleted" });
   } catch (err) {
     await t.rollback();
-    console.error("deleteLesson error:", err?.message || err);
-    return res.status(500).json({ success: false, error: "Failed to delete lesson", details: process.env.NODE_ENV === "development" ? err?.message : undefined });
+    return res.status(500).json({ success: false, error: err.message });
   }
-};
-
-/* -------------------------
-   Default export
-------------------------- */
-export default {
-  buildFileUrls,
-  debugLessonFile,
-  fixLessonFileUrl,
-  getLessonById,
-  getPreviewLessonForCourse,
-  getPublicPreviewByLessonId,
-  createLesson,
-  updateLesson,
-  getLessonsByCourse,
-  getLessonsByUnit,
-  deleteLesson,
 };

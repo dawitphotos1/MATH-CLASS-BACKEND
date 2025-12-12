@@ -81,17 +81,16 @@
 
 
 
-
 // routes/lessonRoutes.js
 import express from "express";
-import lessonController from "../controllers/lessonController.js";
+import * as lessonController from "../controllers/lessonController.js"; // <-- FIXED
 import uploadMiddleware from "../middleware/uploadMiddleware.js";
 import { requireAuth, requireRole } from "../middleware/authMiddleware.js";
 
 const router = express.Router();
 
 /* =======================================================
-   1. PREVIEW ROUTES (most specific)
+   1. PREVIEW ROUTES (more specific — MUST COME FIRST)
    ======================================================= */
 router.get(
   "/preview/course/:courseId",
@@ -156,8 +155,7 @@ router.delete(
 );
 
 /* =======================================================
-   6. FINAL FALLBACK — GET BY ID
-   (MUST BE LAST)
+   6. FINAL FALLBACK — GET BY ID (MUST BE LAST!)
    ======================================================= */
 router.get(
   "/:id",
