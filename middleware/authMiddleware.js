@@ -114,7 +114,6 @@
 
 
 
-
 // middleware/authMiddleware.js
 import jwt from "jsonwebtoken";
 import db from "../models/index.js";
@@ -167,7 +166,7 @@ const verifyUser = async (req) => {
 };
 
 /**
- * General authentication middleware
+ * Recommended new middleware
  */
 export const requireAuth = async (req, res, next) => {
   try {
@@ -186,12 +185,14 @@ export const requireAuth = async (req, res, next) => {
 };
 
 /**
- * Legacy alias
+ * Legacy middleware (still used in many routes)
  */
-export const authenticateToken = requireAuth;
+export const authenticateToken = async (req, res, next) => {
+  return requireAuth(req, res, next);
+};
 
 /**
- * Role validation middleware factory
+ * Role validation
  */
 export const requireRole = (role) => {
   return (req, res, next) => {
@@ -210,15 +211,14 @@ export const requireRole = (role) => {
   };
 };
 
-/**
- * Predefined role middlewares
- */
+// Shortcuts (new)
 export const requireAdmin = requireRole("admin");
 export const requireTeacher = requireRole("teacher");
 export const requireStudent = requireRole("student");
 
 /**
- * Shortcuts for legacy-style middlewares
+ * Legacy functions — to prevent crashes
+ * These simply wrap the new functions.
  */
 export const isAdmin = async (req, res, next) => {
   await requireAuth(req, res, async () => {
@@ -248,15 +248,16 @@ export const isStudent = async (req, res, next) => {
 };
 
 /**
- * New middleware: teacher OR admin
+ * Default exports (optional)
  */
-export const isTeacherOrAdmin = async (req, res, next) => {
-  await requireAuth(req, res, async () => {
-    if (req.user.role !== "teacher" && req.user.role !== "admin") {
-      return res
-        .status(403)
-        .json({ success: false, message: "Teacher or Admin only" });
-    }
-    next();
-  });
+export default {
+  requireAuth,
+  authenticateToken,
+  requireRole,
+  requireAdmin,
+  requireTeacher,
+  requireStudent,
+  isAdmin,
+  isTeacher,
+  isStudent,
 };
