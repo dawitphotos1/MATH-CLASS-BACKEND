@@ -3,33 +3,46 @@
 // import { v2 as cloudinary } from "cloudinary";
 // import streamifier from "streamifier";
 // import path from "path";
+// import fs from "fs";
 
 // console.log("=== uploadMiddleware init ===");
 
-// // Configure Cloudinary
-// if (process.env.CLOUDINARY_CLOUD_NAME && process.env.CLOUDINARY_API_KEY) {
+// // === Option A selected by user: prefer Cloudinary ===
+// // We'll try to use Cloudinary when properly configured.
+// // If Cloudinary is missing we'll FALLBACK to local storage but emit clear logs.
+// const CLOUDINARY_CONFIGURED =
+//   !!process.env.CLOUDINARY_CLOUD_NAME &&
+//   !!process.env.CLOUDINARY_API_KEY &&
+//   !!process.env.CLOUDINARY_API_SECRET;
+
+// if (CLOUDINARY_CONFIGURED) {
 //   cloudinary.config({
 //     cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
 //     api_key: process.env.CLOUDINARY_API_KEY,
-//     api_secret: process.env.CLOUDINARY_API_SECRET || "",
+//     api_secret: process.env.CLOUDINARY_API_SECRET,
 //     secure: true,
 //   });
-//   console.log("✅ Cloudinary is configured.");
+//   console.log("✅ Cloudinary configured (will be used).");
 // } else {
-//   console.warn("⚠️ Cloudinary NOT configured. Set CLOUDINARY_CLOUD_NAME / API_KEY / API_SECRET in env.");
+//   console.warn(
+//     "⚠️ Cloudinary NOT fully configured. Falling back to local storage.\n" +
+//       "Set CLOUDINARY_CLOUD_NAME / CLOUDINARY_API_KEY / CLOUDINARY_API_SECRET in your env to enable Cloudinary."
+//   );
 // }
 
-// // Use memory storage so we can stream directly to Cloudinary
+// // Multer memory storage so we can stream directly to cloudinary
 // const storage = multer.memoryStorage();
 
 // const upload = multer({
 //   storage,
 //   limits: {
-//     fileSize: process.env.MAX_FILE_SIZE ? Number(process.env.MAX_FILE_SIZE) : 150 * 1024 * 1024,
+//     fileSize: process.env.MAX_FILE_SIZE
+//       ? Number(process.env.MAX_FILE_SIZE)
+//       : 150 * 1024 * 1024, // 150MB fallback
 //   },
 // });
 
-// // Fields expected for lesson uploads (adjust if your frontend uses different names)
+// // Fields expected for lesson uploads (matches your frontend)
 // export const uploadLessonFiles = upload.fields([
 //   { name: "video", maxCount: 1 },
 //   { name: "file", maxCount: 1 },
@@ -37,15 +50,33 @@
 //   { name: "attachments", maxCount: 10 },
 // ]);
 
+// // Local Uploads folder (fallback)
+// const LOCAL_UPLOAD_DIR = path.join(process.cwd(), "Uploads");
+// if (!fs.existsSync(LOCAL_UPLOAD_DIR)) fs.mkdirSync(LOCAL_UPLOAD_DIR, { recursive: true });
+
 // /**
-//  * Upload a single buffer to Cloudinary using upload_stream.
-//  * - resourceType: 'raw' | 'image' | 'video' | 'auto'
-//  * - folder: optional folder path
-//  * Returns result object (secure_url, public_id, resource_type, format, bytes, etc.)
+//  * Helper: choose Cloudinary resource type and folder by mimetype/extension
 //  */
-// const uploadBufferToCloudinary = (buffer, { resourceType = "auto", folder = "mathe-class/files", public_id = undefined, filename = "file" } = {}) => {
+// const chooseCloudinaryTypeAndFolder = (mimetype = "", originalname = "") => {
+//   mimetype = mimetype.toLowerCase();
+//   const ext = path.extname(originalname || "").toLowerCase();
+
+//   if (mimetype.startsWith("image/")) return { resourceType: "image", folder: "mathe-class/images" };
+//   if (mimetype.startsWith("video/")) return { resourceType: "video", folder: "mathe-class/videos" };
+
+//   if (mimetype === "application/pdf" || [".pdf", ".doc", ".docx", ".ppt", ".pptx", ".xls", ".xlsx"].includes(ext)) {
+//     return { resourceType: "raw", folder: "mathe-class/docs" };
+//   }
+
+//   return { resourceType: "auto", folder: "mathe-class/files" };
+// };
+
+// /**
+//  * Upload a buffer to Cloudinary using upload_stream
+//  */
+// const uploadBufferToCloudinary = (buffer, { resourceType = "auto", folder = "mathe-class/files", public_id } = {}) => {
 //   return new Promise((resolve, reject) => {
-//     const opts = { resource_type: resourceType, folder, timeout: 60000, use_filename: false };
+//     const opts = { resource_type: resourceType, folder, timeout: 120000 };
 //     if (public_id) opts.public_id = public_id;
 
 //     const uploadStream = cloudinary.uploader.upload_stream(opts, (error, result) => {
@@ -58,33 +89,24 @@
 // };
 
 // /**
-//  * Determine Cloudinary resource type and folder by mimetype / filename
+//  * Save buffer to local Uploads directory and return a public path (/Uploads/filename)
 //  */
-// const chooseCloudinaryTypeAndFolder = (mimetype, originalname) => {
-//   mimetype = (mimetype || "").toLowerCase();
-//   originalname = originalname || "";
-//   if (mimetype.startsWith("image/")) return { resourceType: "image", folder: "mathe-class/images" };
-//   if (mimetype.startsWith("video/")) return { resourceType: "video", folder: "mathe-class/videos" };
-
-//   // PDFs and Office docs -> upload as raw
-//   const ext = path.extname(originalname || "").toLowerCase();
-//   if (mimetype === "application/pdf" || [".pdf", ".doc", ".docx", ".ppt", ".pptx", ".xls", ".xlsx"].includes(ext)) {
-//     return { resourceType: "raw", folder: "mathe-class/docs" };
-//   }
-
-//   // Fallback to auto
-//   return { resourceType: "auto", folder: "mathe-class/files" };
+// const saveBufferLocally = (buffer, originalname) => {
+//   const safeName = path.parse(originalname).name.replace(/[^a-zA-Z0-9-_]/g, "_");
+//   const ext = path.extname(originalname) || "";
+//   const filename = `${safeName}_${Date.now()}${ext}`;
+//   const fullPath = path.join(LOCAL_UPLOAD_DIR, filename);
+//   fs.writeFileSync(fullPath, buffer);
+//   return `/Uploads/${filename}`;
 // };
 
 // /**
 //  * processUploadedFiles(req)
 //  * - Reads req.files (from multer memoryStorage)
-//  * - Uploads each file to Cloudinary
-//  * - Sets req.processedUploads = { fileUrl, videoUrl, attachments: [ { url, public_id, resource_type } ] }
+//  * - Uploads each file to Cloudinary (if configured) or saves locally
+//  * - Sets req.processedUploads = { fileUrl, videoUrl, attachments: [] }
 //  *
-//  * Usage:
-//  *   await processUploadedFiles(req);
-//  *   const uploads = req.processedUploads;
+//  * Returns the normalized object.
 //  */
 // export const processUploadedFiles = async (req) => {
 //   const out = { fileUrl: null, videoUrl: null, attachments: [] };
@@ -94,7 +116,6 @@
 //     return out;
 //   }
 
-//   // Handle known fields video, pdf, file, attachments
 //   const allFields = Object.keys(req.files);
 
 //   for (const field of allFields) {
@@ -103,53 +124,65 @@
 //       const { buffer, originalname, mimetype } = f;
 //       try {
 //         const { resourceType, folder } = chooseCloudinaryTypeAndFolder(mimetype, originalname);
-//         const result = await uploadBufferToCloudinary(buffer, {
-//           resourceType,
-//           folder,
-//           filename: originalname,
-//         });
 
-//         // Build normalized URL:
-//         let finalUrl = result.secure_url;
-//         // If Cloudinary returned an image upload URL for a PDF (rare), convert to raw URL
-//         if (result.resource_type === "image" && (originalname || "").toLowerCase().endsWith(".pdf")) {
-//           // replace /image/upload/ with /raw/upload/
-//           finalUrl = finalUrl.replace("/image/upload/", "/raw/upload/");
-//         }
+//         if (CLOUDINARY_CONFIGURED) {
+//           const result = await uploadBufferToCloudinary(buffer, { resourceType, folder });
+//           let finalUrl = result.secure_url;
 
-//         const fileObj = {
-//           field,
-//           originalname,
-//           mimetype,
-//           url: finalUrl,
-//           public_id: result.public_id,
-//           resource_type: result.resource_type,
-//           format: result.format,
-//           bytes: result.bytes,
-//         };
+//           // If Cloudinary returned an image upload URL for a PDF (rare), convert to raw URL
+//           if (result.resource_type === "image" && (originalname || "").toLowerCase().endsWith(".pdf")) {
+//             finalUrl = finalUrl.replace("/image/upload/", "/raw/upload/");
+//           }
 
-//         // Map to out fields
-//         if (field === "video") {
-//           out.videoUrl = fileObj.url;
-//         } else if (field === "pdf" || (field === "file" && (originalname || "").toLowerCase().endsWith(".pdf"))) {
-//           out.fileUrl = fileObj.url;
-//         } else if (field === "file" && fileObj.resource_type === "video") {
-//           out.videoUrl = fileObj.url;
-//         } else if (fileObj.resource_type === "image") {
-//           // If it's a single image upload intended as lesson file
-//           if (field === "file" && !out.fileUrl) out.fileUrl = fileObj.url;
-//           else out.attachments.push(fileObj);
-//         } else {
-//           // fallback
-//           if (!out.fileUrl && (field === "file" || field === "attachments")) {
-//             out.fileUrl = fileObj.url;
+//           const fileObj = {
+//             field,
+//             originalname,
+//             mimetype,
+//             url: finalUrl,
+//             public_id: result.public_id,
+//             resource_type: result.resource_type,
+//             format: result.format,
+//             bytes: result.bytes,
+//           };
+
+//           if (field === "video") out.videoUrl = fileObj.url;
+//           else if (field === "pdf" || (field === "file" && (originalname || "").toLowerCase().endsWith(".pdf"))) out.fileUrl = fileObj.url;
+//           else if (field === "file" && fileObj.resource_type === "video") out.videoUrl = fileObj.url;
+//           else if (fileObj.resource_type === "image") {
+//             if (field === "file" && !out.fileUrl) out.fileUrl = fileObj.url;
+//             else out.attachments.push(fileObj);
 //           } else {
-//             out.attachments.push(fileObj);
+//             if (!out.fileUrl && (field === "file" || field === "attachments")) out.fileUrl = fileObj.url;
+//             else out.attachments.push(fileObj);
+//           }
+//         } else {
+//           // Fallback: local save
+//           const localPath = saveBufferLocally(buffer, originalname);
+//           const fileObj = {
+//             field,
+//             originalname,
+//             mimetype,
+//             url: localPath,
+//             public_id: null,
+//             resource_type: "local",
+//             format: path.extname(originalname).replace(".", ""),
+//             bytes: buffer.length,
+//           };
+
+//           if (field === "video") out.videoUrl = fileObj.url;
+//           else if (field === "pdf" || (field === "file" && (originalname || "").toLowerCase().endsWith(".pdf"))) out.fileUrl = fileObj.url;
+//           else if (field === "file" && fileObj.resource_type === "video") out.videoUrl = fileObj.url;
+//           else if (fileObj.resource_type === "image") {
+//             if (field === "file" && !out.fileUrl) out.fileUrl = fileObj.url;
+//             else out.attachments.push(fileObj);
+//           } else {
+//             if (!out.fileUrl && (field === "file" || field === "attachments")) out.fileUrl = fileObj.url;
+//             else out.attachments.push(fileObj);
 //           }
 //         }
 //       } catch (err) {
-//         console.error("Cloudinary upload failed for file", originalname, ":", err?.message || err);
-//         // continue — do not throw; we let controller decide fallback behavior
+//         console.error("❌ Upload failed for file", originalname, ":", err?.message || err);
+//         // continue - controller can handle missing uploads
 //       }
 //     }
 //   }
@@ -158,10 +191,17 @@
 //   return out;
 // };
 
-// export default {
-//   uploadLessonFiles,
-//   processUploadedFiles,
-// };
+// // Attach helper props to multer instance for maximum backward compatibility
+// upload.uploadLessonFiles = uploadLessonFiles;
+// upload.processUploadedFiles = processUploadedFiles;
+// upload.CLOUDINARY_CONFIGURED = CLOUDINARY_CONFIGURED;
+
+// console.log("✅ uploadMiddleware ready. Exports: upload (multer instance), uploadLessonFiles, processUploadedFiles");
+
+// // Default export = multer instance (so old code using `import upload from '...'; upload.single(...)` works)
+// // Also provide named exports.
+// export default upload;
+// export { upload as uploadInstance, uploadLessonFiles, processUploadedFiles, CLOUDINARY_CONFIGURED };
 
 
 
@@ -177,9 +217,9 @@ import fs from "fs";
 
 console.log("=== uploadMiddleware init ===");
 
-// === Option A selected by user: prefer Cloudinary ===
-// We'll try to use Cloudinary when properly configured.
-// If Cloudinary is missing we'll FALLBACK to local storage but emit clear logs.
+// -------------------------------------------------------
+// CLOUDINARY INITIALIZATION
+// -------------------------------------------------------
 const CLOUDINARY_CONFIGURED =
   !!process.env.CLOUDINARY_CLOUD_NAME &&
   !!process.env.CLOUDINARY_API_KEY &&
@@ -192,15 +232,17 @@ if (CLOUDINARY_CONFIGURED) {
     api_secret: process.env.CLOUDINARY_API_SECRET,
     secure: true,
   });
-  console.log("✅ Cloudinary configured (will be used).");
+  console.log("✅ Cloudinary configured and enabled.");
 } else {
   console.warn(
-    "⚠️ Cloudinary NOT fully configured. Falling back to local storage.\n" +
-      "Set CLOUDINARY_CLOUD_NAME / CLOUDINARY_API_KEY / CLOUDINARY_API_SECRET in your env to enable Cloudinary."
+    "⚠️ Cloudinary NOT configured. Using LOCAL STORAGE fallback.\n" +
+      "Set CLOUDINARY_CLOUD_NAME, CLOUDINARY_API_KEY, CLOUDINARY_API_SECRET to enable Cloudinary."
   );
 }
 
-// Multer memory storage so we can stream directly to cloudinary
+// -------------------------------------------------------
+// MULTER STORAGE (memory for cloud uploads)
+// -------------------------------------------------------
 const storage = multer.memoryStorage();
 
 const upload = multer({
@@ -208,11 +250,11 @@ const upload = multer({
   limits: {
     fileSize: process.env.MAX_FILE_SIZE
       ? Number(process.env.MAX_FILE_SIZE)
-      : 150 * 1024 * 1024, // 150MB fallback
+      : 150 * 1024 * 1024, // default 150MB
   },
 });
 
-// Fields expected for lesson uploads (matches your frontend)
+// Fields expected for lesson uploads
 export const uploadLessonFiles = upload.fields([
   { name: "video", maxCount: 1 },
   { name: "file", maxCount: 1 },
@@ -220,64 +262,69 @@ export const uploadLessonFiles = upload.fields([
   { name: "attachments", maxCount: 10 },
 ]);
 
-// Local Uploads folder (fallback)
+// -------------------------------------------------------
+// LOCAL STORAGE FALLBACK
+// -------------------------------------------------------
 const LOCAL_UPLOAD_DIR = path.join(process.cwd(), "Uploads");
-if (!fs.existsSync(LOCAL_UPLOAD_DIR)) fs.mkdirSync(LOCAL_UPLOAD_DIR, { recursive: true });
+if (!fs.existsSync(LOCAL_UPLOAD_DIR))
+  fs.mkdirSync(LOCAL_UPLOAD_DIR, { recursive: true });
 
-/**
- * Helper: choose Cloudinary resource type and folder by mimetype/extension
- */
+const saveBufferLocally = (buffer, originalname) => {
+  const safeName = path.parse(originalname).name.replace(/[^a-zA-Z0-9-_]/g, "_");
+  const ext = path.extname(originalname) || "";
+  const filename = `${safeName}_${Date.now()}${ext}`;
+  const fullPath = path.join(LOCAL_UPLOAD_DIR, filename);
+
+  fs.writeFileSync(fullPath, buffer);
+  return `/Uploads/${filename}`;
+};
+
+// -------------------------------------------------------
+// CLOUDINARY HELPERS
+// -------------------------------------------------------
 const chooseCloudinaryTypeAndFolder = (mimetype = "", originalname = "") => {
   mimetype = mimetype.toLowerCase();
   const ext = path.extname(originalname || "").toLowerCase();
 
-  if (mimetype.startsWith("image/")) return { resourceType: "image", folder: "mathe-class/images" };
-  if (mimetype.startsWith("video/")) return { resourceType: "video", folder: "mathe-class/videos" };
-
-  if (mimetype === "application/pdf" || [".pdf", ".doc", ".docx", ".ppt", ".pptx", ".xls", ".xlsx"].includes(ext)) {
+  if (mimetype.startsWith("image/")) {
+    return { resourceType: "image", folder: "mathe-class/images" };
+  }
+  if (mimetype.startsWith("video/")) {
+    return { resourceType: "video", folder: "mathe-class/videos" };
+  }
+  if (
+    mimetype === "application/pdf" ||
+    [".pdf", ".doc", ".docx", ".ppt", ".pptx", ".xls", ".xlsx"].includes(ext)
+  ) {
     return { resourceType: "raw", folder: "mathe-class/docs" };
   }
 
   return { resourceType: "auto", folder: "mathe-class/files" };
 };
 
-/**
- * Upload a buffer to Cloudinary using upload_stream
- */
-const uploadBufferToCloudinary = (buffer, { resourceType = "auto", folder = "mathe-class/files", public_id } = {}) => {
+const uploadBufferToCloudinary = (
+  buffer,
+  { resourceType = "auto", folder = "mathe-class/files", public_id } = {}
+) => {
   return new Promise((resolve, reject) => {
     const opts = { resource_type: resourceType, folder, timeout: 120000 };
     if (public_id) opts.public_id = public_id;
 
-    const uploadStream = cloudinary.uploader.upload_stream(opts, (error, result) => {
-      if (error) return reject(error);
-      resolve(result);
-    });
+    const uploadStream = cloudinary.uploader.upload_stream(
+      opts,
+      (error, result) => {
+        if (error) return reject(error);
+        resolve(result);
+      }
+    );
 
     streamifier.createReadStream(buffer).pipe(uploadStream);
   });
 };
 
-/**
- * Save buffer to local Uploads directory and return a public path (/Uploads/filename)
- */
-const saveBufferLocally = (buffer, originalname) => {
-  const safeName = path.parse(originalname).name.replace(/[^a-zA-Z0-9-_]/g, "_");
-  const ext = path.extname(originalname) || "";
-  const filename = `${safeName}_${Date.now()}${ext}`;
-  const fullPath = path.join(LOCAL_UPLOAD_DIR, filename);
-  fs.writeFileSync(fullPath, buffer);
-  return `/Uploads/${filename}`;
-};
-
-/**
- * processUploadedFiles(req)
- * - Reads req.files (from multer memoryStorage)
- * - Uploads each file to Cloudinary (if configured) or saves locally
- * - Sets req.processedUploads = { fileUrl, videoUrl, attachments: [] }
- *
- * Returns the normalized object.
- */
+// -------------------------------------------------------
+// MAIN PROCESSOR: Uploads → Cloudinary or Local
+// -------------------------------------------------------
 export const processUploadedFiles = async (req) => {
   const out = { fileUrl: null, videoUrl: null, attachments: [] };
 
@@ -290,21 +337,36 @@ export const processUploadedFiles = async (req) => {
 
   for (const field of allFields) {
     const filesArr = req.files[field] || [];
+
     for (const f of filesArr) {
       const { buffer, originalname, mimetype } = f;
+
       try {
-        const { resourceType, folder } = chooseCloudinaryTypeAndFolder(mimetype, originalname);
+        let fileObj;
 
         if (CLOUDINARY_CONFIGURED) {
-          const result = await uploadBufferToCloudinary(buffer, { resourceType, folder });
+          // Determine Cloudinary resource type
+          const { resourceType, folder } = chooseCloudinaryTypeAndFolder(
+            mimetype,
+            originalname
+          );
+
+          const result = await uploadBufferToCloudinary(buffer, {
+            resourceType,
+            folder,
+          });
+
           let finalUrl = result.secure_url;
 
-          // If Cloudinary returned an image upload URL for a PDF (rare), convert to raw URL
-          if (result.resource_type === "image" && (originalname || "").toLowerCase().endsWith(".pdf")) {
+          // Ensure PDFs aren't delivered as Cloudinary images
+          if (
+            result.resource_type === "image" &&
+            (originalname || "").toLowerCase().endsWith(".pdf")
+          ) {
             finalUrl = finalUrl.replace("/image/upload/", "/raw/upload/");
           }
 
-          const fileObj = {
+          fileObj = {
             field,
             originalname,
             mimetype,
@@ -314,45 +376,41 @@ export const processUploadedFiles = async (req) => {
             format: result.format,
             bytes: result.bytes,
           };
-
-          if (field === "video") out.videoUrl = fileObj.url;
-          else if (field === "pdf" || (field === "file" && (originalname || "").toLowerCase().endsWith(".pdf"))) out.fileUrl = fileObj.url;
-          else if (field === "file" && fileObj.resource_type === "video") out.videoUrl = fileObj.url;
-          else if (fileObj.resource_type === "image") {
-            if (field === "file" && !out.fileUrl) out.fileUrl = fileObj.url;
-            else out.attachments.push(fileObj);
-          } else {
-            if (!out.fileUrl && (field === "file" || field === "attachments")) out.fileUrl = fileObj.url;
-            else out.attachments.push(fileObj);
-          }
         } else {
-          // Fallback: local save
-          const localPath = saveBufferLocally(buffer, originalname);
-          const fileObj = {
+          // LOCAL STORAGE FALLBACK
+          const localUrl = saveBufferLocally(buffer, originalname);
+          fileObj = {
             field,
             originalname,
             mimetype,
-            url: localPath,
+            url: localUrl,
             public_id: null,
             resource_type: "local",
             format: path.extname(originalname).replace(".", ""),
             bytes: buffer.length,
           };
+        }
 
-          if (field === "video") out.videoUrl = fileObj.url;
-          else if (field === "pdf" || (field === "file" && (originalname || "").toLowerCase().endsWith(".pdf"))) out.fileUrl = fileObj.url;
-          else if (field === "file" && fileObj.resource_type === "video") out.videoUrl = fileObj.url;
-          else if (fileObj.resource_type === "image") {
-            if (field === "file" && !out.fileUrl) out.fileUrl = fileObj.url;
-            else out.attachments.push(fileObj);
-          } else {
-            if (!out.fileUrl && (field === "file" || field === "attachments")) out.fileUrl = fileObj.url;
-            else out.attachments.push(fileObj);
-          }
+        // -------------------------------------------------------
+        // FILE ROUTING LOGIC
+        // -------------------------------------------------------
+        const lowerName = (originalname || "").toLowerCase();
+
+        if (field === "video") out.videoUrl = fileObj.url;
+        else if (field === "pdf" || lowerName.endsWith(".pdf"))
+          out.fileUrl = fileObj.url;
+        else if (field === "file" && fileObj.resource_type === "video")
+          out.videoUrl = fileObj.url;
+        else if (fileObj.resource_type === "image") {
+          if (field === "file" && !out.fileUrl) out.fileUrl = fileObj.url;
+          else out.attachments.push(fileObj);
+        } else {
+          if (!out.fileUrl && (field === "file" || field === "attachments"))
+            out.fileUrl = fileObj.url;
+          else out.attachments.push(fileObj);
         }
       } catch (err) {
-        console.error("❌ Upload failed for file", originalname, ":", err?.message || err);
-        // continue - controller can handle missing uploads
+        console.error("❌ Upload failed:", originalname, err?.message || err);
       }
     }
   }
@@ -361,14 +419,17 @@ export const processUploadedFiles = async (req) => {
   return out;
 };
 
-// Attach helper props to multer instance for maximum backward compatibility
+// -------------------------------------------------------
+// EXPORTS
+// -------------------------------------------------------
 upload.uploadLessonFiles = uploadLessonFiles;
 upload.processUploadedFiles = processUploadedFiles;
 upload.CLOUDINARY_CONFIGURED = CLOUDINARY_CONFIGURED;
 
-console.log("✅ uploadMiddleware ready. Exports: upload (multer instance), uploadLessonFiles, processUploadedFiles");
+console.log(
+  "✅ uploadMiddleware ready. Exports: upload, uploadLessonFiles, processUploadedFiles"
+);
 
-// Default export = multer instance (so old code using `import upload from '...'; upload.single(...)` works)
-// Also provide named exports.
 export default upload;
-export { upload as uploadInstance, uploadLessonFiles, processUploadedFiles, CLOUDINARY_CONFIGURED };
+
+export { upload as uploadInstance, uploadLessonFiles, CLOUDINARY_CONFIGURED };
