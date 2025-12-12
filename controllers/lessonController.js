@@ -1860,278 +1860,146 @@
 
 
 
-
 // controllers/lessonController.js
 import db from "../models/index.js";
 import upload from "../middleware/uploadMiddleware.js";
 
 const { Lesson, Course, Unit } = db;
 
-/* ------------------------------------------------------------
-   Helper: Normalize file + video + attachments into a lesson
------------------------------------------------------------- */
+// Helper to normalize uploads into lesson object
 const applyUploadResultsToLesson = (lesson, uploads) => {
   if (!uploads) return lesson;
 
-  if (uploads.fileUrl) {
-    lesson.file_url = uploads.fileUrl;
-    lesson.content_type = "file";
-  }
+  if (uploads.fileUrl) lesson.file_url = uploads.fileUrl;
+  if (uploads.videoUrl) lesson.video_url = uploads.videoUrl;
+  if (uploads.attachments?.length > 0) lesson.attachments = uploads.attachments.map(a => a.url);
 
-  if (uploads.videoUrl) {
-    lesson.video_url = uploads.videoUrl;
-    lesson.content_type = "video";
-  }
-
-  if (uploads.attachments && uploads.attachments.length > 0) {
-    lesson.attachments = uploads.attachments.map(a => a.url);
-  }
+  if (uploads.videoUrl) lesson.content_type = "video";
+  else if (uploads.fileUrl) lesson.content_type = "file";
 
   return lesson;
 };
 
-/* ------------------------------------------------------------
-   CREATE LESSON
------------------------------------------------------------- */
+// ---------------------- CRUD ----------------------
 const createLesson = async (req, res) => {
   try {
     const { courseId } = req.params;
     const { title, description, unitId, order, content_type } = req.body;
 
-    // STEP 1: Process uploaded files (Cloudinary or local)
     const uploads = await upload.processUploadedFiles(req);
 
-    // STEP 2: Build base lesson
     let lessonData = {
       title: title?.trim(),
       description: description?.trim() || "",
       courseId,
       unitId: unitId || null,
       order: order ? Number(order) : 1,
-      content_type: content_type || "text", // will be overridden if Cloudinary uploads exist
+      content_type: content_type || "text",
       file_url: null,
       video_url: null,
-      attachments: []
+      attachments: [],
     };
 
-    // STEP 3: Merge uploaded files into lessonData
     lessonData = applyUploadResultsToLesson(lessonData, uploads);
-
-    // STEP 4: Save
     const lesson = await Lesson.create(lessonData);
 
-    return res.json({
-      success: true,
-      message: "Lesson created",
-      lesson,
-    });
-
+    return res.json({ success: true, message: "Lesson created", lesson });
   } catch (err) {
     console.error("❌ createLesson error:", err);
-    return res.status(500).json({
-      success: false,
-      error: err.message,
-    });
+    return res.status(500).json({ success: false, error: err.message });
   }
 };
 
-/* ------------------------------------------------------------
-   UPDATE LESSON
------------------------------------------------------------- */
 const updateLesson = async (req, res) => {
   try {
     const { lessonId } = req.params;
     const existing = await Lesson.findByPk(lessonId);
-
-    if (!existing) {
-      return res.status(404).json({ success: false, error: "Lesson not found" });
-    }
+    if (!existing) return res.status(404).json({ success: false, error: "Lesson not found" });
 
     const { title, description, unitId, order, content_type } = req.body;
-
-    // STEP 1: Process uploaded files (Cloudinary or local)
     const uploads = await upload.processUploadedFiles(req);
 
-    // STEP 2: Apply changes
     if (title) existing.title = title.trim();
     if (description) existing.description = description.trim();
     if (unitId) existing.unitId = unitId;
     if (order) existing.order = Number(order);
     if (content_type) existing.content_type = content_type;
 
-    // STEP 3: Merge uploaded file URLs
     applyUploadResultsToLesson(existing, uploads);
-
-    // STEP 4: Save
     await existing.save();
 
-    return res.json({
-      success: true,
-      message: "Lesson updated",
-      lesson: existing,
-    });
-
+    return res.json({ success: true, message: "Lesson updated", lesson: existing });
   } catch (err) {
     console.error("❌ updateLesson error:", err);
-    return res.status(500).json({
-      success: false,
-      error: err.message,
-    });
+    return res.status(500).json({ success: false, error: err.message });
   }
 };
 
-/* ------------------------------------------------------------
-   GET LESSON BY ID
------------------------------------------------------------- */
 const getLessonById = async (req, res) => {
   try {
     const { id } = req.params;
-
     const lesson = await Lesson.findByPk(id);
-    if (!lesson) {
-      return res.status(404).json({ success: false, error: "Lesson not found" });
-    }
+    if (!lesson) return res.status(404).json({ success: false, error: "Lesson not found" });
 
     return res.json({ success: true, lesson });
-
   } catch (err) {
     console.error("❌ getLessonById error:", err);
     return res.status(500).json({ success: false, error: err.message });
   }
 };
 
-/* ------------------------------------------------------------
-   GET LESSONS BY COURSE
------------------------------------------------------------- */
 const getLessonsByCourse = async (req, res) => {
   try {
     const { courseId } = req.params;
-
-    const lessons = await Lesson.findAll({
-      where: { courseId },
-      order: [["order", "ASC"]],
-    });
-
+    const lessons = await Lesson.findAll({ where: { courseId }, order: [["order", "ASC"]] });
     return res.json({ success: true, lessons });
-
   } catch (err) {
     console.error("❌ getLessonsByCourse error:", err);
     return res.status(500).json({ success: false, error: err.message });
   }
 };
 
-/* ------------------------------------------------------------
-   GET LESSONS BY UNIT
------------------------------------------------------------- */
 const getLessonsByUnit = async (req, res) => {
   try {
     const { unitId } = req.params;
-
-    const lessons = await Lesson.findAll({
-      where: { unitId },
-      order: [["order", "ASC"]],
-    });
-
+    const lessons = await Lesson.findAll({ where: { unitId }, order: [["order", "ASC"]] });
     return res.json({ success: true, lessons });
-
   } catch (err) {
     console.error("❌ getLessonsByUnit error:", err);
     return res.status(500).json({ success: false, error: err.message });
   }
 };
 
-/* ------------------------------------------------------------
-   PREVIEW LESSON FOR CLASS PAGE
------------------------------------------------------------- */
 const getPreviewLessonForCourse = async (req, res) => {
   try {
     const { courseId } = req.params;
-
-    const lesson = await Lesson.findOne({
-      where: {
-        courseId,
-        preview: true,
-      },
-      order: [["order", "ASC"]],
-    });
-
+    const lesson = await Lesson.findOne({ where: { courseId, preview: true }, order: [["order", "ASC"]] });
     return res.json({ success: true, lesson });
-
   } catch (err) {
     console.error("❌ getPreviewLessonForCourse error:", err);
     return res.status(500).json({ success: false, error: err.message });
   }
 };
 
-/* ------------------------------------------------------------
-   PUBLIC PREVIEW (for students)
------------------------------------------------------------- */
 const getPublicPreviewByLessonId = async (req, res) => {
   try {
     const { id } = req.params;
-
     const lesson = await Lesson.findByPk(id);
-    if (!lesson) {
-      return res.status(404).json({ success: false, error: "Lesson not found" });
-    }
-
+    if (!lesson) return res.status(404).json({ success: false, error: "Lesson not found" });
     return res.json({ success: true, lesson });
-
   } catch (err) {
     console.error("❌ getPublicPreviewByLessonId error:", err);
     return res.status(500).json({ success: false, error: err.message });
   }
 };
 
-/* ------------------------------------------------------------
- DEBUG ENDPOINT
------------------------------------------------------------- */
-const debugLessonFile = async (req, res) => {
-  const { lessonId } = req.params;
-
-  const lesson = await Lesson.findByPk(lessonId);
-  if (!lesson) return res.status(404).json({ success: false, error: "Lesson not found" });
-
-  return res.json({
-    success: true,
-    lesson,
-    file_url: lesson.file_url,
-    video_url: lesson.video_url,
-    attachments: lesson.attachments,
-  });
-};
-
-/* ------------------------------------------------------------
- FIX BAD CLOUDINARY URLs
------------------------------------------------------------- */
-const fixLessonFileUrl = async (req, res) => {
-  const { lessonId } = req.params;
-
-  const lesson = await Lesson.findByPk(lessonId);
-  if (!lesson) return res.status(404).json({ success: false, error: "Lesson not found" });
-
-  if (lesson.file_url?.includes("/image/upload/") && lesson.file_url.endsWith(".pdf")) {
-    lesson.file_url = lesson.file_url.replace("/image/upload/", "/raw/upload/");
-    await lesson.save();
-  }
-
-  return res.json({ success: true, lesson });
-};
-
-/* ------------------------------------------------------------
- DELETE LESSON
------------------------------------------------------------- */
 const deleteLesson = async (req, res) => {
   try {
     const { lessonId } = req.params;
-
     const lesson = await Lesson.findByPk(lessonId);
     if (!lesson) return res.status(404).json({ success: false, error: "Lesson not found" });
-
     await lesson.destroy();
-
     return res.json({ success: true, message: "Lesson deleted" });
-
   } catch (err) {
     console.error("❌ deleteLesson error:", err);
     return res.status(500).json({ success: false, error: err.message });
@@ -2147,6 +2015,4 @@ export default {
   getPreviewLessonForCourse,
   getPublicPreviewByLessonId,
   deleteLesson,
-  debugLessonFile,
-  fixLessonFileUrl,
 };
