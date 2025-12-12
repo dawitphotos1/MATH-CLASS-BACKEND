@@ -113,7 +113,6 @@
 
 
 
-
 // middleware/authMiddleware.js
 import jwt from "jsonwebtoken";
 import db from "../models/index.js";
@@ -126,12 +125,12 @@ const { User } = db;
 const getTokenFromRequest = (req) => {
   let token = null;
 
-  // 1. Authorization: Bearer <token>
+  // Authorization: Bearer <token>
   if (req.headers.authorization?.startsWith("Bearer")) {
     token = req.headers.authorization.split(" ")[1];
   }
 
-  // 2. Cookie
+  // Cookie fallback
   if (!token && req.cookies?.token) {
     token = req.cookies.token;
   }
@@ -140,56 +139,61 @@ const getTokenFromRequest = (req) => {
 };
 
 /**
- * 🔐 requireAuth
- * Verifies JWT token and attaches req.user
+ * MAIN AUTH FUNCTION
+ * (Used internally, shared for both requireAuth & authenticateToken)
+ */
+const verifyUser = async (req, res) => {
+  const token = getTokenFromRequest(req);
+
+  if (!token) {
+    return { error: "Not authenticated – no token provided" };
+  }
+
+  let decoded;
+  try {
+    decoded = jwt.verify(token, process.env.JWT_SECRET);
+  } catch (err) {
+    return { error: "Invalid or expired token" };
+  }
+
+  const user = await User.findByPk(decoded.id);
+
+  if (!user) {
+    return { error: "User no longer exists" };
+  }
+
+  return { user };
+};
+
+/**
+ * 🔐 requireAuth — NEW recommended version
  */
 export const requireAuth = async (req, res, next) => {
   try {
-    const token = getTokenFromRequest(req);
+    const result = await verifyUser(req, res);
 
-    if (!token) {
-      return res.status(401).json({
-        success: false,
-        message: "Not authenticated – no token provided",
-      });
+    if (result.error) {
+      return res.status(401).json({ success: false, message: result.error });
     }
 
-    let decoded;
-    try {
-      decoded = jwt.verify(token, process.env.JWT_SECRET);
-    } catch (err) {
-      return res.status(401).json({
-        success: false,
-        message: "Invalid or expired token",
-      });
-    }
-
-    // Find user
-    const user = await User.findByPk(decoded.id);
-
-    if (!user) {
-      return res.status(401).json({
-        success: false,
-        message: "User no longer exists",
-      });
-    }
-
-    // Attach user to request
-    req.user = user;
-
+    req.user = result.user;
     next();
   } catch (error) {
-    console.error("❌ requireAuth Error:", error.message);
-    res.status(500).json({
-      success: false,
-      message: "Authentication middleware error",
-      error: error.message,
-    });
+    console.error("❌ requireAuth Error:", error);
+    res.status(500).json({ success: false, message: error.message });
   }
 };
 
 /**
- * 🔐 requireRole("teacher"), requireRole("admin")
+ * 🔐 authenticateToken — OLD version still used in some routes
+ * (Wrapper for backward compatibility)
+ */
+export const authenticateToken = async (req, res, next) => {
+  return requireAuth(req, res, next);
+};
+
+/**
+ * 🔐 requireRole("teacher")
  */
 export const requireRole = (role) => {
   return (req, res, next) => {
@@ -203,7 +207,7 @@ export const requireRole = (role) => {
     if (req.user.role !== role) {
       return res.status(403).json({
         success: false,
-        message: `Access denied – requires ${role} role`,
+        message: `Requires ${role} role`,
       });
     }
 
@@ -211,15 +215,14 @@ export const requireRole = (role) => {
   };
 };
 
-/**
- * Specific role helpers
- */
+// Shortcuts
 export const requireTeacher = requireRole("teacher");
 export const requireAdmin = requireRole("admin");
 export const requireStudent = requireRole("student");
 
 export default {
   requireAuth,
+  authenticateToken,
   requireRole,
   requireTeacher,
   requireAdmin,
