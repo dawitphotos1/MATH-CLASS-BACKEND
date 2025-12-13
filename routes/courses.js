@@ -214,8 +214,7 @@
 
 
 
-
-
+// routes/courses.js
 import express from "express";
 import {
   createCourse,
@@ -228,35 +227,25 @@ import {
   getTeacherCourses,
 } from "../controllers/courseController.js";
 
-import { authenticateToken } from "../middleware/authMiddleware.js";
+import { authenticateToken, isTeacher } from "../middleware/authMiddleware.js";
 import checkTeacherOrAdmin from "../middleware/checkTeacherOrAdmin.js";
-import { isTeacher } from "../middleware/authMiddleware.js";
 import { uploadCourseFiles } from "../middleware/cloudinaryUpload.js";
-import db from "../models/index.js";
-import lessonController from "../controllers/lessonController.js"; // <- import default
+import lessonController from "../controllers/lessonController.js";
 
-const { Course, User, Lesson, Unit } = db;
 const router = express.Router();
 
-// PUBLIC routes
+// PUBLIC
 router.get("/", getCourses);
 router.get("/id/:id", getCourseById);
 router.get("/:courseId/lessons", getLessonsByCourse);
 router.get(
   "/:courseId/preview-lesson",
   lessonController.getPreviewLessonForCourse
-); // use default import
+);
 
-// PROTECTED routes
+// PROTECTED
 router.post(
   "/",
-  authenticateToken,
-  checkTeacherOrAdmin,
-  uploadCourseFiles,
-  createCourse
-);
-router.post(
-  "/create",
   authenticateToken,
   checkTeacherOrAdmin,
   uploadCourseFiles,
@@ -269,37 +258,6 @@ router.post(
   uploadCourseFiles,
   createCourseWithUnits
 );
-router.delete("/:id", authenticateToken, deleteCourse);
-
-// TEACHER routes
-router.get(
-  "/teacher/my-courses-detailed",
-  authenticateToken,
-  isTeacher,
-  async (req, res) => {
-    const teacherId = req.user.id;
-    try {
-      const courses = await Course.findAll({
-        where: { teacher_id: teacherId },
-        include: [
-          {
-            model: Unit,
-            as: "units",
-            include: [{ model: Lesson, as: "lessons" }],
-          },
-          { model: User, as: "teacher" },
-        ],
-        order: [["created_at", "DESC"]],
-      });
-      res.json({ success: true, courses });
-    } catch (error) {
-      console.error(error);
-      res
-        .status(500)
-        .json({ success: false, error: "Failed to fetch courses" });
-    }
-  }
-);
 
 router.get(
   "/teacher/my-courses",
@@ -307,37 +265,10 @@ router.get(
   isTeacher,
   getTeacherCourses
 );
-router.get(
-  "/teacher/:courseId/full",
-  authenticateToken,
-  isTeacher,
-  async (req, res) => {
-    const { courseId } = req.params;
-    const teacherId = req.user.id;
-    try {
-      const course = await Course.findOne({
-        where: { id: courseId, teacher_id: teacherId },
-        include: [
-          {
-            model: Unit,
-            as: "units",
-            include: [{ model: Lesson, as: "lessons" }],
-          },
-        ],
-      });
-      if (!course)
-        return res
-          .status(404)
-          .json({ success: false, error: "Course not found or access denied" });
-      res.json({ success: true, course });
-    } catch (error) {
-      console.error(error);
-      res.status(500).json({ success: false, error: "Failed to fetch course" });
-    }
-  }
-);
 
-// Slug route last
+router.delete("/:id", authenticateToken, deleteCourse);
+
+// SLUG (LAST)
 router.get("/:slug", getPublicCourseBySlug);
 
 export default router;
