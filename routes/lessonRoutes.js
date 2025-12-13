@@ -44,11 +44,10 @@
 
 
 
-
 import express from "express";
 import lessonController from "../controllers/lessonController.js";
 // Use cloudinaryUpload.js (the fixed version)
-import upload from "../middleware/cloudinaryUpload.js";
+import uploadMiddleware from "../middleware/cloudinaryUpload.js";
 
 const router = express.Router();
 
@@ -70,7 +69,7 @@ router.get("/test-upload", (req, res) => {
     },
     middleware: {
       name: "cloudinaryUpload",
-      configured: upload.USE_CLOUDINARY,
+      configured: uploadMiddleware.USE_CLOUDINARY,
       maxFileSize: process.env.MAX_FILE_SIZE || "150MB",
     },
   });
@@ -79,13 +78,13 @@ router.get("/test-upload", (req, res) => {
 // 🆕 Create lesson with file upload
 router.post(
   "/course/:courseId/lessons",
-  upload.uploadLessonFiles,
+  uploadMiddleware.uploadLessonFiles,
   async (req, res, next) => {
     try {
       // Process uploaded files before controller
       if (req.files && Object.keys(req.files).length > 0) {
         console.log("📤 Processing uploads before create...");
-        await upload.processUploadedFiles(req);
+        await uploadMiddleware.processUploadedFiles(req);
       }
       next();
     } catch (err) {
@@ -103,13 +102,13 @@ router.post(
 // 🆕 Update lesson with file upload
 router.put(
   "/:lessonId",
-  upload.uploadLessonFiles,
+  uploadMiddleware.uploadLessonFiles,
   async (req, res, next) => {
     try {
       // Process uploaded files before controller
       if (req.files && Object.keys(req.files).length > 0) {
         console.log("📤 Processing uploads before update...");
-        await upload.processUploadedFiles(req);
+        await uploadMiddleware.processUploadedFiles(req);
       }
       next();
     } catch (err) {
@@ -149,44 +148,48 @@ router.get("/debug/:lessonId/file", lessonController.debugLessonFile);
 router.get("/debug/file", lessonController.debugLessonFile);
 router.post("/fix-url/:lessonId", lessonController.fixLessonFileUrl);
 
-// 🆕 Test file upload endpoint
-router.post("/test/file-upload", upload.single("file"), async (req, res) => {
-  try {
-    console.log("🧪 Test file upload:", req.file);
+// 🆕 Test file upload endpoint (SIMPLIFIED VERSION)
+router.post(
+  "/test/file-upload",
+  uploadMiddleware.single("file"),
+  async (req, res) => {
+    try {
+      console.log("🧪 Test file upload:", req.file);
 
-    if (!req.file) {
-      return res.status(400).json({
+      if (!req.file) {
+        return res.status(400).json({
+          success: false,
+          error: "No file uploaded",
+        });
+      }
+
+      // Process the upload
+      const result = await uploadMiddleware.processUploadedFiles({
+        files: { file: [req.file] },
+      });
+
+      res.json({
+        success: true,
+        message: "Test upload successful",
+        file: {
+          originalname: req.file.originalname,
+          mimetype: req.file.mimetype,
+          size: req.file.size,
+        },
+        uploadResult: result,
+        fileUrl: result.fileUrl,
+        cloudinaryUsed: uploadMiddleware.USE_CLOUDINARY,
+        backendUrl: process.env.BACKEND_URL,
+      });
+    } catch (error) {
+      console.error("❌ Test upload error:", error);
+      res.status(500).json({
         success: false,
-        error: "No file uploaded",
+        error: "Test upload failed",
+        details: error.message,
       });
     }
-
-    // Process the upload
-    const result = await upload.processUploadedFiles({
-      files: { file: [req.file] },
-    });
-
-    res.json({
-      success: true,
-      message: "Test upload successful",
-      file: {
-        originalname: req.file.originalname,
-        mimetype: req.file.mimetype,
-        size: req.file.size,
-      },
-      uploadResult: result,
-      fileUrl: result.fileUrl,
-      cloudinaryUsed: upload.USE_CLOUDINARY,
-      backendUrl: process.env.BACKEND_URL,
-    });
-  } catch (error) {
-    console.error("❌ Test upload error:", error);
-    res.status(500).json({
-      success: false,
-      error: "Test upload failed",
-      details: error.message,
-    });
   }
-});
+);
 
 export default router;
