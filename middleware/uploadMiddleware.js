@@ -205,7 +205,6 @@
 
 
 
-
 // middleware/uploadMiddleware.js
 import multer from "multer";
 import { v2 as cloudinary } from "cloudinary";
@@ -218,7 +217,7 @@ console.log("=== uploadMiddleware init ===");
 // -------------------------------------------------------
 // CLOUDINARY INITIALIZATION
 // -------------------------------------------------------
-const CLOUDINARY_CONFIGURED =
+export const CLOUDINARY_CONFIGURED =
   !!process.env.CLOUDINARY_CLOUD_NAME &&
   !!process.env.CLOUDINARY_API_KEY &&
   !!process.env.CLOUDINARY_API_SECRET;
@@ -243,7 +242,7 @@ if (CLOUDINARY_CONFIGURED) {
 // -------------------------------------------------------
 const storage = multer.memoryStorage();
 
-const upload = multer({
+export const upload = multer({
   storage,
   limits: {
     fileSize: process.env.MAX_FILE_SIZE
@@ -252,7 +251,7 @@ const upload = multer({
   },
 });
 
-// Named export for lesson uploads
+// Fields for lesson upload
 export const uploadLessonFiles = upload.fields([
   { name: "video", maxCount: 1 },
   { name: "file", maxCount: 1 },
@@ -288,17 +287,21 @@ const chooseCloudinaryTypeAndFolder = (mimetype = "", originalname = "") => {
   if (
     mimetype === "application/pdf" ||
     [".pdf", ".doc", ".docx", ".ppt", ".pptx", ".xls", ".xlsx"].includes(ext)
-  ) return { resourceType: "raw", folder: "mathe-class/docs" };
+  )
+    return { resourceType: "raw", folder: "mathe-class/docs" };
 
   return { resourceType: "auto", folder: "mathe-class/files" };
 };
 
-const uploadBufferToCloudinary = (buffer, { resourceType = "auto", folder = "mathe-class/files", public_id } = {}) =>
+const uploadBufferToCloudinary = (
+  buffer,
+  { resourceType = "auto", folder = "mathe-class/files", public_id } = {}
+) =>
   new Promise((resolve, reject) => {
     const opts = { resource_type: resourceType, folder, timeout: 120000 };
     if (public_id) opts.public_id = public_id;
 
-    const uploadStream = cloudinary.uploader.upload_stream(opts, (error, result) => {
+    const uploadStream = cloudinary.uploader.upload_stream((opts), (error, result) => {
       if (error) return reject(error);
       resolve(result);
     });
@@ -329,8 +332,8 @@ export const processUploadedFiles = async (req) => {
         if (CLOUDINARY_CONFIGURED) {
           const { resourceType, folder } = chooseCloudinaryTypeAndFolder(mimetype, originalname);
           const result = await uploadBufferToCloudinary(buffer, { resourceType, folder });
-          let finalUrl = result.secure_url;
 
+          let finalUrl = result.secure_url;
           if (result.resource_type === "image" && originalname.toLowerCase().endsWith(".pdf")) {
             finalUrl = finalUrl.replace("/image/upload/", "/raw/upload/");
           }
@@ -380,13 +383,4 @@ export const processUploadedFiles = async (req) => {
   return out;
 };
 
-// -------------------------------------------------------
-// EXPORTS
-// -------------------------------------------------------
-upload.processUploadedFiles = processUploadedFiles;
-upload.CLOUDINARY_CONFIGURED = CLOUDINARY_CONFIGURED;
-
 console.log("✅ uploadMiddleware ready. Exports: upload, uploadLessonFiles, processUploadedFiles");
-
-export default upload; // default export
-export { upload as uploadInstance, CLOUDINARY_CONFIGURED }; // named exports (no duplicates)
