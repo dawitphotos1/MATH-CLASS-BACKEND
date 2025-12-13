@@ -1,13 +1,227 @@
 
-// routes/files.js
+// // routes/files.js
+// import express from "express";
+// import path from "path";
+// import fs from "fs/promises";
+// import fsSync from "fs";
+// import { fileURLToPath } from "url";
+
+// import lessonController from "../controllers/lessonController.js";
+// import uploadMiddleware from "../middleware/uploadMiddleware.js";
+
+// const router = express.Router();
+
+// /* ---------------------------------------------------------------
+//    PATH HELPERS
+// ---------------------------------------------------------------- */
+// const __filename = fileURLToPath(import.meta.url);
+// const __dirname = path.dirname(__filename);
+
+// const UPLOADS_DIR = path.join(process.cwd(), "Uploads");
+// if (!fsSync.existsSync(UPLOADS_DIR)) {
+//   fsSync.mkdirSync(UPLOADS_DIR, { recursive: true });
+// }
+
+// /* ---------------------------------------------------------------
+//    UPLOAD ENV DEBUG
+// ---------------------------------------------------------------- */
+// router.get("/debug/env", (req, res) => {
+//   res.json({
+//     success: true,
+//     cloudinary: {
+//       CLOUDINARY_CLOUD_NAME: process.env.CLOUDINARY_CLOUD_NAME ? "SET" : "NOT SET",
+//       CLOUDINARY_API_KEY: process.env.CLOUDINARY_API_KEY ? "SET" : "NOT SET",
+//       CLOUDINARY_API_SECRET: process.env.CLOUDINARY_API_SECRET ? "SET" : "NOT SET",
+//       USE_CLOUDINARY: process.env.USE_CLOUDINARY || "undefined",
+//     },
+//     node_env: process.env.NODE_ENV,
+//     backend_url: process.env.BACKEND_URL,
+//     uploads_dir: UPLOADS_DIR,
+//     message: "Environment variables check",
+//   });
+// });
+
+// /* ---------------------------------------------------------------
+//    TEST UPLOAD
+//    Accepts lesson upload fields (file, video, attachments, etc.)
+// ---------------------------------------------------------------- */
+// router.post(
+//   "/test-upload",
+//   uploadMiddleware.uploadLessonFiles,
+//   async (req, res) => {
+//     try {
+//       console.log("🧪 Test upload fields:", Object.keys(req.files || {}));
+
+//       let processed = null;
+//       if (typeof uploadMiddleware.processUploadedFiles === "function") {
+//         processed = await uploadMiddleware.processUploadedFiles(req);
+//       }
+
+//       res.json({
+//         success: true,
+//         message: "Upload processed successfully",
+//         files_raw: req.files || null,
+//         processed,
+//         storage: uploadMiddleware.CLOUDINARY_CONFIGURED
+//           ? "cloudinary"
+//           : "local",
+//         uploads_dir: UPLOADS_DIR,
+//       });
+//     } catch (err) {
+//       console.error("❌ Test upload error:", err);
+//       res.status(500).json({ success: false, error: err.message });
+//     }
+//   }
+// );
+
+// /* ---------------------------------------------------------------
+//    DEBUG LIST (LOCAL FILES + DB REFERENCES)
+// ---------------------------------------------------------------- */
+// router.get("/debug/list", async (req, res) => {
+//   try {
+//     const files = (await fs.readdir(UPLOADS_DIR)).slice(0, 500);
+//     const db = await import("../models/index.js");
+//     const { Lesson, Course, Sequelize } = db.default;
+
+//     const lessons = await Lesson.findAll({
+//       where: {
+//         [Sequelize.Op.or]: [
+//           { file_url: { [Sequelize.Op.ne]: null } },
+//           { video_url: { [Sequelize.Op.ne]: null } },
+//         ],
+//       },
+//       attributes: ["id", "title", "file_url", "video_url", "content_type"],
+//       order: [["id", "ASC"]],
+//       limit: 200,
+//     });
+
+//     res.json({
+//       success: true,
+//       uploads_directory: UPLOADS_DIR,
+//       local_files: files,
+//       lessons_with_files: lessons,
+//       environment: {
+//         node_env: process.env.NODE_ENV,
+//         cloudinary_enabled: !!process.env.CLOUDINARY_CLOUD_NAME,
+//       },
+//     });
+//   } catch (err) {
+//     console.error("❌ Debug list error:", err);
+//     res.status(500).json({ success: false, error: err.message });
+//   }
+// });
+
+// /* ---------------------------------------------------------------
+//    FILE METADATA TEST (LOCAL)
+// ---------------------------------------------------------------- */
+// router.get("/test/:filename", async (req, res) => {
+//   try {
+//     const { filename } = req.params;
+//     const localPath = path.join(UPLOADS_DIR, filename);
+
+//     if (!fsSync.existsSync(localPath)) {
+//       return res.json({
+//         success: true,
+//         exists: false,
+//         filename,
+//         path: localPath,
+//       });
+//     }
+
+//     const stats = fsSync.statSync(localPath);
+//     res.json({
+//       success: true,
+//       exists: true,
+//       filename,
+//       size: stats.size,
+//       created: stats.birthtime,
+//       modified: stats.mtime,
+//     });
+//   } catch (err) {
+//     console.error("❌ File test error:", err);
+//     res.status(500).json({ success: false, error: err.message });
+//   }
+// });
+
+// /* ---------------------------------------------------------------
+//    PUBLIC PREVIEW LESSON (FIXED ✅)
+// ---------------------------------------------------------------- */
+// router.get(
+//   "/preview-lesson/:lessonId",
+//   lessonController.getPublicPreviewByLessonId
+// );
+
+// /* ---------------------------------------------------------------
+//    UNIVERSAL FILE SERVER
+//    - Serves local files
+//    - Redirects Cloudinary URLs
+// ---------------------------------------------------------------- */
+// router.get("/:filename", async (req, res) => {
+//   try {
+//     let { filename } = req.params;
+//     filename = decodeURIComponent(filename);
+
+//     // Redirect Cloudinary URLs
+//     if (filename.includes("cloudinary.com")) {
+//       if (filename.includes("/image/upload/") && filename.endsWith(".pdf")) {
+//         return res.redirect(
+//           301,
+//           filename.replace("/image/upload/", "/raw/upload/")
+//         );
+//       }
+//       return res.redirect(301, filename);
+//     }
+
+//     const basename = path.basename(filename);
+//     const localPath = path.join(UPLOADS_DIR, basename);
+
+//     if (!fsSync.existsSync(localPath)) {
+//       return res.status(404).json({
+//         success: false,
+//         error: "File not found",
+//         filename: basename,
+//       });
+//     }
+
+//     const ext = path.extname(basename).toLowerCase();
+//     const mimeTypes = {
+//       ".pdf": "application/pdf",
+//       ".mp4": "video/mp4",
+//       ".jpg": "image/jpeg",
+//       ".jpeg": "image/jpeg",
+//       ".png": "image/png",
+//       ".gif": "image/gif",
+//     };
+
+//     res.setHeader("Content-Type", mimeTypes[ext] || "application/octet-stream");
+//     res.setHeader("Access-Control-Allow-Origin", "*");
+//     res.setHeader("Cache-Control", "public, max-age=86400");
+
+//     fsSync.createReadStream(localPath).pipe(res);
+//   } catch (err) {
+//     console.error("❌ File server error:", err);
+//     res.status(500).json({ success: false, error: err.message });
+//   }
+// });
+
+// export default router;
+
+
+
+
+
+
+
+
 import express from "express";
 import path from "path";
 import fs from "fs/promises";
 import fsSync from "fs";
 import { fileURLToPath } from "url";
+import { v2 as cloudinary } from "cloudinary";
 
 import lessonController from "../controllers/lessonController.js";
-import uploadMiddleware from "../middleware/uploadMiddleware.js";
+import upload from "../middleware/cloudinaryUpload.js";
 
 const router = express.Router();
 
@@ -23,63 +237,167 @@ if (!fsSync.existsSync(UPLOADS_DIR)) {
 }
 
 /* ---------------------------------------------------------------
+   CLOUDINARY CONFIGURATION TEST
+---------------------------------------------------------------- */
+router.get("/cloudinary-test", async (req, res) => {
+  try {
+    const config = {
+      USE_CLOUDINARY: process.env.USE_CLOUDINARY,
+      CLOUDINARY_CLOUD_NAME: process.env.CLOUDINARY_CLOUD_NAME,
+      CLOUDINARY_API_KEY: process.env.CLOUDINARY_API_KEY ? "SET" : "NOT SET",
+      CLOUDINARY_API_SECRET: process.env.CLOUDINARY_API_SECRET
+        ? "SET"
+        : "NOT SET",
+      BACKEND_URL: process.env.BACKEND_URL,
+      NODE_ENV: process.env.NODE_ENV,
+      UPLOAD_DIR: UPLOADS_DIR,
+    };
+
+    let cloudinaryStatus = "NOT CONFIGURED";
+    let cloudinaryPing = null;
+
+    if (config.CLOUDINARY_CLOUD_NAME && config.CLOUDINARY_API_KEY) {
+      cloudinary.config({
+        cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
+        api_key: process.env.CLOUDINARY_API_KEY,
+        api_secret: process.env.CLOUDINARY_API_SECRET,
+        secure: true,
+      });
+
+      try {
+        cloudinaryPing = await cloudinary.api.ping();
+        cloudinaryStatus = "CONNECTED ✅";
+      } catch (err) {
+        cloudinaryStatus = `ERROR: ${err.message}`;
+      }
+    }
+
+    res.json({
+      success: true,
+      timestamp: new Date().toISOString(),
+      config,
+      cloudinary: {
+        status: cloudinaryStatus,
+        ping: cloudinaryPing,
+        middleware: upload.USE_CLOUDINARY ? "ENABLED" : "DISABLED",
+      },
+      uploads: {
+        directory: UPLOADS_DIR,
+        exists: fsSync.existsSync(UPLOADS_DIR),
+        fileCount: fsSync.existsSync(UPLOADS_DIR)
+          ? fsSync.readdirSync(UPLOADS_DIR).length
+          : 0,
+      },
+    });
+  } catch (error) {
+    console.error("❌ Cloudinary test error:", error);
+    res.status(500).json({
+      success: false,
+      error: error.message,
+      stack: process.env.NODE_ENV === "development" ? error.stack : undefined,
+    });
+  }
+});
+
+/* ---------------------------------------------------------------
    UPLOAD ENV DEBUG
 ---------------------------------------------------------------- */
 router.get("/debug/env", (req, res) => {
   res.json({
     success: true,
     cloudinary: {
-      CLOUDINARY_CLOUD_NAME: process.env.CLOUDINARY_CLOUD_NAME ? "SET" : "NOT SET",
+      CLOUDINARY_CLOUD_NAME: process.env.CLOUDINARY_CLOUD_NAME
+        ? "SET"
+        : "NOT SET",
       CLOUDINARY_API_KEY: process.env.CLOUDINARY_API_KEY ? "SET" : "NOT SET",
-      CLOUDINARY_API_SECRET: process.env.CLOUDINARY_API_SECRET ? "SET" : "NOT SET",
+      CLOUDINARY_API_SECRET: process.env.CLOUDINARY_API_SECRET
+        ? "SET"
+        : "NOT SET",
       USE_CLOUDINARY: process.env.USE_CLOUDINARY || "undefined",
     },
     node_env: process.env.NODE_ENV,
     backend_url: process.env.BACKEND_URL,
     uploads_dir: UPLOADS_DIR,
+    max_file_size: process.env.MAX_FILE_SIZE,
     message: "Environment variables check",
   });
 });
 
 /* ---------------------------------------------------------------
-   TEST UPLOAD
-   Accepts lesson upload fields (file, video, attachments, etc.)
+   TEST UPLOAD with Cloudinary
 ---------------------------------------------------------------- */
-router.post(
-  "/test-upload",
-  uploadMiddleware.uploadLessonFiles,
-  async (req, res) => {
-    try {
-      console.log("🧪 Test upload fields:", Object.keys(req.files || {}));
+router.post("/test-upload", upload.single("file"), async (req, res) => {
+  try {
+    console.log(
+      "🧪 Test upload received:",
+      req.file ? req.file.originalname : "No file"
+    );
 
-      let processed = null;
-      if (typeof uploadMiddleware.processUploadedFiles === "function") {
-        processed = await uploadMiddleware.processUploadedFiles(req);
-      }
-
-      res.json({
-        success: true,
-        message: "Upload processed successfully",
-        files_raw: req.files || null,
-        processed,
-        storage: uploadMiddleware.CLOUDINARY_CONFIGURED
-          ? "cloudinary"
-          : "local",
-        uploads_dir: UPLOADS_DIR,
+    if (!req.file) {
+      return res.status(400).json({
+        success: false,
+        error: "No file uploaded",
       });
-    } catch (err) {
-      console.error("❌ Test upload error:", err);
-      res.status(500).json({ success: false, error: err.message });
     }
+
+    // Process the file using our upload middleware
+    const result = await upload.processUploadedFiles({
+      files: { file: [req.file] },
+    });
+
+    // Test if the URL is accessible
+    let urlTest = { accessible: false, status: null };
+    if (result.fileUrl && result.fileUrl.startsWith("http")) {
+      try {
+        const response = await fetch(result.fileUrl, { method: "HEAD" });
+        urlTest = {
+          accessible: response.ok,
+          status: response.status,
+          statusText: response.statusText,
+        };
+      } catch (fetchError) {
+        urlTest.error = fetchError.message;
+      }
+    }
+
+    res.json({
+      success: true,
+      message: "Upload test successful",
+      file: {
+        originalname: req.file.originalname,
+        mimetype: req.file.mimetype,
+        size: req.file.size,
+        fieldname: req.file.fieldname,
+      },
+      uploadResult: result,
+      urlTest,
+      storage: upload.USE_CLOUDINARY ? "Cloudinary ☁️" : "Local 📁",
+      cloudinary: upload.USE_CLOUDINARY
+        ? {
+            cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
+            folder: result.uploads?.[0]?.folder || "unknown",
+          }
+        : null,
+    });
+  } catch (err) {
+    console.error("❌ Test upload error:", err);
+    res.status(500).json({
+      success: false,
+      error: err.message,
+      stack: process.env.NODE_ENV === "development" ? err.stack : undefined,
+    });
   }
-);
+});
 
 /* ---------------------------------------------------------------
    DEBUG LIST (LOCAL FILES + DB REFERENCES)
 ---------------------------------------------------------------- */
 router.get("/debug/list", async (req, res) => {
   try {
-    const files = (await fs.readdir(UPLOADS_DIR)).slice(0, 500);
+    const files = fsSync.existsSync(UPLOADS_DIR)
+      ? (await fs.readdir(UPLOADS_DIR)).slice(0, 100)
+      : [];
+
     const db = await import("../models/index.js");
     const { Lesson, Course, Sequelize } = db.default;
 
@@ -90,24 +408,59 @@ router.get("/debug/list", async (req, res) => {
           { video_url: { [Sequelize.Op.ne]: null } },
         ],
       },
-      attributes: ["id", "title", "file_url", "video_url", "content_type"],
+      attributes: [
+        "id",
+        "title",
+        "file_url",
+        "video_url",
+        "content_type",
+        "is_preview",
+      ],
       order: [["id", "ASC"]],
-      limit: 200,
+      limit: 50,
     });
+
+    // Check Cloudinary URLs
+    const cloudinaryFiles = lessons
+      .filter((l) => l.file_url && l.file_url.includes("cloudinary.com"))
+      .map((l) => ({
+        id: l.id,
+        title: l.title,
+        file_url: l.file_url,
+        is_correct_type:
+          l.file_url.includes("/raw/upload/") ||
+          (!l.file_url.includes("/image/upload/") &&
+            !l.file_url.includes("/raw/upload/")),
+      }));
 
     res.json({
       success: true,
-      uploads_directory: UPLOADS_DIR,
-      local_files: files,
-      lessons_with_files: lessons,
+      uploads: {
+        directory: UPLOADS_DIR,
+        exists: fsSync.existsSync(UPLOADS_DIR),
+        file_count: files.length,
+        files: files.slice(0, 20),
+      },
+      database: {
+        lessons_with_files: lessons.length,
+        lessons: lessons.slice(0, 10),
+        cloudinary_files: cloudinaryFiles.length,
+        cloudinary_issues: cloudinaryFiles.filter((f) => !f.is_correct_type)
+          .length,
+      },
       environment: {
         node_env: process.env.NODE_ENV,
-        cloudinary_enabled: !!process.env.CLOUDINARY_CLOUD_NAME,
+        cloudinary_enabled: upload.USE_CLOUDINARY,
+        backend_url: process.env.BACKEND_URL,
       },
     });
   } catch (err) {
     console.error("❌ Debug list error:", err);
-    res.status(500).json({ success: false, error: err.message });
+    res.status(500).json({
+      success: false,
+      error: err.message,
+      stack: process.env.NODE_ENV === "development" ? err.stack : undefined,
+    });
   }
 });
 
@@ -125,10 +478,13 @@ router.get("/test/:filename", async (req, res) => {
         exists: false,
         filename,
         path: localPath,
+        message: "File not found in local storage",
       });
     }
 
     const stats = fsSync.statSync(localPath);
+    const ext = path.extname(filename).toLowerCase();
+
     res.json({
       success: true,
       exists: true,
@@ -136,15 +492,32 @@ router.get("/test/:filename", async (req, res) => {
       size: stats.size,
       created: stats.birthtime,
       modified: stats.mtime,
+      is_directory: stats.isDirectory(),
+      extension: ext,
+      mime_type:
+        {
+          ".pdf": "application/pdf",
+          ".mp4": "video/mp4",
+          ".jpg": "image/jpeg",
+          ".jpeg": "image/jpeg",
+          ".png": "image/png",
+          ".gif": "image/gif",
+          ".doc": "application/msword",
+          ".docx":
+            "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        }[ext] || "unknown",
     });
   } catch (err) {
     console.error("❌ File test error:", err);
-    res.status(500).json({ success: false, error: err.message });
+    res.status(500).json({
+      success: false,
+      error: err.message,
+    });
   }
 });
 
 /* ---------------------------------------------------------------
-   PUBLIC PREVIEW LESSON (FIXED ✅)
+   PUBLIC PREVIEW LESSON
 ---------------------------------------------------------------- */
 router.get(
   "/preview-lesson/:lessonId",
@@ -155,31 +528,51 @@ router.get(
    UNIVERSAL FILE SERVER
    - Serves local files
    - Redirects Cloudinary URLs
+   - Fixes incorrect Cloudinary URLs
 ---------------------------------------------------------------- */
 router.get("/:filename", async (req, res) => {
   try {
     let { filename } = req.params;
     filename = decodeURIComponent(filename);
 
-    // Redirect Cloudinary URLs
+    console.log(`📤 File request: ${filename}`);
+
+    // Handle Cloudinary URLs
     if (filename.includes("cloudinary.com")) {
-      if (filename.includes("/image/upload/") && filename.endsWith(".pdf")) {
-        return res.redirect(
-          301,
-          filename.replace("/image/upload/", "/raw/upload/")
+      console.log(`☁️ Cloudinary URL detected: ${filename}`);
+
+      // Fix PDF URLs that are incorrectly typed as images
+      if (
+        filename.includes("/image/upload/") &&
+        (filename.includes(".pdf") || filename.includes("/mathe-class/pdfs/"))
+      ) {
+        const fixedUrl = filename.replace("/image/upload/", "/raw/upload/");
+        console.log(
+          `🔧 Fixing Cloudinary URL: ${filename.substring(
+            0,
+            100
+          )}... -> ${fixedUrl.substring(0, 100)}...`
         );
+        return res.redirect(301, fixedUrl);
       }
+
       return res.redirect(301, filename);
     }
 
+    // Handle local files
     const basename = path.basename(filename);
     const localPath = path.join(UPLOADS_DIR, basename);
 
     if (!fsSync.existsSync(localPath)) {
+      console.log(`❌ Local file not found: ${basename}`);
       return res.status(404).json({
         success: false,
         error: "File not found",
         filename: basename,
+        path: localPath,
+        available_files: fsSync.existsSync(UPLOADS_DIR)
+          ? fsSync.readdirSync(UPLOADS_DIR).slice(0, 10)
+          : [],
       });
     }
 
@@ -187,20 +580,51 @@ router.get("/:filename", async (req, res) => {
     const mimeTypes = {
       ".pdf": "application/pdf",
       ".mp4": "video/mp4",
+      ".mov": "video/quicktime",
+      ".avi": "video/x-msvideo",
       ".jpg": "image/jpeg",
       ".jpeg": "image/jpeg",
       ".png": "image/png",
       ".gif": "image/gif",
+      ".webp": "image/webp",
+      ".doc": "application/msword",
+      ".docx":
+        "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+      ".txt": "text/plain",
     };
 
-    res.setHeader("Content-Type", mimeTypes[ext] || "application/octet-stream");
-    res.setHeader("Access-Control-Allow-Origin", "*");
-    res.setHeader("Cache-Control", "public, max-age=86400");
+    const contentType = mimeTypes[ext] || "application/octet-stream";
+    const stats = fsSync.statSync(localPath);
 
-    fsSync.createReadStream(localPath).pipe(res);
+    console.log(
+      `✅ Serving file: ${basename} (${stats.size} bytes, ${contentType})`
+    );
+
+    res.setHeader("Content-Type", contentType);
+    res.setHeader("Content-Length", stats.size);
+    res.setHeader("Content-Disposition", `inline; filename="${basename}"`);
+    res.setHeader("Access-Control-Allow-Origin", "*");
+    res.setHeader("Cache-Control", "public, max-age=86400"); // 24 hours
+
+    const readStream = fsSync.createReadStream(localPath);
+    readStream.pipe(res);
+
+    readStream.on("error", (err) => {
+      console.error(`❌ Stream error for ${basename}:`, err);
+      if (!res.headersSent) {
+        res.status(500).json({
+          success: false,
+          error: "Failed to stream file",
+        });
+      }
+    });
   } catch (err) {
     console.error("❌ File server error:", err);
-    res.status(500).json({ success: false, error: err.message });
+    res.status(500).json({
+      success: false,
+      error: err.message,
+      stack: process.env.NODE_ENV === "development" ? err.stack : undefined,
+    });
   }
 });
 
