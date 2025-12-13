@@ -1859,34 +1859,43 @@
 
 
 
-
-// controllers/lessonController.js
 import db from "../models/index.js";
-import upload from "../middleware/uploadMiddleware.js";
+import uploadMiddleware from "../middleware/uploadMiddleware.js";
 
 const { Lesson, Course, Unit } = db;
 
-// Helper to normalize uploads into lesson object
+/* --------------------------------------------------
+   Helper: apply uploaded files to lesson
+-------------------------------------------------- */
 const applyUploadResultsToLesson = (lesson, uploads) => {
   if (!uploads) return lesson;
 
-  if (uploads.fileUrl) lesson.file_url = uploads.fileUrl;
-  if (uploads.videoUrl) lesson.video_url = uploads.videoUrl;
-  if (uploads.attachments?.length > 0) lesson.attachments = uploads.attachments.map(a => a.url);
+  if (uploads.fileUrl) {
+    lesson.file_url = uploads.fileUrl;
+    lesson.content_type = "file"; // FORCE preview
+  }
 
-  if (uploads.videoUrl) lesson.content_type = "video";
-  else if (uploads.fileUrl) lesson.content_type = "file";
+  if (uploads.videoUrl) {
+    lesson.video_url = uploads.videoUrl;
+    lesson.content_type = "video";
+  }
+
+  if (uploads.attachments?.length > 0) {
+    lesson.attachments = uploads.attachments; // already URLs
+  }
 
   return lesson;
 };
 
-// ---------------------- CRUD ----------------------
+/* --------------------------------------------------
+   CREATE
+-------------------------------------------------- */
 const createLesson = async (req, res) => {
   try {
     const { courseId } = req.params;
-    const { title, description, unitId, order, content_type } = req.body;
+    const { title, description, unitId, order } = req.body;
 
-    const uploads = await upload.processUploadedFiles(req);
+    const uploads = await uploadMiddleware.processUploadedFiles(req);
 
     let lessonData = {
       title: title?.trim(),
@@ -1894,116 +1903,100 @@ const createLesson = async (req, res) => {
       courseId,
       unitId: unitId || null,
       order: order ? Number(order) : 1,
-      content_type: content_type || "text",
+      content_type: "text",
       file_url: null,
       video_url: null,
       attachments: [],
     };
 
     lessonData = applyUploadResultsToLesson(lessonData, uploads);
+
     const lesson = await Lesson.create(lessonData);
 
-    return res.json({ success: true, message: "Lesson created", lesson });
+    res.json({ success: true, lesson });
   } catch (err) {
-    console.error("❌ createLesson error:", err);
-    return res.status(500).json({ success: false, error: err.message });
+    console.error("❌ createLesson:", err);
+    res.status(500).json({ success: false, error: err.message });
   }
 };
 
+/* --------------------------------------------------
+   UPDATE
+-------------------------------------------------- */
 const updateLesson = async (req, res) => {
   try {
     const { lessonId } = req.params;
-    const existing = await Lesson.findByPk(lessonId);
-    if (!existing) return res.status(404).json({ success: false, error: "Lesson not found" });
+    const lesson = await Lesson.findByPk(lessonId);
+
+    if (!lesson) {
+      return res
+        .status(404)
+        .json({ success: false, error: "Lesson not found" });
+    }
 
     const { title, description, unitId, order, content_type } = req.body;
-    const uploads = await upload.processUploadedFiles(req);
+    const uploads = await uploadMiddleware.processUploadedFiles(req);
 
-    if (title) existing.title = title.trim();
-    if (description) existing.description = description.trim();
-    if (unitId) existing.unitId = unitId;
-    if (order) existing.order = Number(order);
-    if (content_type) existing.content_type = content_type;
+    if (title) lesson.title = title.trim();
+    if (description) lesson.description = description.trim();
+    if (unitId) lesson.unitId = unitId;
+    if (order) lesson.order = Number(order);
+    if (content_type) lesson.content_type = content_type;
 
-    applyUploadResultsToLesson(existing, uploads);
-    await existing.save();
+    applyUploadResultsToLesson(lesson, uploads);
+    await lesson.save();
 
-    return res.json({ success: true, message: "Lesson updated", lesson: existing });
+    res.json({ success: true, lesson });
   } catch (err) {
-    console.error("❌ updateLesson error:", err);
-    return res.status(500).json({ success: false, error: err.message });
+    console.error("❌ updateLesson:", err);
+    res.status(500).json({ success: false, error: err.message });
   }
 };
 
+/* --------------------------------------------------
+   READ / DELETE (unchanged)
+-------------------------------------------------- */
 const getLessonById = async (req, res) => {
-  try {
-    const { id } = req.params;
-    const lesson = await Lesson.findByPk(id);
-    if (!lesson) return res.status(404).json({ success: false, error: "Lesson not found" });
-
-    return res.json({ success: true, lesson });
-  } catch (err) {
-    console.error("❌ getLessonById error:", err);
-    return res.status(500).json({ success: false, error: err.message });
-  }
+  const lesson = await Lesson.findByPk(req.params.id);
+  if (!lesson) return res.status(404).json({ success: false });
+  res.json({ success: true, lesson });
 };
 
 const getLessonsByCourse = async (req, res) => {
-  try {
-    const { courseId } = req.params;
-    const lessons = await Lesson.findAll({ where: { courseId }, order: [["order", "ASC"]] });
-    return res.json({ success: true, lessons });
-  } catch (err) {
-    console.error("❌ getLessonsByCourse error:", err);
-    return res.status(500).json({ success: false, error: err.message });
-  }
+  const lessons = await Lesson.findAll({
+    where: { courseId: req.params.courseId },
+    order: [["order", "ASC"]],
+  });
+  res.json({ success: true, lessons });
 };
 
 const getLessonsByUnit = async (req, res) => {
-  try {
-    const { unitId } = req.params;
-    const lessons = await Lesson.findAll({ where: { unitId }, order: [["order", "ASC"]] });
-    return res.json({ success: true, lessons });
-  } catch (err) {
-    console.error("❌ getLessonsByUnit error:", err);
-    return res.status(500).json({ success: false, error: err.message });
-  }
+  const lessons = await Lesson.findAll({
+    where: { unitId: req.params.unitId },
+    order: [["order", "ASC"]],
+  });
+  res.json({ success: true, lessons });
 };
 
 const getPreviewLessonForCourse = async (req, res) => {
-  try {
-    const { courseId } = req.params;
-    const lesson = await Lesson.findOne({ where: { courseId, preview: true }, order: [["order", "ASC"]] });
-    return res.json({ success: true, lesson });
-  } catch (err) {
-    console.error("❌ getPreviewLessonForCourse error:", err);
-    return res.status(500).json({ success: false, error: err.message });
-  }
+  const lesson = await Lesson.findOne({
+    where: { courseId: req.params.courseId, preview: true },
+    order: [["order", "ASC"]],
+  });
+  res.json({ success: true, lesson });
 };
 
 const getPublicPreviewByLessonId = async (req, res) => {
-  try {
-    const { id } = req.params;
-    const lesson = await Lesson.findByPk(id);
-    if (!lesson) return res.status(404).json({ success: false, error: "Lesson not found" });
-    return res.json({ success: true, lesson });
-  } catch (err) {
-    console.error("❌ getPublicPreviewByLessonId error:", err);
-    return res.status(500).json({ success: false, error: err.message });
-  }
+  const lesson = await Lesson.findByPk(req.params.lessonId);
+  if (!lesson) return res.status(404).json({ success: false });
+  res.json({ success: true, lesson });
 };
 
 const deleteLesson = async (req, res) => {
-  try {
-    const { lessonId } = req.params;
-    const lesson = await Lesson.findByPk(lessonId);
-    if (!lesson) return res.status(404).json({ success: false, error: "Lesson not found" });
-    await lesson.destroy();
-    return res.json({ success: true, message: "Lesson deleted" });
-  } catch (err) {
-    console.error("❌ deleteLesson error:", err);
-    return res.status(500).json({ success: false, error: err.message });
-  }
+  const lesson = await Lesson.findByPk(req.params.lessonId);
+  if (!lesson) return res.status(404).json({ success: false });
+  await lesson.destroy();
+  res.json({ success: true });
 };
 
 export default {

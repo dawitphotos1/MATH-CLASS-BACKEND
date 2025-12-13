@@ -204,8 +204,6 @@
 // export { upload as uploadInstance, uploadLessonFiles, processUploadedFiles, CLOUDINARY_CONFIGURED };
 
 
-
-// middleware/uploadMiddleware.js
 import multer from "multer";
 import { v2 as cloudinary } from "cloudinary";
 import streamifier from "streamifier";
@@ -214,173 +212,131 @@ import fs from "fs";
 
 console.log("=== uploadMiddleware init ===");
 
-// -------------------------------------------------------
-// CLOUDINARY INITIALIZATION
-// -------------------------------------------------------
-export const CLOUDINARY_CONFIGURED =
-  !!process.env.CLOUDINARY_CLOUD_NAME &&
-  !!process.env.CLOUDINARY_API_KEY &&
-  !!process.env.CLOUDINARY_API_SECRET;
+/* -------------------------------------------------------
+   CLOUDINARY CONFIG
+------------------------------------------------------- */
 
-if (CLOUDINARY_CONFIGURED) {
+const useCloudinary =
+  process.env.USE_CLOUDINARY === "true" &&
+  process.env.CLOUDINARY_CLOUD_NAME &&
+  process.env.CLOUDINARY_API_KEY &&
+  process.env.CLOUDINARY_API_SECRET;
+
+if (useCloudinary) {
   cloudinary.config({
     cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
     api_key: process.env.CLOUDINARY_API_KEY,
     api_secret: process.env.CLOUDINARY_API_SECRET,
     secure: true,
   });
-  console.log("✅ Cloudinary configured and enabled.");
+  console.log("☁️ Cloudinary ENABLED");
 } else {
-  console.warn(
-    "⚠️ Cloudinary NOT configured. Using LOCAL STORAGE fallback.\n" +
-      "Set CLOUDINARY_CLOUD_NAME, CLOUDINARY_API_KEY, CLOUDINARY_API_SECRET to enable Cloudinary."
-  );
+  console.log("📁 Using LOCAL storage at: ./Uploads");
 }
 
-// -------------------------------------------------------
-// MULTER MEMORY STORAGE
-// -------------------------------------------------------
-const storage = multer.memoryStorage();
+/* -------------------------------------------------------
+   MULTER (MEMORY STORAGE)
+------------------------------------------------------- */
 
-export const upload = multer({
-  storage,
+const upload = multer({
+  storage: multer.memoryStorage(),
   limits: {
-    fileSize: process.env.MAX_FILE_SIZE
-      ? Number(process.env.MAX_FILE_SIZE)
-      : 150 * 1024 * 1024, // 150MB default
+    fileSize: 150 * 1024 * 1024, // 150MB
   },
 });
 
-// Fields for lesson upload
-export const uploadLessonFiles = upload.fields([
-  { name: "video", maxCount: 1 },
+/* -------------------------------------------------------
+   EXPECTED LESSON FIELDS
+------------------------------------------------------- */
+
+const uploadLessonFiles = upload.fields([
   { name: "file", maxCount: 1 },
   { name: "pdf", maxCount: 1 },
+  { name: "video", maxCount: 1 },
   { name: "attachments", maxCount: 10 },
 ]);
 
-// -------------------------------------------------------
-// LOCAL STORAGE FALLBACK
-// -------------------------------------------------------
+/* -------------------------------------------------------
+   LOCAL STORAGE FALLBACK
+------------------------------------------------------- */
+
 const LOCAL_UPLOAD_DIR = path.join(process.cwd(), "Uploads");
-if (!fs.existsSync(LOCAL_UPLOAD_DIR)) fs.mkdirSync(LOCAL_UPLOAD_DIR, { recursive: true });
 
-const saveBufferLocally = (buffer, originalname) => {
-  const safeName = path.parse(originalname).name.replace(/[^a-zA-Z0-9-_]/g, "_");
-  const ext = path.extname(originalname) || "";
-  const filename = `${safeName}_${Date.now()}${ext}`;
-  const fullPath = path.join(LOCAL_UPLOAD_DIR, filename);
+if (!fs.existsSync(LOCAL_UPLOAD_DIR)) {
+  fs.mkdirSync(LOCAL_UPLOAD_DIR, { recursive: true });
+}
 
+function saveLocal(buffer, originalname) {
+  const safe =
+    path.parse(originalname).name.replace(/[^a-zA-Z0-9-_]/g, "_") +
+    "_" +
+    Date.now() +
+    path.extname(originalname);
+
+  const fullPath = path.join(LOCAL_UPLOAD_DIR, safe);
   fs.writeFileSync(fullPath, buffer);
-  return `/Uploads/${filename}`;
-};
 
-// -------------------------------------------------------
-// CLOUDINARY HELPERS
-// -------------------------------------------------------
-const chooseCloudinaryTypeAndFolder = (mimetype = "", originalname = "") => {
-  mimetype = mimetype.toLowerCase();
-  const ext = path.extname(originalname || "").toLowerCase();
+  return `/Uploads/${safe}`;
+}
 
-  if (mimetype.startsWith("image/")) return { resourceType: "image", folder: "mathe-class/images" };
-  if (mimetype.startsWith("video/")) return { resourceType: "video", folder: "mathe-class/videos" };
-  if (
-    mimetype === "application/pdf" ||
-    [".pdf", ".doc", ".docx", ".ppt", ".pptx", ".xls", ".xlsx"].includes(ext)
-  )
-    return { resourceType: "raw", folder: "mathe-class/docs" };
+/* -------------------------------------------------------
+   CLOUDINARY UPLOAD
+------------------------------------------------------- */
 
-  return { resourceType: "auto", folder: "mathe-class/files" };
-};
+function uploadToCloudinary(buffer, options = {}) {
+  return new Promise((resolve, reject) => {
+    const stream = cloudinary.uploader.upload_stream(
+      { resource_type: "auto", ...options },
+      (err, result) => {
+        if (err) return reject(err);
+        resolve(result);
+      }
+    );
 
-const uploadBufferToCloudinary = (
-  buffer,
-  { resourceType = "auto", folder = "mathe-class/files", public_id } = {}
-) =>
-  new Promise((resolve, reject) => {
-    const opts = { resource_type: resourceType, folder, timeout: 120000 };
-    if (public_id) opts.public_id = public_id;
-
-    const uploadStream = cloudinary.uploader.upload_stream((opts), (error, result) => {
-      if (error) return reject(error);
-      resolve(result);
-    });
-
-    streamifier.createReadStream(buffer).pipe(uploadStream);
+    streamifier.createReadStream(buffer).pipe(stream);
   });
+}
 
-// -------------------------------------------------------
-// MAIN FILE PROCESSOR
-// -------------------------------------------------------
-export const processUploadedFiles = async (req) => {
-  const out = { fileUrl: null, videoUrl: null, attachments: [] };
+/* -------------------------------------------------------
+   PROCESS FILES
+------------------------------------------------------- */
 
-  if (!req.files || Object.keys(req.files).length === 0) {
-    req.processedUploads = out;
-    return out;
-  }
+async function processUploadedFiles(req) {
+  const result = {
+    fileUrl: null,
+    videoUrl: null,
+    attachments: [],
+  };
+
+  if (!req.files) return result;
 
   for (const field of Object.keys(req.files)) {
-    const filesArr = req.files[field] || [];
+    for (const file of req.files[field]) {
+      let url;
 
-    for (const f of filesArr) {
-      const { buffer, originalname, mimetype } = f;
-
-      try {
-        let fileObj;
-
-        if (CLOUDINARY_CONFIGURED) {
-          const { resourceType, folder } = chooseCloudinaryTypeAndFolder(mimetype, originalname);
-          const result = await uploadBufferToCloudinary(buffer, { resourceType, folder });
-
-          let finalUrl = result.secure_url;
-          if (result.resource_type === "image" && originalname.toLowerCase().endsWith(".pdf")) {
-            finalUrl = finalUrl.replace("/image/upload/", "/raw/upload/");
-          }
-
-          fileObj = {
-            field,
-            originalname,
-            mimetype,
-            url: finalUrl,
-            public_id: result.public_id,
-            resource_type: result.resource_type,
-            format: result.format,
-            bytes: result.bytes,
-          };
-        } else {
-          const localUrl = saveBufferLocally(buffer, originalname);
-          fileObj = {
-            field,
-            originalname,
-            mimetype,
-            url: localUrl,
-            public_id: null,
-            resource_type: "local",
-            format: path.extname(originalname).replace(".", ""),
-            bytes: buffer.length,
-          };
-        }
-
-        const lowerName = originalname.toLowerCase();
-        if (field === "video") out.videoUrl = fileObj.url;
-        else if (field === "pdf" || lowerName.endsWith(".pdf")) out.fileUrl = fileObj.url;
-        else if (field === "file" && fileObj.resource_type === "video") out.videoUrl = fileObj.url;
-        else if (fileObj.resource_type === "image") {
-          if (field === "file" && !out.fileUrl) out.fileUrl = fileObj.url;
-          else out.attachments.push(fileObj);
-        } else {
-          if (!out.fileUrl && (field === "file" || field === "attachments")) out.fileUrl = fileObj.url;
-          else out.attachments.push(fileObj);
-        }
-      } catch (err) {
-        console.error("❌ Upload failed:", originalname, err?.message || err);
+      if (useCloudinary) {
+        const uploaded = await uploadToCloudinary(file.buffer);
+        url = uploaded.secure_url;
+      } else {
+        url = saveLocal(file.buffer, file.originalname);
       }
+
+      if (field === "video") result.videoUrl = url;
+      else if (field === "pdf" || field === "file") result.fileUrl = url;
+      else result.attachments.push(url);
     }
   }
 
-  req.processedUploads = out;
-  return out;
-};
+  req.processedUploads = result;
+  return result;
+}
 
-console.log("✅ uploadMiddleware ready. Exports: upload, uploadLessonFiles, processUploadedFiles");
+/* -------------------------------------------------------
+   ✅ DEFAULT EXPORT (IMPORTANT)
+------------------------------------------------------- */
+
+export default {
+  upload, // allows upload.single(...)
+  uploadLessonFiles, // used in routes
+  processUploadedFiles, // used in controller
+};

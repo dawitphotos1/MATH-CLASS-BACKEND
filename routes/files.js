@@ -418,7 +418,8 @@ import fs from "fs/promises";
 import fsSync from "fs";
 import { fileURLToPath } from "url";
 import { getPublicPreviewByLessonId } from "../controllers/lessonController.js";
-import upload from "../middleware/uploadMiddleware.js"; // default = multer instance (with attached helpers)
+import uploadMiddleware from "../middleware/uploadMiddleware.js";
+
 
 const router = express.Router();
 
@@ -452,33 +453,42 @@ router.get("/debug/env", (req, res) => {
    Accepts same fields as lesson uploads: video, file, pdf, attachments
    Use upload.uploadLessonFiles (fields) so multiple fields work
 ---------------------------------------------------------------- */
-router.post("/test-upload", upload.uploadLessonFiles, async (req, res) => {
-  try {
-    console.log("🧪 Test upload received (fields):", Object.keys(req.files || {}));
-
-    // Process uploaded files (uploads to Cloudinary or save locally)
-    let processed = req.processedUploads || null;
+router.post(
+  "/test-upload",
+  uploadMiddleware.uploadLessonFiles,
+  async (req, res) => {
     try {
-      if (typeof upload.processUploadedFiles === "function") {
-        processed = await upload.processUploadedFiles(req);
-      }
-    } catch (err) {
-      console.warn("processUploadedFiles failed:", err?.message || err);
-    }
+      console.log(
+        "🧪 Test upload received (fields):",
+        Object.keys(req.files || {})
+      );
 
-    res.json({
-      success: true,
-      message: "Upload processed",
-      files_raw: req.files || null,
-      processed,
-      storage: upload.CLOUDINARY_CONFIGURED ? "cloudinary (preferred)" : "local (fallback)",
-      uploads_dir: UPLOADS_DIR
-    });
-  } catch (err) {
-    console.error("Test upload error:", err);
-    res.status(500).json({ success: false, error: err.message });
+      // Process uploaded files (uploads to Cloudinary or save locally)
+      let processed = req.processedUploads || null;
+      try {
+        if (typeof upload.processUploadedFiles === "function") {
+          processed = await upload.processUploadedFiles(req);
+        }
+      } catch (err) {
+        console.warn("processUploadedFiles failed:", err?.message || err);
+      }
+
+      res.json({
+        success: true,
+        message: "Upload processed",
+        files_raw: req.files || null,
+        processed,
+        storage: upload.CLOUDINARY_CONFIGURED
+          ? "cloudinary (preferred)"
+          : "local (fallback)",
+        uploads_dir: UPLOADS_DIR,
+      });
+    } catch (err) {
+      console.error("Test upload error:", err);
+      res.status(500).json({ success: false, error: err.message });
+    }
   }
-});
+);
 
 /* ---------------------------------------------------------------
    DEBUG LIST - local files + DB entries
