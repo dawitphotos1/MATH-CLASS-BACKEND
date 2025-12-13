@@ -43,84 +43,85 @@
 // export default router;
 
 
-
 import express from "express";
 import lessonController from "../controllers/lessonController.js";
-// Use cloudinaryUpload.js (the fixed version)
-import uploadMiddleware from "../middleware/cloudinaryUpload.js";
+// Import ALL exports from cloudinaryUpload
+import upload, {
+  uploadLessonFiles,
+  processUploadedFiles,
+  singleUpload,
+} from "../middleware/cloudinaryUpload.js";
 
 const router = express.Router();
 
 /* ---------------------------------------------------------------
-   CRUD ROUTES
+   SIMPLIFIED & WORKING ROUTES
 ---------------------------------------------------------------- */
 
-// 🆕 Test endpoint to check upload functionality
-router.get("/test-upload", (req, res) => {
+// Test endpoint
+router.get("/test-route", (req, res) => {
   res.json({
     success: true,
     message: "Lesson routes are working",
-    endpoints: {
-      create: "POST /course/:courseId/lessons",
-      update: "PUT /:lessonId",
-      get: "GET /:id",
-      delete: "DELETE /:lessonId",
-      preview: "GET /preview/course/:courseId",
-    },
-    middleware: {
-      name: "cloudinaryUpload",
-      configured: uploadMiddleware.USE_CLOUDINARY,
-      maxFileSize: process.env.MAX_FILE_SIZE || "150MB",
-    },
+    timestamp: new Date().toISOString(),
+    cloudinary: upload.USE_CLOUDINARY ? "ENABLED" : "DISABLED",
   });
 });
 
-// 🆕 Create lesson with file upload
+// Create lesson
 router.post(
   "/course/:courseId/lessons",
-  uploadMiddleware.uploadLessonFiles,
-  async (req, res, next) => {
+  uploadLessonFiles, // Use the named export directly
+  async (req, res) => {
     try {
-      // Process uploaded files before controller
+      console.log("📝 Creating lesson for course:", req.params.courseId);
+
+      // Process uploaded files
       if (req.files && Object.keys(req.files).length > 0) {
-        console.log("📤 Processing uploads before create...");
-        await uploadMiddleware.processUploadedFiles(req);
+        console.log("📤 Files received:", Object.keys(req.files));
+        await processUploadedFiles(req);
       }
-      next();
-    } catch (err) {
-      console.error("❌ Upload processing error:", err);
-      res.status(500).json({
+
+      // Call the controller
+      return await lessonController.createLesson(req, res);
+    } catch (error) {
+      console.error("❌ Create lesson error in route:", error);
+      return res.status(500).json({
         success: false,
-        error: "Failed to process uploads",
-        details: err.message,
+        error: "Failed to create lesson",
+        details:
+          process.env.NODE_ENV === "development" ? error.message : undefined,
       });
     }
-  },
-  lessonController.createLesson
+  }
 );
 
-// 🆕 Update lesson with file upload
+// Update lesson
 router.put(
   "/:lessonId",
-  uploadMiddleware.uploadLessonFiles,
-  async (req, res, next) => {
+  uploadLessonFiles, // Use the named export directly
+  async (req, res) => {
     try {
-      // Process uploaded files before controller
+      console.log("📝 Updating lesson:", req.params.lessonId);
+
+      // Process uploaded files
       if (req.files && Object.keys(req.files).length > 0) {
-        console.log("📤 Processing uploads before update...");
-        await uploadMiddleware.processUploadedFiles(req);
+        console.log("📤 Files received:", Object.keys(req.files));
+        await processUploadedFiles(req);
       }
-      next();
-    } catch (err) {
-      console.error("❌ Upload processing error:", err);
-      res.status(500).json({
+
+      // Call the controller
+      return await lessonController.updateLesson(req, res);
+    } catch (error) {
+      console.error("❌ Update lesson error in route:", error);
+      return res.status(500).json({
         success: false,
-        error: "Failed to process uploads",
-        details: err.message,
+        error: "Failed to update lesson",
+        details:
+          process.env.NODE_ENV === "development" ? error.message : undefined,
       });
     }
-  },
-  lessonController.updateLesson
+  }
 );
 
 // Get lesson by ID
@@ -144,52 +145,57 @@ router.get("/unit/:unitId/all", lessonController.getLessonsByUnit);
 router.delete("/:lessonId", lessonController.deleteLesson);
 
 // Debug endpoints
-router.get("/debug/:lessonId/file", lessonController.debugLessonFile);
-router.get("/debug/file", lessonController.debugLessonFile);
-router.post("/fix-url/:lessonId", lessonController.fixLessonFileUrl);
+router.get("/debug/:lessonId/file", (req, res) => {
+  res.json({
+    success: true,
+    message: "Debug endpoint",
+    lessonId: req.params.lessonId,
+  });
+});
 
-// 🆕 Test file upload endpoint (SIMPLIFIED VERSION)
-router.post(
-  "/test/file-upload",
-  uploadMiddleware.single("file"),
-  async (req, res) => {
-    try {
-      console.log("🧪 Test file upload:", req.file);
+router.get("/debug/file", (req, res) => {
+  res.json({
+    success: true,
+    message: "File debug endpoint",
+    query: req.query,
+  });
+});
 
-      if (!req.file) {
-        return res.status(400).json({
-          success: false,
-          error: "No file uploaded",
-        });
-      }
+// Simple test upload endpoint
+router.post("/test/file-upload", singleUpload, async (req, res) => {
+  try {
+    console.log("🧪 Test upload received file:", req.file?.originalname);
 
-      // Process the upload
-      const result = await uploadMiddleware.processUploadedFiles({
-        files: { file: [req.file] },
-      });
-
-      res.json({
-        success: true,
-        message: "Test upload successful",
-        file: {
-          originalname: req.file.originalname,
-          mimetype: req.file.mimetype,
-          size: req.file.size,
-        },
-        uploadResult: result,
-        fileUrl: result.fileUrl,
-        cloudinaryUsed: uploadMiddleware.USE_CLOUDINARY,
-        backendUrl: process.env.BACKEND_URL,
-      });
-    } catch (error) {
-      console.error("❌ Test upload error:", error);
-      res.status(500).json({
+    if (!req.file) {
+      return res.status(400).json({
         success: false,
-        error: "Test upload failed",
-        details: error.message,
+        error: "No file uploaded",
       });
     }
+
+    // Process the file
+    const result = await processUploadedFiles({
+      files: { file: [req.file] },
+    });
+
+    return res.json({
+      success: true,
+      message: "Test upload successful",
+      file: {
+        name: req.file.originalname,
+        size: req.file.size,
+        type: req.file.mimetype,
+      },
+      uploadResult: result,
+    });
+  } catch (error) {
+    console.error("❌ Test upload error:", error);
+    return res.status(500).json({
+      success: false,
+      error: "Test upload failed",
+      details: error.message,
+    });
   }
-);
+});
 
 export default router;
