@@ -689,6 +689,21 @@ export const getPublicPreviewByLessonId = async (req, res) => {
   });
 };
 
+
+/* -------------------------
+   DEBUG HELPERS (SAFE FALLBACKS)
+------------------------- */
+
+// used by routes to verify controller wiring
+export const debugLessonFile = async (req, res) => {
+  res.json({ success: true, message: "debugLessonFile OK" });
+};
+
+// used by routes to test file URL fixes
+export const fixLessonFileUrl = async (req, res) => {
+  res.json({ success: true, message: "fixLessonFileUrl OK" });
+};
+
 /* -------------------------
    EXPORT (SAFE)
 ------------------------- */
@@ -701,4 +716,6 @@ export default {
   getLessonsByUnit,
   getPreviewLessonForCourse,
   getPublicPreviewByLessonId,
+  debugLessonFile,
+  fixLessonFileUrl,
 };
