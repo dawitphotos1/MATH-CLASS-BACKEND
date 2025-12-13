@@ -42,19 +42,16 @@
 
 
 
-
-// routes/lessonRoutes.js
 import express from "express";
 import lessonController from "../controllers/lessonController.js";
-import upload from "../middleware/uploadMiddleware.js"; // default multer instance with helpers
-import { requireAuth, requireRole } from "../middleware/authMiddleware.js"; // keep your auth middleware
+import upload from "../middleware/uploadMiddleware.js";
 
 const router = express.Router();
 
 // Create lesson (multipart)
 router.post(
   "/course/:courseId/lessons",
-  upload.uploadLessonFiles, // parses multipart fields into req.files
+  upload.uploadLessonFiles,
   lessonController.createLesson
 );
 
@@ -69,14 +66,16 @@ router.put(
 router.get("/:id", lessonController.getLessonById);
 
 // Preview endpoints
-router.get("/preview/course/:courseId", lessonController.getPreviewLessonForCourse);
-router.get("/public-preview/:id", lessonController.getPublicPreviewByLessonId);
+router.get(
+  "/preview/course/:courseId",
+  lessonController.getPreviewLessonForCourse
+);
+router.get(
+  "/public-preview/:lessonId",
+  lessonController.getPublicPreviewByLessonId
+);
 
-// Debug
-router.get("/:lessonId/debug-file", lessonController.debugLessonFile);
-router.post("/:lessonId/fix-file", lessonController.fixLessonFileUrl);
-
-// Get lessons by course/unit
+// Lessons by course / unit
 router.get("/course/:courseId/all", lessonController.getLessonsByCourse);
 router.get("/unit/:unitId/all", lessonController.getLessonsByUnit);
 

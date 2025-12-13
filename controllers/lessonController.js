@@ -1858,21 +1858,20 @@
 
 
 
-
 import db from "../models/index.js";
 import uploadMiddleware from "../middleware/uploadMiddleware.js";
 
 const { Lesson, Course, Unit } = db;
 
 /* --------------------------------------------------
-   Helper: apply uploaded files to lesson
+   Helper
 -------------------------------------------------- */
 const applyUploadResultsToLesson = (lesson, uploads) => {
   if (!uploads) return lesson;
 
   if (uploads.fileUrl) {
     lesson.file_url = uploads.fileUrl;
-    lesson.content_type = "file"; // FORCE preview
+    lesson.content_type = "file";
   }
 
   if (uploads.videoUrl) {
@@ -1881,7 +1880,7 @@ const applyUploadResultsToLesson = (lesson, uploads) => {
   }
 
   if (uploads.attachments?.length > 0) {
-    lesson.attachments = uploads.attachments; // already URLs
+    lesson.attachments = uploads.attachments;
   }
 
   return lesson;
@@ -1954,7 +1953,7 @@ const updateLesson = async (req, res) => {
 };
 
 /* --------------------------------------------------
-   READ / DELETE (unchanged)
+   READ / DELETE
 -------------------------------------------------- */
 const getLessonById = async (req, res) => {
   const lesson = await Lesson.findByPk(req.params.id);
@@ -1999,6 +1998,17 @@ const deleteLesson = async (req, res) => {
   res.json({ success: true });
 };
 
+/* --------------------------------------------------
+   OPTIONAL empty debug endpoints (to prevent crash)
+-------------------------------------------------- */
+const debugLessonFile = (req, res) => {
+  res.json({ success: true, message: "debug stub" });
+};
+
+const fixLessonFileUrl = (req, res) => {
+  res.json({ success: true, message: "fix stub" });
+};
+
 export default {
   createLesson,
   updateLesson,
@@ -2008,4 +2018,8 @@ export default {
   getPreviewLessonForCourse,
   getPublicPreviewByLessonId,
   deleteLesson,
+
+  // optional stubs (remove if not needed)
+  debugLessonFile,
+  fixLessonFileUrl,
 };
