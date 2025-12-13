@@ -523,19 +523,20 @@
 
 
 
-
 // controllers/lessonController.js
 import db from "../models/index.js";
-import path from "path";
-import fs from "fs";
 import { v2 as cloudinary } from "cloudinary";
 
-const { Lesson, Course, Unit, LessonView, Enrollment, sequelize } = db;
+const { Lesson, Course } = db;
 
 /* -------------------------
    Cloudinary config (SAFE)
 ------------------------- */
-if (process.env.CLOUDINARY_CLOUD_NAME && process.env.CLOUDINARY_API_KEY) {
+if (
+  process.env.CLOUDINARY_CLOUD_NAME &&
+  process.env.CLOUDINARY_API_KEY &&
+  process.env.CLOUDINARY_API_SECRET
+) {
   cloudinary.config({
     cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
     api_key: process.env.CLOUDINARY_API_KEY,
@@ -581,9 +582,10 @@ export const buildFileUrls = (lesson) => {
 };
 
 /* -------------------------
-   REQUIRED CONTROLLER METHODS
-   (These were MISSING before → crash)
+   CRUD — LESSON
 ------------------------- */
+
+// GET /lessons/:id
 export const getLessonById = async (req, res) => {
   try {
     const lesson = await Lesson.findByPk(req.params.id);
@@ -591,20 +593,29 @@ export const getLessonById = async (req, res) => {
       return res.status(404).json({ success: false, error: "Lesson not found" });
 
     res.json({ success: true, lesson: buildFileUrls(lesson) });
-  } catch (err) {
+  } catch {
     res.status(500).json({ success: false, error: "Failed to load lesson" });
   }
 };
 
+// POST /course/:courseId/lessons
 export const createLesson = async (req, res) => {
   try {
-    const lesson = await Lesson.create(req.body);
-    res.status(201).json({ success: true, lesson });
-  } catch (err) {
+    const lesson = await Lesson.create({
+      ...req.body,
+      course_id: req.params.courseId,
+    });
+
+    res.status(201).json({
+      success: true,
+      lesson: buildFileUrls(lesson),
+    });
+  } catch {
     res.status(500).json({ success: false, error: "Create lesson failed" });
   }
 };
 
+// PUT /lessons/:lessonId
 export const updateLesson = async (req, res) => {
   try {
     const lesson = await Lesson.findByPk(req.params.lessonId);
@@ -612,12 +623,17 @@ export const updateLesson = async (req, res) => {
       return res.status(404).json({ success: false, error: "Lesson not found" });
 
     await lesson.update(req.body);
-    res.json({ success: true, lesson });
-  } catch (err) {
-    res.status(500).json({ success: false, error: "Update failed" });
+
+    res.json({
+      success: true,
+      lesson: buildFileUrls(lesson),
+    });
+  } catch {
+    res.status(500).json({ success: false, error: "Update lesson failed" });
   }
 };
 
+// DELETE /lessons/:lessonId
 export const deleteLesson = async (req, res) => {
   try {
     const lesson = await Lesson.findByPk(req.params.lessonId);
@@ -627,86 +643,133 @@ export const deleteLesson = async (req, res) => {
     await lesson.destroy();
     res.json({ success: true });
   } catch {
-    res.status(500).json({ success: false, error: "Delete failed" });
+    res.status(500).json({ success: false, error: "Delete lesson failed" });
   }
 };
 
+/* -------------------------
+   LISTING
+------------------------- */
+
+// GET lessons by unit
 export const getLessonsByUnit = async (req, res) => {
-  const lessons = await Lesson.findAll({
-    where: { unit_id: req.params.unitId },
-    order: [["order_index", "ASC"]],
-  });
-  res.json({ success: true, lessons });
+  try {
+    const lessons = await Lesson.findAll({
+      where: { unit_id: req.params.unitId },
+      order: [["order_index", "ASC"]],
+    });
+
+    res.json({
+      success: true,
+      lessons: lessons.map(buildFileUrls),
+    });
+  } catch {
+    res
+      .status(500)
+      .json({ success: false, error: "Failed to load unit lessons" });
+  }
 };
 
-/* -------------------------
-   PREVIEW — COURSE
-------------------------- */
-export const getPreviewLessonForCourse = async (req, res) => {
-  const lesson =
-    (await Lesson.findOne({
-      where: { course_id: req.params.courseId, is_preview: true },
-      order: [["order_index", "ASC"]],
-    })) ||
-    (await Lesson.findOne({
+// ✅ GET lessons by course (FIXED)
+export const getLessonsByCourse = async (req, res) => {
+  try {
+    const lessons = await Lesson.findAll({
       where: { course_id: req.params.courseId },
-      order: [["order_index", "ASC"]],
-    }));
+      order: [
+        ["unit_id", "ASC"],
+        ["order_index", "ASC"],
+      ],
+    });
 
-  if (!lesson)
-    return res.status(404).json({ success: false, error: "No lessons found" });
-
-  const course = await Course.findByPk(req.params.courseId, {
-    attributes: ["id", "title", "slug"],
-  });
-
-  res.json({
-    success: true,
-    lesson: buildFileUrls(lesson),
-    course,
-  });
+    res.json({
+      success: true,
+      lessons: lessons.map(buildFileUrls),
+    });
+  } catch {
+    res
+      .status(500)
+      .json({ success: false, error: "Failed to load course lessons" });
+  }
 };
 
 /* -------------------------
-   PREVIEW — PUBLIC BY LESSON
+   PREVIEW
 ------------------------- */
+
+export const getPreviewLessonForCourse = async (req, res) => {
+  try {
+    const lesson =
+      (await Lesson.findOne({
+        where: { course_id: req.params.courseId, is_preview: true },
+        order: [["order_index", "ASC"]],
+      })) ||
+      (await Lesson.findOne({
+        where: { course_id: req.params.courseId },
+        order: [["order_index", "ASC"]],
+      }));
+
+    if (!lesson)
+      return res
+        .status(404)
+        .json({ success: false, error: "No lessons found" });
+
+    const course = await Course.findByPk(req.params.courseId, {
+      attributes: ["id", "title", "slug"],
+    });
+
+    res.json({
+      success: true,
+      lesson: buildFileUrls(lesson),
+      course,
+    });
+  } catch {
+    res
+      .status(500)
+      .json({ success: false, error: "Preview lesson failed" });
+  }
+};
+
 export const getPublicPreviewByLessonId = async (req, res) => {
-  const lesson = await Lesson.findByPk(req.params.id);
-  if (!lesson)
-    return res.status(404).json({ success: false, error: "Lesson not found" });
+  try {
+    const lesson = await Lesson.findByPk(req.params.lessonId);
+    if (!lesson)
+      return res.status(404).json({ success: false, error: "Lesson not found" });
 
-  if (!lesson.is_preview && !req.user)
-    return res.status(403).json({ success: false, error: "Not allowed" });
+    if (!lesson.is_preview && !req.user)
+      return res.status(403).json({ success: false, error: "Not allowed" });
 
-  const course = await Course.findByPk(lesson.course_id, {
-    attributes: ["id", "title", "slug"],
-  });
+    const course = await Course.findByPk(lesson.course_id, {
+      attributes: ["id", "title", "slug"],
+    });
 
-  res.json({
-    success: true,
-    lesson: buildFileUrls(lesson),
-    course,
-  });
+    res.json({
+      success: true,
+      lesson: buildFileUrls(lesson),
+      course,
+    });
+  } catch {
+    res
+      .status(500)
+      .json({ success: false, error: "Public preview failed" });
+  }
 };
 
-
 /* -------------------------
-   DEBUG HELPERS (SAFE FALLBACKS)
+   DEBUG HELPERS
 ------------------------- */
 
-// used by routes to verify controller wiring
 export const debugLessonFile = async (req, res) => {
   res.json({ success: true, message: "debugLessonFile OK" });
 };
 
-// used by routes to test file URL fixes
 export const fixLessonFileUrl = async (req, res) => {
   res.json({ success: true, message: "fixLessonFileUrl OK" });
 };
 
 /* -------------------------
-   EXPORT (SAFE)
+   EXPORT (DEFAULT)
 ------------------------- */
+
 export default {
   buildFileUrls,
   getLessonById,
@@ -714,6 +777,7 @@ export default {
   updateLesson,
   deleteLesson,
   getLessonsByUnit,
+  getLessonsByCourse, // ✅ REQUIRED
   getPreviewLessonForCourse,
   getPublicPreviewByLessonId,
   debugLessonFile,
