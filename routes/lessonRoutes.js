@@ -43,6 +43,9 @@
 // export default router;
 
 
+
+
+// routes/lessonRoutes.js
 import express from "express";
 import lessonController from "../controllers/lessonController.js";
 // Import ALL exports from cloudinaryUpload
@@ -51,6 +54,9 @@ import upload, {
   processUploadedFiles,
   singleUpload,
 } from "../middleware/cloudinaryUpload.js";
+import db from "../models/index.js";
+
+const { Lesson } = db;
 
 const router = express.Router();
 
@@ -143,6 +149,73 @@ router.get("/unit/:unitId/all", lessonController.getLessonsByUnit);
 
 // Delete lesson
 router.delete("/:lessonId", lessonController.deleteLesson);
+
+// 🔥 NEW: Debug endpoint to check and fix a specific lesson
+router.get("/debug/fix/:lessonId", async (req, res) => {
+  try {
+    const lesson = await Lesson.findByPk(req.params.lessonId);
+    
+    if (!lesson) {
+      return res.status(404).json({ success: false, error: "Lesson not found" });
+    }
+    
+    // Import the fixCloudinaryUrl helper
+    const fixCloudinaryUrl = (url) => {
+      if (!url) return url;
+      
+      if (url.includes('cloudinary.com') && url.includes('/image/upload/')) {
+        if (url.includes('.pdf') || url.includes('/mathe-class/pdfs/')) {
+          return url.replace('/image/upload/', '/raw/upload/');
+        } else if (url.match(/\.(doc|docx|ppt|pptx|xls|xlsx)(\?|$)/i)) {
+          return url.replace('/image/upload/', '/raw/upload/');
+        }
+      }
+      return url;
+    };
+    
+    const oldUrl = lesson.file_url;
+    let newUrl = fixCloudinaryUrl(oldUrl);
+    
+    // Update if changed
+    let updated = false;
+    if (newUrl !== oldUrl) {
+      await lesson.update({ file_url: newUrl });
+      updated = true;
+    }
+    
+    // Also fix video URLs if needed
+    let videoUpdated = false;
+    if (lesson.video_url && lesson.video_url.includes('cloudinary.com/image/upload/')) {
+      const oldVideoUrl = lesson.video_url;
+      const newVideoUrl = oldVideoUrl.replace('/image/upload/', '/video/upload/');
+      if (newVideoUrl !== oldVideoUrl) {
+        await lesson.update({ video_url: newVideoUrl });
+        videoUpdated = true;
+      }
+    }
+    
+    res.json({
+      success: true,
+      lessonId: lesson.id,
+      title: lesson.title,
+      file_url: {
+        old: oldUrl,
+        new: newUrl,
+        updated
+      },
+      video_url: {
+        old: lesson.video_url,
+        updated: videoUpdated
+      },
+      previewUrl: lessonController.buildFileUrls(lesson).fileUrl,
+      message: updated ? "URL fixed successfully" : "No fix needed"
+    });
+    
+  } catch (error) {
+    console.error("Debug error:", error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
 
 // Debug endpoints
 router.get("/debug/:lessonId/file", (req, res) => {

@@ -212,7 +212,7 @@
 
 
 
-
+// routes/files.js
 import express from "express";
 import path from "path";
 import fs from "fs/promises";
@@ -235,6 +235,30 @@ const UPLOADS_DIR = path.join(process.cwd(), "Uploads");
 if (!fsSync.existsSync(UPLOADS_DIR)) {
   fsSync.mkdirSync(UPLOADS_DIR, { recursive: true });
 }
+
+// 🔥 NEW: Helper to fix Cloudinary URLs
+const fixCloudinaryUrl = (url) => {
+  if (!url) return url;
+  
+  // Fix Cloudinary URLs that are incorrectly typed
+  if (url.includes('cloudinary.com') && url.includes('/image/upload/')) {
+    // Fix PDFs
+    if (url.includes('.pdf') || url.includes('/mathe-class/pdfs/') || url.includes('/pdf')) {
+      const fixed = url.replace('/image/upload/', '/raw/upload/');
+      console.log(`🔧 Files route: Fixed PDF URL: ${fixed.substring(0, 100)}...`);
+      return fixed;
+    }
+    
+    // Fix Office documents
+    else if (url.match(/\.(doc|docx|ppt|pptx|xls|xlsx)(\?|$)/i)) {
+      const fixed = url.replace('/image/upload/', '/raw/upload/');
+      console.log(`🔧 Files route: Fixed Office doc URL: ${fixed.substring(0, 100)}...`);
+      return fixed;
+    }
+  }
+  
+  return url;
+};
 
 /* ---------------------------------------------------------------
    CLOUDINARY CONFIGURATION TEST
@@ -423,15 +447,20 @@ router.get("/debug/list", async (req, res) => {
     // Check Cloudinary URLs
     const cloudinaryFiles = lessons
       .filter((l) => l.file_url && l.file_url.includes("cloudinary.com"))
-      .map((l) => ({
-        id: l.id,
-        title: l.title,
-        file_url: l.file_url,
-        is_correct_type:
-          l.file_url.includes("/raw/upload/") ||
-          (!l.file_url.includes("/image/upload/") &&
-            !l.file_url.includes("/raw/upload/")),
-      }));
+      .map((l) => {
+        const isCorrectType = !l.file_url.includes('/image/upload/') || 
+          (!l.file_url.includes('.pdf') && 
+           !l.file_url.includes('/mathe-class/pdfs/') && 
+           !l.file_url.match(/\.(doc|docx|ppt|pptx|xls|xlsx)(\?|$)/i));
+        
+        return {
+          id: l.id,
+          title: l.title,
+          file_url: l.file_url,
+          is_correct_type: isCorrectType,
+          fixed_url: !isCorrectType ? fixCloudinaryUrl(l.file_url) : null,
+        };
+      });
 
     res.json({
       success: true,
@@ -540,23 +569,19 @@ router.get("/:filename", async (req, res) => {
     // Handle Cloudinary URLs
     if (filename.includes("cloudinary.com")) {
       console.log(`☁️ Cloudinary URL detected: ${filename}`);
-
-      // Fix PDF URLs that are incorrectly typed as images
-      if (
-        filename.includes("/image/upload/") &&
-        (filename.includes(".pdf") || filename.includes("/mathe-class/pdfs/"))
-      ) {
-        const fixedUrl = filename.replace("/image/upload/", "/raw/upload/");
-        console.log(
-          `🔧 Fixing Cloudinary URL: ${filename.substring(
-            0,
-            100
-          )}... -> ${fixedUrl.substring(0, 100)}...`
-        );
-        return res.redirect(301, fixedUrl);
+      
+      // 🔥 FIX: Apply URL fixing
+      let finalUrl = fixCloudinaryUrl(filename);
+      
+      if (finalUrl !== filename) {
+        console.log(`🔧 Fixed URL for redirect: ${finalUrl.substring(0, 100)}...`);
       }
-
-      return res.redirect(301, filename);
+      
+      // Ensure proper content type for redirects
+      res.setHeader("Content-Type", "application/octet-stream");
+      res.setHeader("Access-Control-Allow-Origin", "*");
+      
+      return res.redirect(301, finalUrl);
     }
 
     // Handle local files

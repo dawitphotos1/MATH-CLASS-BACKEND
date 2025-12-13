@@ -91,6 +91,7 @@
 
 
 
+// middleware/cloudinaryUpload.js
 
 import multer from "multer";
 import path from "path";
@@ -173,7 +174,8 @@ export const uploadToCloudinary = (
   buffer,
   folder = "mathe-class",
   resourceType = "auto",
-  filename = "file"
+  filename = "file",
+  options = {}
 ) => {
   return new Promise((resolve, reject) => {
     if (!USE_CLOUDINARY) {
@@ -194,14 +196,26 @@ export const uploadToCloudinary = (
       });
     }
 
+    // 🔥 FIX: Ensure PDFs use correct upload options
+    const uploadOptions = {
+      resource_type: resourceType,
+      folder: folder,
+      timeout: 60000,
+      use_filename: true,
+      unique_filename: true,
+      ...options, // Merge any additional options
+    };
+
+    // Add specific flags for PDFs
+    if (resourceType === "raw" && filename.toLowerCase().endsWith('.pdf')) {
+      uploadOptions.format = 'pdf';
+      uploadOptions.flags = 'attachment';
+    }
+
+    console.log(`📤 Cloudinary upload options:`, uploadOptions);
+
     const uploadStream = cloudinary.uploader.upload_stream(
-      {
-        resource_type: resourceType,
-        folder: folder,
-        timeout: 60000,
-        use_filename: true,
-        unique_filename: true,
-      },
+      uploadOptions,
       (error, result) => {
         if (error) {
           console.error("❌ Cloudinary upload error:", error.message);
@@ -210,9 +224,21 @@ export const uploadToCloudinary = (
           console.log(
             `✅ Cloudinary upload successful: ${result.secure_url.substring(
               0,
-              80
+              100
             )}...`
           );
+          console.log(`📊 Resource type: ${result.resource_type}`);
+          
+          // 🔥 FIX: Check if PDF was uploaded as image and fix it
+          if (result.resource_type === 'image' && filename.toLowerCase().endsWith('.pdf')) {
+            console.warn(`⚠️ PDF uploaded as image! URL: ${result.secure_url}`);
+            // Try to manually fix the URL
+            const fixedUrl = result.secure_url.replace('/image/upload/', '/raw/upload/');
+            result.secure_url = fixedUrl;
+            result.resource_type = 'raw';
+            console.log(`🔧 Manually fixed URL to: ${fixedUrl}`);
+          }
+          
           resolve(result);
         }
       }
@@ -229,12 +255,21 @@ const getCloudinaryConfig = (mimetype, originalname) => {
   mimetype = mimetype || "";
   originalname = originalname || "";
 
-  // Force PDFs to use 'raw' resource type
+  // 🔥 FIX: Force PDFs to use 'raw' resource type AND ensure proper URL format
   if (
     mimetype === "application/pdf" ||
     originalname.toLowerCase().endsWith(".pdf")
   ) {
-    return { resourceType: "raw", folder: "mathe-class/pdfs" };
+    console.log(`📄 PDF detected: ${originalname}, forcing resource_type: 'raw'`);
+    return { 
+      resourceType: "raw", 
+      folder: "mathe-class/pdfs",
+      // Add explicit transformation for PDFs
+      transformation: { 
+        flags: "attachment", 
+        format: "pdf" 
+      }
+    };
   }
 
   // Images
@@ -288,7 +323,7 @@ export const processUploadedFiles = async (req) => {
         );
 
         // Get Cloudinary configuration
-        const { resourceType, folder } = getCloudinaryConfig(
+        const { resourceType, folder, transformation } = getCloudinaryConfig(
           file.mimetype,
           file.originalname
         );
@@ -298,7 +333,8 @@ export const processUploadedFiles = async (req) => {
           file.buffer,
           folder,
           resourceType,
-          file.originalname
+          file.originalname,
+          transformation ? { transformation } : {}
         );
 
         const fileInfo = {
