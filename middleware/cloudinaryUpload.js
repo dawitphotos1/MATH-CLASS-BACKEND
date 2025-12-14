@@ -321,34 +321,55 @@ import fs from "fs";
 import { v2 as cloudinary } from "cloudinary";
 import streamifier from "streamifier";
 
-// Check if Cloudinary should be used
-const USE_CLOUDINARY =
-  process.env.USE_CLOUDINARY === "true" &&
-  process.env.CLOUDINARY_CLOUD_NAME &&
-  process.env.CLOUDINARY_API_KEY &&
-  process.env.CLOUDINARY_API_SECRET;
+// =========================================================
+// CLOUDINARY CONFIGURATION - FIXED VERSION
+// =========================================================
 
-// Configure Cloudinary if enabled
-if (USE_CLOUDINARY) {
-  cloudinary.config({
-    cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
-    api_key: process.env.CLOUDINARY_API_KEY,
-    api_secret: process.env.CLOUDINARY_API_SECRET,
-    secure: true,
-  });
-  console.log(`☁️ Cloudinary configured: ${process.env.CLOUDINARY_CLOUD_NAME}`);
+// Get Cloudinary credentials from environment
+const CLOUDINARY_CLOUD_NAME = process.env.CLOUDINARY_CLOUD_NAME;
+const CLOUDINARY_API_KEY = process.env.CLOUDINARY_API_KEY;
+const CLOUDINARY_API_SECRET = process.env.CLOUDINARY_API_SECRET;
+const USE_CLOUDINARY = process.env.USE_CLOUDINARY === "true";
+
+// Debug logging
+console.log("🔧 Cloudinary Configuration:");
+console.log("USE_CLOUDINARY:", USE_CLOUDINARY);
+console.log("CLOUDINARY_CLOUD_NAME:", CLOUDINARY_CLOUD_NAME);
+console.log("CLOUDINARY_API_KEY:", CLOUDINARY_API_KEY ? "SET" : "NOT SET");
+console.log(
+  "CLOUDINARY_API_SECRET:",
+  CLOUDINARY_API_SECRET ? "SET" : "NOT SET"
+);
+
+// Configure Cloudinary if all credentials are present
+if (
+  USE_CLOUDINARY &&
+  CLOUDINARY_CLOUD_NAME &&
+  CLOUDINARY_API_KEY &&
+  CLOUDINARY_API_SECRET
+) {
+  try {
+    cloudinary.config({
+      cloud_name: CLOUDINARY_CLOUD_NAME,
+      api_key: CLOUDINARY_API_KEY,
+      api_secret: CLOUDINARY_API_SECRET,
+      secure: true,
+    });
+    console.log("✅ Cloudinary configured successfully");
+  } catch (error) {
+    console.error("❌ Cloudinary configuration failed:", error.message);
+  }
 } else {
-  console.log("📁 Cloudinary disabled, using local storage");
+  console.warn("⚠️ Cloudinary credentials incomplete. Using local storage.");
 }
 
-// Create local storage directory as fallback
-const LOCAL_UPLOAD_DIR =
-  process.env.UPLOAD_DIR || path.join(process.cwd(), "Uploads");
+// Create local storage directory
+const LOCAL_UPLOAD_DIR = path.join(process.cwd(), "Uploads");
 if (!fs.existsSync(LOCAL_UPLOAD_DIR)) {
   fs.mkdirSync(LOCAL_UPLOAD_DIR, { recursive: true });
 }
 
-// Memory storage for Cloudinary uploads
+// Memory storage for multer
 const storage = multer.memoryStorage();
 
 const allowedMimes = [
@@ -369,13 +390,9 @@ const allowedMimes = [
 ];
 
 const fileFilter = (req, file, cb) => {
-  console.log(`🔍 Checking file: ${file.originalname} (${file.mimetype})`);
-
   if (allowedMimes.includes(file.mimetype)) {
-    console.log(`✅ File type allowed: ${file.mimetype}`);
     cb(null, true);
   } else {
-    console.log(`❌ File type not allowed: ${file.mimetype}`);
     cb(new Error(`File type ${file.mimetype} not allowed`), false);
   }
 };
@@ -386,12 +403,12 @@ const upload = multer({
   limits: {
     fileSize: process.env.MAX_FILE_SIZE
       ? Number(process.env.MAX_FILE_SIZE)
-      : 150 * 1024 * 1024,
+      : 100 * 1024 * 1024,
   },
 });
 
 /**
- * Upload buffer to Cloudinary with proper resource type detection
+ * Upload buffer to Cloudinary
  */
 export const uploadToCloudinary = (
   buffer,
@@ -401,11 +418,18 @@ export const uploadToCloudinary = (
   options = {}
 ) => {
   return new Promise((resolve, reject) => {
-    if (!USE_CLOUDINARY) {
+    // Check if Cloudinary is properly configured
+    const isCloudinaryReady =
+      cloudinary.config().cloud_name &&
+      cloudinary.config().api_key &&
+      cloudinary.config().api_secret;
+
+    if (!isCloudinaryReady) {
+      console.log("📁 Cloudinary not ready, using local storage");
       // Fallback to local storage
       const timestamp = Date.now();
       const safeName = filename.replace(/[^a-zA-Z0-9-_.]/g, "_");
-      const ext = path.extname(filename) || (resourceType === "raw" ? ".pdf" : ".jpg");
+      const ext = path.extname(filename) || ".pdf";
       const localFilename = `${safeName}_${timestamp}${ext}`;
       const localPath = path.join(LOCAL_UPLOAD_DIR, localFilename);
 
@@ -415,20 +439,26 @@ export const uploadToCloudinary = (
         secure_url: `/Uploads/${localFilename}`,
         public_id: `local_${timestamp}`,
         resource_type: "raw",
+        local_path: localPath,
       });
     }
 
-    // CRITICAL FIX: Detect if it's a PDF and force raw upload
-    const isPdf = filename.toLowerCase().endsWith('.pdf') || 
-                  resourceType === "raw" || 
-                  folder.includes('/pdfs/') ||
-                  (options.resource_type && options.resource_type === "raw");
-    
-    const finalResourceType = isPdf ? "raw" : resourceType;
-    const finalFolder = isPdf ? "mathe-class/pdfs" : folder;
+    // Determine resource type based on filename and folder
+    let finalResourceType = resourceType;
+    let finalFolder = folder;
+
+    if (
+      filename.toLowerCase().endsWith(".pdf") ||
+      folder.includes("/pdfs/") ||
+      options.resource_type === "raw"
+    ) {
+      finalResourceType = "raw";
+      finalFolder = "mathe-class/pdfs";
+      console.log(`📄 PDF detected: ${filename}, using raw upload`);
+    }
 
     const uploadOptions = {
-      resource_type: finalResourceType,  // Use the CORRECT resource type
+      resource_type: finalResourceType,
       folder: finalFolder,
       timeout: 60000,
       use_filename: true,
@@ -436,14 +466,7 @@ export const uploadToCloudinary = (
       ...options,
     };
 
-    // Add specific flags for PDFs
-    if (isPdf) {
-      uploadOptions.format = 'pdf';
-      uploadOptions.flags = 'attachment';
-      console.log(`📄 PDF detected: ${filename}, forcing resource_type: 'raw'`);
-    }
-
-    console.log(`📤 Cloudinary upload options:`, uploadOptions);
+    console.log(`📤 Uploading to Cloudinary: ${filename}`);
 
     const uploadStream = cloudinary.uploader.upload_stream(
       uploadOptions,
@@ -453,23 +476,9 @@ export const uploadToCloudinary = (
           reject(error);
         } else {
           console.log(
-            `✅ Cloudinary upload successful: ${result.secure_url.substring(0, 100)}...`
+            `✅ Upload successful: ${result.secure_url.substring(0, 100)}...`
           );
           console.log(`📊 Resource type: ${result.resource_type}`);
-          
-          // DOUBLE CHECK: Ensure PDFs are raw uploads
-          if (isPdf && result.resource_type === 'image') {
-            console.warn(`⚠️ PDF uploaded as image! Fixing URL...`);
-            // Manually reconstruct the URL with raw/upload
-            const parts = result.secure_url.split('/image/upload/');
-            if (parts.length === 2) {
-              const fixedUrl = `https://res.cloudinary.com/${process.env.CLOUDINARY_CLOUD_NAME}/raw/upload/${parts[1]}`;
-              result.secure_url = fixedUrl;
-              result.resource_type = 'raw';
-              console.log(`🔧 Manually fixed URL to: ${fixedUrl.substring(0, 100)}...`);
-            }
-          }
-          
           resolve(result);
         }
       }
@@ -480,52 +489,7 @@ export const uploadToCloudinary = (
 };
 
 /**
- * Determine the correct Cloudinary resource type and folder
- */
-const getCloudinaryConfig = (mimetype, originalname) => {
-  mimetype = mimetype || "";
-  originalname = originalname || "";
-
-  // CRITICAL FIX: Force raw upload for ALL PDFs
-  if (mimetype === "application/pdf" || 
-      originalname.toLowerCase().endsWith(".pdf") ||
-      mimetype.includes("pdf") ||
-      originalname.match(/\.pdf(\?|$)/i)) {
-    console.log(`📄 PDF detected: ${originalname}, forcing resource_type: 'raw'`);
-    return { 
-      resourceType: "raw", 
-      folder: "mathe-class/pdfs",
-      transformation: { 
-        flags: "attachment", 
-        format: "pdf" 
-      }
-    };
-  }
-
-  // Images
-  if (mimetype.startsWith("image/")) {
-    return { resourceType: "image", folder: "mathe-class/images" };
-  }
-
-  // Videos
-  if (mimetype.startsWith("video/")) {
-    return { resourceType: "video", folder: "mathe-class/videos" };
-  }
-
-  // Office documents and other files
-  if (
-    mimetype.includes("document") ||
-    originalname.match(/\.(doc|docx|ppt|pptx|xls|xlsx|txt)$/i)
-  ) {
-    return { resourceType: "raw", folder: "mathe-class/documents" };
-  }
-
-  // Default
-  return { resourceType: "auto", folder: "mathe-class/files" };
-};
-
-/**
- * Process uploaded files and upload to Cloudinary or save locally
+ * Process uploaded files
  */
 export const processUploadedFiles = async (req) => {
   const result = {
@@ -542,29 +506,37 @@ export const processUploadedFiles = async (req) => {
 
   console.log(`📤 Processing ${Object.keys(req.files).length} file fields`);
 
-  // Process each file field
   for (const fieldName of Object.keys(req.files)) {
     const files = req.files[fieldName];
 
     for (const file of files) {
       try {
-        console.log(
-          `📄 Processing ${fieldName}: ${file.originalname} (${file.mimetype}, ${file.size} bytes)`
-        );
+        console.log(`📄 Processing ${fieldName}: ${file.originalname}`);
 
-        // Get Cloudinary configuration
-        const { resourceType, folder, transformation } = getCloudinaryConfig(
-          file.mimetype,
-          file.originalname
-        );
+        // Determine folder based on file type
+        let folder = "mathe-class/files";
+        let resourceType = "auto";
+
+        if (
+          file.mimetype === "application/pdf" ||
+          file.originalname.toLowerCase().endsWith(".pdf")
+        ) {
+          folder = "mathe-class/pdfs";
+          resourceType = "raw";
+        } else if (file.mimetype.startsWith("image/")) {
+          folder = "mathe-class/images";
+          resourceType = "image";
+        } else if (file.mimetype.startsWith("video/")) {
+          folder = "mathe-class/videos";
+          resourceType = "video";
+        }
 
         // Upload the file
         const uploadResult = await uploadToCloudinary(
           file.buffer,
           folder,
           resourceType,
-          file.originalname,
-          transformation ? { transformation } : {}
+          file.originalname
         );
 
         const fileInfo = {
@@ -580,7 +552,7 @@ export const processUploadedFiles = async (req) => {
 
         result.uploads.push(fileInfo);
 
-        // Map to result fields based on field name
+        // Map to result fields
         if (fieldName === "file" || fieldName === "pdf") {
           result.fileUrl = uploadResult.secure_url;
           console.log(`📄 Set fileUrl: ${uploadResult.secure_url}`);
@@ -595,54 +567,31 @@ export const processUploadedFiles = async (req) => {
           `❌ Failed to upload ${file.originalname}:`,
           error.message
         );
-        // Continue with other files
       }
     }
   }
-
-  console.log(`✅ Upload processing complete:`, {
-    fileUrl: result.fileUrl,
-    videoUrl: result.videoUrl,
-    attachmentsCount: result.attachments.length,
-  });
 
   req.processedUploads = result;
   return result;
 };
 
 /**
- * Fix Cloudinary URLs that were uploaded with wrong resource type
+ * Fix Cloudinary URLs
  */
 export const fixCloudinaryUrl = (url) => {
-  if (!url || typeof url !== 'string') return url;
-  
-  const originalUrl = url;
-  
-  // Fix Cloudinary URLs that are incorrectly typed
-  if (url.includes('cloudinary.com') && url.includes('/image/upload/')) {
+  if (!url || typeof url !== "string") return url;
+
+  if (url.includes("cloudinary.com") && url.includes("/image/upload/")) {
     // Fix PDFs
-    if (url.includes('.pdf') || url.includes('/mathe-class/pdfs/') || url.includes('/pdfs/')) {
-      console.log(`🔧 Fixing Cloudinary PDF URL: ${url.substring(0, 80)}...`);
-      url = url.replace('/image/upload/', '/raw/upload/');
+    if (url.includes(".pdf") || url.includes("/mathe-class/pdfs/")) {
+      return url.replace("/image/upload/", "/raw/upload/");
     }
-    
-    // Fix Office documents
-    else if (url.match(/\.(doc|docx|ppt|pptx|xls|xlsx)(\?|$)/i)) {
-      console.log(`🔧 Fixing Office document URL: ${url.substring(0, 80)}...`);
-      url = url.replace('/image/upload/', '/raw/upload/');
-    }
-    
-    // Fix video URLs
+    // Fix videos
     else if (url.match(/\.(mp4|mov|avi|webm|wmv)(\?|$)/i)) {
-      console.log(`🎥 Fixing Video URL: ${url.substring(0, 80)}...`);
-      url = url.replace('/image/upload/', '/video/upload/');
-    }
-    
-    if (originalUrl !== url) {
-      console.log(`✅ Fixed: ${originalUrl.substring(0, 80)}... -> ${url.substring(0, 80)}...`);
+      return url.replace("/image/upload/", "/video/upload/");
     }
   }
-  
+
   return url;
 };
 
@@ -659,12 +608,19 @@ export const uploadLessonFiles = upload.fields([
   { name: "attachments", maxCount: 10 },
 ]);
 
-// Add helper methods to the upload object for convenience
+// Export single upload
+export const singleUpload = upload.single("file");
+
+// Attach helpers to upload object
 upload.processUploadedFiles = processUploadedFiles;
 upload.uploadToCloudinary = uploadToCloudinary;
 upload.fixCloudinaryUrl = fixCloudinaryUrl;
-upload.USE_CLOUDINARY = USE_CLOUDINARY;
-
-export const singleUpload = upload.single("file");
+upload.isCloudinaryConfigured = () => {
+  return !!(
+    cloudinary.config().cloud_name &&
+    cloudinary.config().api_key &&
+    cloudinary.config().api_secret
+  );
+};
 
 export default upload;
