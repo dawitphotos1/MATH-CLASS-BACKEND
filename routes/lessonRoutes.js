@@ -169,6 +169,9 @@ router.get("/debug/file", (req, res) => {
 // 🔥 NEW: Debug endpoint to test file access
 router.get("/debug/test-file", lessonController.testFileAccess);
 
+// In routes/lessonRoutes.js, add this route:
+router.get("/debug/fix-all-cloudinary", lessonController.fixAllCloudinaryUrls);
+
 // 🔥 NEW: Debug endpoint to check and fix a specific lesson
 router.get("/debug/fix/:lessonId", async (req, res) => {
   try {
