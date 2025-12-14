@@ -445,7 +445,6 @@
 
 
 
-
 // routes/files.js
 import express from "express";
 import path from "path";
@@ -469,6 +468,58 @@ const UPLOADS_DIR = path.join(process.cwd(), "Uploads");
 if (!fsSync.existsSync(UPLOADS_DIR)) {
   fsSync.mkdirSync(UPLOADS_DIR, { recursive: true });
 }
+
+/* ---------------------------------------------------------------
+   DEBUG ALL ENVIRONMENT VARIABLES
+---------------------------------------------------------------- */
+router.get("/debug-all-env", (req, res) => {
+  // Get all environment variables
+  const allEnvVars = {};
+  
+  // List all variables we care about
+  const importantVars = [
+    'NODE_ENV',
+    'PORT',
+    'DATABASE_URL',
+    'JWT_SECRET',
+    'STRIPE_SECRET_KEY',
+    'MAIL_USER',
+    'MAIL_PASS',
+    'FRONTEND_URL',
+    'BACKEND_URL',
+    'USE_CLOUDINARY',
+    'CLOUDINARY_CLOUD_NAME',
+    'CLOUDINARY_API_KEY',
+    'CLOUDINARY_API_SECRET'
+  ];
+  
+  // Add important variables
+  importantVars.forEach(varName => {
+    if (process.env[varName]) {
+      allEnvVars[varName] = process.env[varName].includes('SECRET') || 
+                           process.env[varName].includes('KEY') || 
+                           process.env[varName].includes('PASS') 
+                           ? "***SET***" 
+                           : process.env[varName];
+    } else {
+      allEnvVars[varName] = "NOT SET";
+    }
+  });
+  
+  // Also show total count
+  const totalVars = Object.keys(process.env).length;
+  
+  res.json({
+    success: true,
+    message: "Environment Variables Debug",
+    total_variables: totalVars,
+    important_variables: allEnvVars,
+    timestamp: new Date().toISOString(),
+    platform: process.platform,
+    node_version: process.version,
+    middleware_cloudinary_enabled: upload.IS_CLOUDINARY_ENABLED || false
+  });
+});
 
 /* ---------------------------------------------------------------
    CLOUDINARY CONFIGURATION TEST
@@ -513,7 +564,7 @@ router.get("/cloudinary-test", async (req, res) => {
       cloudinary: {
         status: cloudinaryStatus,
         ping: cloudinaryPing,
-        middleware: upload.USE_CLOUDINARY ? "ENABLED" : "DISABLED",
+        middleware: upload.IS_CLOUDINARY_ENABLED ? "ENABLED ✅" : "DISABLED ❌",
       },
       uploads: {
         directory: UPLOADS_DIR,
@@ -529,6 +580,91 @@ router.get("/cloudinary-test", async (req, res) => {
       success: false,
       error: error.message,
       stack: process.env.NODE_ENV === "development" ? error.stack : undefined,
+    });
+  }
+});
+
+/* ---------------------------------------------------------------
+   TEST DIRECT CLOUDINARY UPLOAD
+---------------------------------------------------------------- */
+router.get("/test-direct-upload", async (req, res) => {
+  try {
+    console.log("🧪 Testing direct Cloudinary upload...");
+    
+    // Create a simple test PDF
+    const testPdf = Buffer.from(`%PDF-1.4
+1 0 obj
+<<
+/Type /Catalog
+/Pages 2 0 R
+>>
+endobj
+2 0 obj
+<<
+/Type /Pages
+/Kids [3 0 R]
+/Count 1
+>>
+endobj
+3 0 obj
+<<
+/Type /Page
+/Parent 2 0 R
+/MediaBox [0 0 612 792]
+>>
+endobj
+xref
+0 4
+0000000000 65535 f
+0000000010 00000 n
+0000000060 00000 n
+0000000110 00000 n
+trailer
+<<
+/Size 4
+/Root 1 0 R
+>>
+startxref
+150
+%%EOF`);
+    
+    // Upload directly using cloudinary SDK
+    const result = await new Promise((resolve, reject) => {
+      const uploadStream = cloudinary.uploader.upload_stream(
+        {
+          resource_type: "raw",
+          folder: "mathe-class/test",
+          public_id: `test_${Date.now()}`,
+        },
+        (error, result) => {
+          if (error) reject(error);
+          else resolve(result);
+        }
+      );
+      
+      uploadStream.end(testPdf);
+    });
+    
+    res.json({
+      success: true,
+      message: "Direct Cloudinary upload successful!",
+      url: result.secure_url,
+      resource_type: result.resource_type,
+      uses_raw_upload: result.secure_url.includes('/raw/upload/'),
+      file_url: result.secure_url,
+      public_id: result.public_id
+    });
+    
+  } catch (error) {
+    console.error("❌ Direct upload test failed:", error);
+    res.status(500).json({
+      success: false,
+      error: error.message,
+      cloudinary_config: {
+        cloud_name: cloudinary.config().cloud_name,
+        api_key: cloudinary.config().api_key ? "SET" : "NOT SET",
+        api_secret: cloudinary.config().api_secret ? "SET" : "NOT SET",
+      }
     });
   }
 });
@@ -685,6 +821,9 @@ router.get("/debug/env", (req, res) => {
     uploads_dir: UPLOADS_DIR,
     max_file_size: process.env.MAX_FILE_SIZE,
     message: "Environment variables check",
+    middleware_status: {
+      IS_CLOUDINARY_ENABLED: upload.IS_CLOUDINARY_ENABLED || false
+    }
   });
 });
 
@@ -736,8 +875,8 @@ router.post("/test-upload", upload.single("file"), async (req, res) => {
       },
       uploadResult: result,
       urlTest,
-      storage: upload.USE_CLOUDINARY ? "Cloudinary ☁️" : "Local 📁",
-      cloudinary: upload.USE_CLOUDINARY
+      storage: upload.IS_CLOUDINARY_ENABLED ? "Cloudinary ☁️" : "Local 📁",
+      cloudinary: upload.IS_CLOUDINARY_ENABLED
         ? {
             cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
             folder: result.uploads?.[0]?.folder || "unknown",
@@ -820,7 +959,7 @@ router.get("/debug/list", async (req, res) => {
       },
       environment: {
         node_env: process.env.NODE_ENV,
-        cloudinary_enabled: upload.USE_CLOUDINARY,
+        cloudinary_enabled: upload.IS_CLOUDINARY_ENABLED || false,
         backend_url: process.env.BACKEND_URL,
       },
     });
