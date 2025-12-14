@@ -332,6 +332,9 @@ console.log("CLOUDINARY_API_KEY:", process.env.CLOUDINARY_API_KEY ? "SET" : "NOT
 console.log("CLOUDINARY_API_SECRET:", process.env.CLOUDINARY_API_SECRET ? "SET" : "NOT SET");
 
 // Fix any spaces in the values
+// In middleware/cloudinaryUpload.js, fix this:
+
+// Fix any spaces in the values
 const USE_CLOUDINARY = process.env.USE_CLOUDINARY ? 
                       process.env.USE_CLOUDINARY.trim() === "true" : 
                       false;
@@ -365,13 +368,13 @@ console.log("CLOUDINARY_CLOUD_NAME:", CLOUDINARY_CLOUD_NAME);
 console.log("CLOUDINARY_API_KEY:", CLOUDINARY_API_KEY ? "SET" : "NOT SET");
 console.log("CLOUDINARY_API_SECRET:", CLOUDINARY_API_SECRET ? "SET" : "NOT SET");
 
-// Configure Cloudinary if all credentials are present
+// FIX: Use !! to convert to boolean
 const IS_CLOUDINARY_ENABLED = USE_CLOUDINARY && 
-                             CLOUDINARY_CLOUD_NAME && 
-                             CLOUDINARY_API_KEY && 
-                             CLOUDINARY_API_SECRET;
+                             !!CLOUDINARY_CLOUD_NAME && 
+                             !!CLOUDINARY_API_KEY && 
+                             !!CLOUDINARY_API_SECRET;
 
-console.log("☁️ IS_CLOUDINARY_ENABLED:", IS_CLOUDINARY_ENABLED);
+console.log("☁️ IS_CLOUDINARY_ENABLED:", IS_CLOUDINARY_ENABLED);  // Should be true/false
 
 if (IS_CLOUDINARY_ENABLED) {
   try {
