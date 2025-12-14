@@ -1,4 +1,4 @@
-
+//migrations/20251020102015-add-file_url-to-lessons.cjs
 "use strict";
 
 module.exports = {
