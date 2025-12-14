@@ -44,7 +44,6 @@
 
 
 
-
 // routes/lessonRoutes.js
 import express from "express";
 import lessonController from "../controllers/lessonController.js";
@@ -150,6 +149,26 @@ router.get("/unit/:unitId/all", lessonController.getLessonsByUnit);
 // Delete lesson
 router.delete("/:lessonId", lessonController.deleteLesson);
 
+// Debug endpoints
+router.get("/debug/:lessonId/file", (req, res) => {
+  res.json({
+    success: true,
+    message: "Debug endpoint",
+    lessonId: req.params.lessonId,
+  });
+});
+
+router.get("/debug/file", (req, res) => {
+  res.json({
+    success: true,
+    message: "File debug endpoint",
+    query: req.query,
+  });
+});
+
+// 🔥 NEW: Debug endpoint to test file access
+router.get("/debug/test-file", lessonController.testFileAccess);
+
 // 🔥 NEW: Debug endpoint to check and fix a specific lesson
 router.get("/debug/fix/:lessonId", async (req, res) => {
   try {
@@ -215,23 +234,6 @@ router.get("/debug/fix/:lessonId", async (req, res) => {
     console.error("Debug error:", error);
     res.status(500).json({ success: false, error: error.message });
   }
-});
-
-// Debug endpoints
-router.get("/debug/:lessonId/file", (req, res) => {
-  res.json({
-    success: true,
-    message: "Debug endpoint",
-    lessonId: req.params.lessonId,
-  });
-});
-
-router.get("/debug/file", (req, res) => {
-  res.json({
-    success: true,
-    message: "File debug endpoint",
-    query: req.query,
-  });
 });
 
 // Simple test upload endpoint

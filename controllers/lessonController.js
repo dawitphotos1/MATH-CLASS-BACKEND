@@ -475,7 +475,6 @@
 
 
 
-
 // controllers/lessonController.js
 
 import db from "../models/index.js";
@@ -983,6 +982,46 @@ export const fixLessonFileUrl = async (req, res) => {
 };
 
 /* -------------------------
+   DEBUG - TEST FILE ACCESS
+------------------------- */
+export const testFileAccess = async (req, res) => {
+  try {
+    const { url } = req.query;
+    
+    if (!url) {
+      return res.status(400).json({
+        success: false,
+        error: "URL parameter required",
+      });
+    }
+    
+    console.log(`🔍 Testing file access: ${url}`);
+    
+    // Try to fetch the file
+    const response = await fetch(url, { method: 'HEAD' });
+    
+    res.json({
+      success: response.ok,
+      url,
+      status: response.status,
+      statusText: response.statusText,
+      headers: {
+        'content-type': response.headers.get('content-type'),
+        'content-length': response.headers.get('content-length'),
+      },
+    });
+    
+  } catch (error) {
+    console.error("Test file access error:", error);
+    res.status(500).json({
+      success: false,
+      error: error.message,
+      url: req.query.url,
+    });
+  }
+};
+
+/* -------------------------
    EXPORT (DEFAULT)
 ------------------------- */
 
@@ -998,4 +1037,5 @@ export default {
   getPublicPreviewByLessonId,
   debugLessonFile,
   fixLessonFileUrl,
+  testFileAccess,
 };
