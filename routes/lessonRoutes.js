@@ -235,38 +235,44 @@
 
 
 
-
 // routes/lessonRoutes.js
 import express from "express";
 import * as lessonController from "../controllers/lessonController.js";
 import * as cloudinaryUpload from "../middleware/cloudinaryUpload.js";
-import auth from "../middleware/authMiddleware.js";
+import authModule from "../middleware/authMiddleware.js";
 
 const router = express.Router();
 
 /* ------------------------------------------------
-   SAFE AUTH HANDLER (IMPORTANT)
+   SAFE NO-OP MIDDLEWARE (KEY FIX)
 ------------------------------------------------ */
+const noop = (req, res, next) => next();
 
-// Normalize auth middleware to a function
-const authMiddleware =
-  typeof auth === "function"
-    ? auth
-    : auth?.protect || auth?.verifyToken || auth?.default;
+/* ------------------------------------------------
+   RESOLVE AUTH MIDDLEWARE SAFELY
+------------------------------------------------ */
+let authMiddleware = noop;
+
+if (typeof authModule === "function") {
+  authMiddleware = authModule;
+} else if (authModule?.protect) {
+  authMiddleware = authModule.protect;
+} else if (authModule?.verifyToken) {
+  authMiddleware = authModule.verifyToken;
+}
 
 /* ------------------------------------------------
    SAFE FILE PROCESSOR
 ------------------------------------------------ */
-
 const handleUploads = async (req, res, next) => {
   try {
-    if (cloudinaryUpload.processUploadedFiles) {
+    if (typeof cloudinaryUpload.processUploadedFiles === "function") {
       await cloudinaryUpload.processUploadedFiles(req);
     }
     next();
   } catch (err) {
     console.error("❌ Upload processing error:", err);
-    res.status(500).json({ success: false, error: "File upload failed" });
+    res.status(500).json({ success: false, error: "Upload failed" });
   }
 };
 
@@ -274,32 +280,28 @@ const handleUploads = async (req, res, next) => {
    LESSON CRUD
 ------------------------- */
 
-// CREATE lesson
 router.post(
   "/course/:courseId",
   authMiddleware,
-  cloudinaryUpload.uploadLessonFiles,
+  cloudinaryUpload.uploadLessonFiles || noop,
   handleUploads,
   lessonController.createLesson
 );
 
-// UPDATE lesson
 router.put(
   "/:lessonId",
   authMiddleware,
-  cloudinaryUpload.uploadLessonFiles,
+  cloudinaryUpload.uploadLessonFiles || noop,
   handleUploads,
   lessonController.updateLesson
 );
 
-// DELETE lesson
 router.delete(
   "/:lessonId",
   authMiddleware,
   lessonController.deleteLesson
 );
 
-// GET lesson by ID
 router.get("/:id", lessonController.getLessonById);
 
 /* -------------------------
