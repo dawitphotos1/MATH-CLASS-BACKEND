@@ -343,10 +343,9 @@
 
 
 
-
 // middleware/cloudinaryUpload.js
-import { v2 as cloudinary } from "cloudinary";
 import multer from "multer";
+import { v2 as cloudinary } from "cloudinary";
 import streamifier from "streamifier";
 
 /* -------------------------
@@ -356,109 +355,115 @@ cloudinary.config({
   cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
   api_key: process.env.CLOUDINARY_API_KEY,
   api_secret: process.env.CLOUDINARY_API_SECRET,
+  secure: true,
 });
 
 /* -------------------------
-   Multer (memory storage)
+   Multer (Memory Storage)
 ------------------------- */
 const storage = multer.memoryStorage();
 
-export const upload = multer({
+const upload = multer({
   storage,
   limits: {
-    fileSize: 50 * 1024 * 1024, // 50MB
+    fileSize: 100 * 1024 * 1024, // 100MB
   },
 });
 
 /* -------------------------
-   Upload Helpers
+   CORE UPLOAD FUNCTION
+   (USED BY MANY CONTROLLERS)
 ------------------------- */
-
-// Upload ANY file (PDF, DOCX, etc.) as RAW
-export const uploadFileToCloudinary = (file, folder = "math-class/files") => {
+export const uploadToCloudinary = (
+  buffer,
+  folder = "math-class/files",
+  resourceType = "raw",
+  filename = "file"
+) => {
   return new Promise((resolve, reject) => {
     const uploadStream = cloudinary.uploader.upload_stream(
       {
-        resource_type: "raw",
+        resource_type: resourceType,
         folder,
         use_filename: true,
         unique_filename: true,
       },
       (error, result) => {
         if (error) {
-          console.error("❌ Cloudinary RAW upload error:", error);
+          console.error("❌ Cloudinary upload error:", error);
           return reject(error);
         }
-        resolve(result.secure_url);
+        resolve(result);
       }
     );
 
-    streamifier.createReadStream(file.buffer).pipe(uploadStream);
-  });
-};
-
-// Upload videos
-export const uploadVideoToCloudinary = (file, folder = "math-class/videos") => {
-  return new Promise((resolve, reject) => {
-    const uploadStream = cloudinary.uploader.upload_stream(
-      {
-        resource_type: "video",
-        folder,
-        use_filename: true,
-        unique_filename: true,
-      },
-      (error, result) => {
-        if (error) {
-          console.error("❌ Cloudinary VIDEO upload error:", error);
-          return reject(error);
-        }
-        resolve(result.secure_url);
-      }
-    );
-
-    streamifier.createReadStream(file.buffer).pipe(uploadStream);
+    streamifier.createReadStream(buffer).pipe(uploadStream);
   });
 };
 
 /* -------------------------
-   MAIN MIDDLEWARE
+   PROCESS UPLOADED FILES
 ------------------------- */
-export const cloudinaryUploadMiddleware = async (req, res, next) => {
-  try {
-    req.processedUploads = {};
+export const processUploadedFiles = async (req) => {
+  const result = {
+    fileUrl: null,
+    videoUrl: null,
+    uploads: [],
+  };
 
-    if (req.files?.file?.[0]) {
-      req.processedUploads.fileUrl = await uploadFileToCloudinary(
-        req.files.file[0]
-      );
-    }
-
-    if (req.files?.video?.[0]) {
-      req.processedUploads.videoUrl = await uploadVideoToCloudinary(
-        req.files.video[0]
-      );
-    }
-
-    next();
-  } catch (err) {
-    console.error("❌ Cloudinary middleware error:", err);
-    res.status(500).json({
-      success: false,
-      error: "File upload failed",
-    });
+  if (!req.files) {
+    req.processedUploads = result;
+    return result;
   }
+
+  for (const fieldName of Object.keys(req.files)) {
+    for (const file of req.files[fieldName]) {
+      let resourceType = "raw";
+      let folder = "math-class/files";
+
+      if (file.mimetype.startsWith("video/")) {
+        resourceType = "video";
+        folder = "math-class/videos";
+      }
+
+      if (file.mimetype === "application/pdf") {
+        resourceType = "raw";
+        folder = "math-class/pdfs";
+      }
+
+      const uploaded = await uploadToCloudinary(
+        file.buffer,
+        folder,
+        resourceType,
+        file.originalname
+      );
+
+      if (fieldName === "file" || fieldName === "pdf") {
+        result.fileUrl = uploaded.secure_url;
+      }
+
+      if (fieldName === "video") {
+        result.videoUrl = uploaded.secure_url;
+      }
+
+      result.uploads.push(uploaded);
+    }
+  }
+
+  req.processedUploads = result;
+  return result;
 };
 
 /* -------------------------
-   URL FIXER (IMPORTANT)
+   CLOUDINARY URL FIXER
 ------------------------- */
 export const fixCloudinaryUrl = (url) => {
   if (!url || typeof url !== "string") return url;
 
-  // PDFs MUST use raw/upload
+  // PDFs must be served as RAW
   if (
     url.includes("cloudinary.com") &&
-    url.endsWith(".pdf") &&
+    url.includes(".pdf") &&
     url.includes("/image/upload/")
   ) {
     return url.replace("/image/upload/", "/raw/upload/");
@@ -468,12 +473,31 @@ export const fixCloudinaryUrl = (url) => {
 };
 
 /* -------------------------
-   EXPORT DEFAULT (OPTIONAL)
+   MULTER FIELD CONFIGS
+------------------------- */
+export const uploadLessonFiles = upload.fields([
+  { name: "video", maxCount: 1 },
+  { name: "file", maxCount: 1 },
+  { name: "pdf", maxCount: 1 },
+  { name: "attachments", maxCount: 10 },
+]);
+
+export const uploadCourseFiles = upload.fields([
+  { name: "thumbnail", maxCount: 1 },
+  { name: "attachments", maxCount: 10 },
+]);
+
+export const singleUpload = upload.single("file");
+
+/* -------------------------
+   DEFAULT EXPORT
 ------------------------- */
 export default {
   upload,
-  cloudinaryUploadMiddleware,
-  uploadFileToCloudinary,
-  uploadVideoToCloudinary,
+  uploadToCloudinary,
+  processUploadedFiles,
   fixCloudinaryUrl,
+  uploadLessonFiles,
+  uploadCourseFiles,
+  singleUpload,
 };
