@@ -711,7 +711,6 @@
 
 
 
-
 // controllers/lessonController.js
 import db from "../models/index.js";
 import { fixCloudinaryUrl } from "../middleware/cloudinaryUpload.js";
@@ -719,8 +718,9 @@ import { fixCloudinaryUrl } from "../middleware/cloudinaryUpload.js";
 const { Lesson, Course, Sequelize } = db;
 
 /* -------------------------
-   Helpers
+   HELPERS
 ------------------------- */
+
 const getBackendUrl = () => {
   if (process.env.BACKEND_URL)
     return process.env.BACKEND_URL.replace(/\/$/, "");
@@ -734,7 +734,7 @@ const ensureRawUploadForPdf = (url) => {
 
   if (
     url.includes("cloudinary.com") &&
-    url.endsWith(".pdf") &&
+    url.includes(".pdf") &&
     url.includes("/image/upload/")
   ) {
     return url.replace("/image/upload/", "/raw/upload/");
@@ -750,7 +750,7 @@ export const buildFileUrls = (lesson) => {
   const normalize = (url) => {
     if (!url) return null;
 
-    url = fixCloudinaryUrl(ensureRawUploadForPdf(url));
+    url = fixCloudinaryUrl(url);
 
     if (url.startsWith("http")) return url;
 
@@ -776,97 +776,68 @@ export const buildFileUrls = (lesson) => {
 };
 
 /* -------------------------
-   CRUD — LESSON
+   CRUD
 ------------------------- */
 
 export const getLessonById = async (req, res) => {
-  try {
-    const lesson = await Lesson.findByPk(req.params.id);
-    if (!lesson)
-      return res.status(404).json({ success: false, error: "Lesson not found" });
+  const lesson = await Lesson.findByPk(req.params.id);
+  if (!lesson)
+    return res.status(404).json({ success: false, error: "Lesson not found" });
 
-    res.json({ success: true, lesson: buildFileUrls(lesson) });
-  } catch (err) {
-    console.error("❌ Get lesson error:", err);
-    res.status(500).json({ success: false, error: "Failed to load lesson" });
-  }
+  res.json({ success: true, lesson: buildFileUrls(lesson) });
 };
 
 export const createLesson = async (req, res) => {
-  try {
-    const uploads = req.processedUploads || {};
+  const uploads = req.processedUploads || {};
 
-    const fileUrl = uploads.fileUrl
-      ? fixCloudinaryUrl(ensureRawUploadForPdf(uploads.fileUrl))
-      : null;
+  let fileUrl = uploads.fileUrl
+    ? fixCloudinaryUrl(ensureRawUploadForPdf(uploads.fileUrl))
+    : null;
 
-    const lesson = await Lesson.create({
-      ...req.body,
-      course_id: req.params.courseId,
-      file_url: fileUrl,
-      video_url: uploads.videoUrl || null,
-    });
+  const lesson = await Lesson.create({
+    ...req.body,
+    course_id: req.params.courseId,
+    file_url: fileUrl,
+    video_url: uploads.videoUrl || null,
+  });
 
-    res.status(201).json({
-      success: true,
-      lesson: buildFileUrls(lesson),
-    });
-  } catch (err) {
-    console.error("❌ Create lesson error:", err);
-    res.status(500).json({ success: false, error: "Failed to create lesson" });
-  }
+  res.status(201).json({
+    success: true,
+    lesson: buildFileUrls(lesson),
+  });
 };
 
 export const updateLesson = async (req, res) => {
-  try {
-    const lesson = await Lesson.findByPk(req.params.lessonId);
-    if (!lesson)
-      return res.status(404).json({ success: false, error: "Lesson not found" });
+  const lesson = await Lesson.findByPk(req.params.lessonId);
+  if (!lesson)
+    return res.status(404).json({ success: false, error: "Lesson not found" });
 
-    const uploads = req.processedUploads || {};
+  const uploads = req.processedUploads || {};
+  const updateData = { ...req.body };
 
-    const updateData = {
-      title: req.body.title ?? lesson.title,
-      content: req.body.content ?? lesson.content,
-      content_type: req.body.content_type ?? lesson.content_type,
-      is_preview: req.body.is_preview ?? lesson.is_preview,
-      order_index: req.body.order_index ?? lesson.order_index,
-    };
+  if (uploads.fileUrl)
+    updateData.file_url = fixCloudinaryUrl(
+      ensureRawUploadForPdf(uploads.fileUrl)
+    );
 
-    if (uploads.fileUrl) {
-      updateData.file_url = fixCloudinaryUrl(
-        ensureRawUploadForPdf(uploads.fileUrl)
-      );
-    }
+  if (uploads.videoUrl)
+    updateData.video_url = uploads.videoUrl;
 
-    if (uploads.videoUrl) {
-      updateData.video_url = uploads.videoUrl;
-    }
+  await lesson.update(updateData);
 
-    await lesson.update(updateData);
-
-    res.json({
-      success: true,
-      lesson: buildFileUrls(lesson),
-    });
-  } catch (err) {
-    console.error("❌ Update lesson error:", err);
-    res.status(500).json({ success: false, error: "Failed to update lesson" });
-  }
+  res.json({
+    success: true,
+    lesson: buildFileUrls(lesson),
+  });
 };
 
 export const deleteLesson = async (req, res) => {
-  try {
-    const lesson = await Lesson.findByPk(req.params.lessonId);
-    if (!lesson)
-      return res.status(404).json({ success: false, error: "Lesson not found" });
+  const lesson = await Lesson.findByPk(req.params.lessonId);
+  if (!lesson)
+    return res.status(404).json({ success: false, error: "Lesson not found" });
 
-    await lesson.destroy();
-    res.json({ success: true });
-  } catch (err) {
-    console.error("❌ Delete lesson error:", err);
-    res.status(500).json({ success: false, error: "Failed to delete lesson" });
-  }
+  await lesson.destroy();
+  res.json({ success: true });
 };
 
 /* -------------------------
@@ -874,40 +845,27 @@ export const deleteLesson = async (req, res) => {
 ------------------------- */
 
 export const getLessonsByUnit = async (req, res) => {
-  try {
-    const lessons = await Lesson.findAll({
-      where: { unit_id: req.params.unitId },
-      order: [["order_index", "ASC"]],
-    });
+  const lessons = await Lesson.findAll({
+    where: { unit_id: req.params.unitId },
+    order: [["order_index", "ASC"]],
+  });
 
-    res.json({
-      success: true,
-      lessons: lessons.map(buildFileUrls),
-    });
-  } catch (err) {
-    console.error("❌ Get lessons by unit error:", err);
-    res.status(500).json({ success: false });
-  }
+  res.json({
+    success: true,
+    lessons: lessons.map(buildFileUrls),
+  });
 };
 
 export const getLessonsByCourse = async (req, res) => {
-  try {
-    const lessons = await Lesson.findAll({
-      where: { course_id: req.params.courseId },
-      order: [
-        ["unit_id", "ASC"],
-        ["order_index", "ASC"],
-      ],
-    });
+  const lessons = await Lesson.findAll({
+    where: { course_id: req.params.courseId },
+    order: [["order_index", "ASC"]],
+  });
 
-    res.json({
-      success: true,
-      lessons: lessons.map(buildFileUrls),
-    });
-  } catch (err) {
-    console.error("❌ Get lessons by course error:", err);
-    res.status(500).json({ success: false });
-  }
+  res.json({
+    success: true,
+    lessons: lessons.map(buildFileUrls),
+  });
 };
 
 /* -------------------------
@@ -915,57 +873,89 @@ export const getLessonsByCourse = async (req, res) => {
 ------------------------- */
 
 export const getPreviewLessonForCourse = async (req, res) => {
-  try {
-    const lesson =
-      (await Lesson.findOne({
-        where: { course_id: req.params.courseId, is_preview: true },
-        order: [["order_index", "ASC"]],
-      })) ||
-      (await Lesson.findOne({
-        where: { course_id: req.params.courseId },
-        order: [["order_index", "ASC"]],
-      }));
+  const lesson =
+    (await Lesson.findOne({
+      where: { course_id: req.params.courseId, is_preview: true },
+      order: [["order_index", "ASC"]],
+    })) ||
+    (await Lesson.findOne({
+      where: { course_id: req.params.courseId },
+      order: [["order_index", "ASC"]],
+    }));
 
-    if (!lesson)
-      return res.status(404).json({ success: false, error: "No lessons found" });
+  if (!lesson)
+    return res.status(404).json({ success: false, error: "No lessons found" });
 
-    const course = await Course.findByPk(req.params.courseId);
+  const course = await Course.findByPk(req.params.courseId);
 
-    res.json({
-      success: true,
-      lesson: buildFileUrls(lesson),
-      course,
-    });
-  } catch (err) {
-    console.error("❌ Preview lesson error:", err);
-    res.status(500).json({ success: false });
-  }
+  res.json({
+    success: true,
+    lesson: buildFileUrls(lesson),
+    course,
+  });
 };
 
 export const getPublicPreviewByLessonId = async (req, res) => {
-  try {
-    const lesson = await Lesson.findByPk(req.params.lessonId);
-    if (!lesson)
-      return res.status(404).json({ success: false, error: "Lesson not found" });
+  const lesson = await Lesson.findByPk(req.params.lessonId);
+  if (!lesson)
+    return res.status(404).json({ success: false, error: "Lesson not found" });
 
-    if (!lesson.is_preview && !req.user)
-      return res.status(403).json({ success: false });
-
-    const course = await Course.findByPk(lesson.course_id);
-
-    res.json({
-      success: true,
-      lesson: buildFileUrls(lesson),
-      course,
-    });
-  } catch (err) {
-    console.error("❌ Public preview error:", err);
-    res.status(500).json({ success: false });
-  }
+  res.json({
+    success: true,
+    lesson: buildFileUrls(lesson),
+  });
 };
 
 /* -------------------------
-   EXPORT
+   DEBUG / FIX (REQUIRED BY ROUTES)
+------------------------- */
+
+export const debugLessonFile = async (req, res) => {
+  const lesson = req.query.lessonId
+    ? await Lesson.findByPk(req.query.lessonId)
+    : null;
+
+  res.json({
+    success: true,
+    lesson: lesson ? buildFileUrls(lesson) : null,
+  });
+};
+
+export const fixLessonFileUrl = async (req, res) => {
+  const lesson = await Lesson.findByPk(req.params.lessonId);
+  if (!lesson)
+    return res.status(404).json({ success: false, error: "Lesson not found" });
+
+  const fixed = fixCloudinaryUrl(ensureRawUploadForPdf(lesson.file_url));
+  await lesson.update({ file_url: fixed });
+
+  res.json({ success: true, fixed });
+};
+
+export const fixAllCloudinaryUrls = async (req, res) => {
+  const lessons = await Lesson.findAll({
+    where: { file_url: { [Sequelize.Op.like]: "%cloudinary.com%" } },
+  });
+
+  let count = 0;
+
+  for (const lesson of lessons) {
+    const fixed = fixCloudinaryUrl(ensureRawUploadForPdf(lesson.file_url));
+    if (fixed !== lesson.file_url) {
+      await lesson.update({ file_url: fixed });
+      count++;
+    }
+  }
+
+  res.json({ success: true, fixedCount: count });
+};
+
+export const testFileAccess = async (req, res) => {
+  res.json({ success: true, url: req.query.url });
+};
+
+/* -------------------------
+   DEFAULT EXPORT (OPTIONAL)
 ------------------------- */
 export default {
   buildFileUrls,
@@ -977,4 +967,8 @@ export default {
   getLessonsByCourse,
   getPreviewLessonForCourse,
   getPublicPreviewByLessonId,
+  debugLessonFile,
+  fixLessonFileUrl,
+  fixAllCloudinaryUrls,
+  testFileAccess,
 };
