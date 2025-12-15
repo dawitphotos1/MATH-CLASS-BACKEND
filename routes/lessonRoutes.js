@@ -236,103 +236,111 @@
 
 
 
-
-
 // routes/lessonRoutes.js
 import express from "express";
-import {
-  getLessonById,
-  createLesson,
-  updateLesson,
-  deleteLesson,
-  getLessonsByUnit,
-  getLessonsByCourse,
-  getPreviewLessonForCourse,
-  getPublicPreviewByLessonId,
-  debugLessonFile,
-  fixLessonFileUrl,
-  testFileAccess,
-  fixAllCloudinaryUrls,
-} from "../controllers/lessonController.js";
-
-import {
-  uploadLessonFiles,
-  processUploadedFiles,
-} from "../middleware/cloudinaryUpload.js";
-
-import authMiddleware from "../middleware/authMiddleware.js";
+import * as lessonController from "../controllers/lessonController.js";
+import * as cloudinaryUpload from "../middleware/cloudinaryUpload.js";
+import auth from "../middleware/authMiddleware.js";
 
 const router = express.Router();
+
+/* ------------------------------------------------
+   SAFE AUTH HANDLER (IMPORTANT)
+------------------------------------------------ */
+
+// Normalize auth middleware to a function
+const authMiddleware =
+  typeof auth === "function"
+    ? auth
+    : auth?.protect || auth?.verifyToken || auth?.default;
+
+/* ------------------------------------------------
+   SAFE FILE PROCESSOR
+------------------------------------------------ */
+
+const handleUploads = async (req, res, next) => {
+  try {
+    if (cloudinaryUpload.processUploadedFiles) {
+      await cloudinaryUpload.processUploadedFiles(req);
+    }
+    next();
+  } catch (err) {
+    console.error("❌ Upload processing error:", err);
+    res.status(500).json({ success: false, error: "File upload failed" });
+  }
+};
 
 /* -------------------------
    LESSON CRUD
 ------------------------- */
 
-// Create lesson
+// CREATE lesson
 router.post(
   "/course/:courseId",
   authMiddleware,
-  uploadLessonFiles,
-  async (req, res, next) => {
-    await processUploadedFiles(req);
-    next();
-  },
-  createLesson
+  cloudinaryUpload.uploadLessonFiles,
+  handleUploads,
+  lessonController.createLesson
 );
 
-// Update lesson
+// UPDATE lesson
 router.put(
   "/:lessonId",
   authMiddleware,
-  uploadLessonFiles,
-  async (req, res, next) => {
-    await processUploadedFiles(req);
-    next();
-  },
-  updateLesson
+  cloudinaryUpload.uploadLessonFiles,
+  handleUploads,
+  lessonController.updateLesson
 );
 
-// Delete lesson
-router.delete("/:lessonId", authMiddleware, deleteLesson);
+// DELETE lesson
+router.delete(
+  "/:lessonId",
+  authMiddleware,
+  lessonController.deleteLesson
+);
 
-// Get lesson by ID
-router.get("/:id", getLessonById);
+// GET lesson by ID
+router.get("/:id", lessonController.getLessonById);
 
 /* -------------------------
    LISTING
 ------------------------- */
 
-// Lessons by unit
-router.get("/unit/:unitId", getLessonsByUnit);
-
-// Lessons by course
-router.get("/course/:courseId", getLessonsByCourse);
+router.get("/unit/:unitId", lessonController.getLessonsByUnit);
+router.get("/course/:courseId", lessonController.getLessonsByCourse);
 
 /* -------------------------
    PREVIEW
 ------------------------- */
 
-// Course preview (Free Preview button)
-router.get("/course/:courseId/preview", getPreviewLessonForCourse);
+router.get(
+  "/course/:courseId/preview",
+  lessonController.getPreviewLessonForCourse
+);
 
-// Public preview by lesson ID
-router.get("/public/:lessonId", getPublicPreviewByLessonId);
+router.get(
+  "/public/:lessonId",
+  lessonController.getPublicPreviewByLessonId
+);
 
 /* -------------------------
-   DEBUG & FIX TOOLS
-   (SAFE TO KEEP)
+   DEBUG / FIX
 ------------------------- */
 
-// Debug lesson file
-router.get("/debug/file", debugLessonFile);
+router.get("/debug/file", lessonController.debugLessonFile);
 
-// Fix single lesson file URL
-router.post("/fix/file/:lessonId", fixLessonFileUrl);
+router.post(
+  "/fix/file/:lessonId",
+  authMiddleware,
+  lessonController.fixLessonFileUrl
+);
 
-// Fix all Cloudinary URLs
-router.post("/fix/all", fixAllCloudinaryUrls);
+router.post(
+  "/fix/all",
+  authMiddleware,
+  lessonController.fixAllCloudinaryUrls
+);
 
-// Test file access
-router.get("/test/file", testFileAccess);
+router.get("/test/file", lessonController.testFileAccess);
 
 export default router;
