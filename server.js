@@ -256,6 +256,7 @@
 
 
 
+
 // server.js
 require("dotenv").config();
 
@@ -266,28 +267,36 @@ const cookieParser = require("cookie-parser");
 const path = require("path");
 const fs = require("fs");
 
-const sequelize = require("./config/db");
+// ================= SAFE SEQUELIZE IMPORT =================
+const dbModule = require("./config/db");
+const sequelize = dbModule.default || dbModule;
 
 // Load models
 require("./models");
 
-// Routes
-const authRoutes = require("./routes/authRoutes");
-const adminRoutes = require("./routes/admin");
-const courseRoutes = require("./routes/courses");
-const lessonRoutes = require("./routes/lessonRoutes");
-const enrollmentRoutes = require("./routes/enrollmentRoutes");
-const paymentRoutes = require("./routes/paymentRoutes");
-const filesRoutes = require("./routes/files");
-const unitRoutes = require("./routes/unitRoutes");
-const teacherRoutes = require("./routes/teacher");
-const emailRoutes = require("./routes/email");
+// ================= SAFE ROUTE LOADER =================
+const loadRoute = (routePath) => {
+  const mod = require(routePath);
+  return mod.default || mod;
+};
+
+// ================= ROUTES =================
+const authRoutes = loadRoute("./routes/authRoutes");
+const adminRoutes = loadRoute("./routes/admin");
+const courseRoutes = loadRoute("./routes/courses");
+const lessonRoutes = loadRoute("./routes/lessonRoutes");
+const enrollmentRoutes = loadRoute("./routes/enrollmentRoutes");
+const paymentRoutes = loadRoute("./routes/paymentRoutes");
+const filesRoutes = loadRoute("./routes/files");
+const unitRoutes = loadRoute("./routes/unitRoutes");
+const teacherRoutes = loadRoute("./routes/teacher");
+const emailRoutes = loadRoute("./routes/email");
 
 const { handleStripeWebhook } = require("./controllers/paymentController");
 
-// =========================================================
+// =====================================================
 // APP INIT
-// =========================================================
+// =====================================================
 console.log("🔧 Starting Math Class Platform Backend...");
 
 const app = express();
@@ -297,32 +306,32 @@ const PORT = process.env.PORT || 5000;
 const NODE_ENV = process.env.NODE_ENV || "development";
 const isProd = NODE_ENV === "production";
 
-// =========================================================
-// UPLOAD DIRECTORY
-// =========================================================
+// =====================================================
+// UPLOADS
+// =====================================================
 const UPLOAD_DIR = path.join(process.cwd(), "Uploads");
 if (!fs.existsSync(UPLOAD_DIR)) {
   fs.mkdirSync(UPLOAD_DIR, { recursive: true });
 }
 
-// =========================================================
-// SECURITY (HELMET)
-// =========================================================
+// =====================================================
+// SECURITY
+// =====================================================
 app.use(
   helmet({
     crossOriginResourcePolicy: false,
   })
 );
 
-// =========================================================
+// =====================================================
 // CORS
-// =========================================================
+// =====================================================
 const allowedOrigins = [
   "http://localhost:3000",
   "http://localhost:5173",
   "https://math-class-platform.netlify.app",
   "https://mathe-class-website-backend-1.onrender.com",
-].filter(Boolean);
+];
 
 app.use(
   cors({
@@ -335,34 +344,33 @@ app.use(
       }
     },
     credentials: true,
-    methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
   })
 );
 
-// =========================================================
-// STRIPE WEBHOOK (MUST BE FIRST)
-// =========================================================
+// =====================================================
+// STRIPE WEBHOOK (RAW BODY BEFORE JSON PARSERS)
+// =====================================================
 app.post(
   "/api/v1/payments/webhook",
   express.raw({ type: "application/json" }),
   handleStripeWebhook
 );
 
-// =========================================================
+// =====================================================
 // BODY PARSERS
-// =========================================================
+// =====================================================
 app.use(express.json({ limit: "50mb" }));
 app.use(express.urlencoded({ extended: true, limit: "50mb" }));
 app.use(cookieParser());
 
-// =========================================================
+// =====================================================
 // STATIC FILES
-// =========================================================
+// =====================================================
 app.use("/api/v1/files", express.static(UPLOAD_DIR));
 
-// =========================================================
+// =====================================================
 // REQUEST LOGGING
-// =========================================================
+// =====================================================
 app.use((req, res, next) => {
   console.log(`📥 ${req.method} ${req.originalUrl}`);
   res.on("finish", () => {
@@ -371,9 +379,9 @@ app.use((req, res, next) => {
   next();
 });
 
-// =========================================================
-// ROUTES
-// =========================================================
+// =====================================================
+// API ROUTES
+// =====================================================
 app.use("/api/v1/auth", authRoutes);
 app.use("/api/v1/admin", adminRoutes);
 app.use("/api/v1/courses", courseRoutes);
@@ -385,63 +393,43 @@ app.use("/api/v1/units", unitRoutes);
 app.use("/api/v1/teacher", teacherRoutes);
 app.use("/api/v1/email", emailRoutes);
 
-// =========================================================
+// =====================================================
 // HEALTH CHECK
-// =========================================================
+// =====================================================
 app.get("/api/v1/health", async (req, res) => {
   try {
     await sequelize.authenticate();
-    res.json({
-      success: true,
-      status: "healthy",
-      env: NODE_ENV,
-      timestamp: new Date().toISOString(),
-    });
+    res.json({ success: true, status: "healthy", env: NODE_ENV });
   } catch (err) {
-    res.status(500).json({
-      success: false,
-      status: "unhealthy",
-      error: "Database disconnected",
-    });
+    res.status(500).json({ success: false, status: "unhealthy", error: err.message });
   }
 });
 
-// =========================================================
+// =====================================================
 // ROOT
-// =========================================================
+// =====================================================
 app.get("/", (req, res) => {
-  res.json({
-    name: "Math Class Platform API",
-    version: "1.0.0",
-    env: NODE_ENV,
-  });
+  res.json({ name: "Math Class Platform API", version: "1.0.0", env: NODE_ENV });
 });
 
-// =========================================================
+// =====================================================
 // 404 HANDLER
-// =========================================================
+// =====================================================
 app.use((req, res) => {
-  res.status(404).json({
-    success: false,
-    error: "Route not found",
-    path: req.originalUrl,
-  });
+  res.status(404).json({ success: false, error: "Route not found", path: req.originalUrl });
 });
 
-// =========================================================
+// =====================================================
 // ERROR HANDLER
-// =========================================================
+// =====================================================
 app.use((err, req, res, next) => {
-  console.error("❌ SERVER ERROR:", err.message);
-  res.status(500).json({
-    success: false,
-    error: isProd ? "Internal server error" : err.message,
-  });
+  console.error("❌ SERVER ERROR:", err);
+  res.status(500).json({ success: false, error: err.message });
 });
 
-// =========================================================
+// =====================================================
 // START SERVER
-// =========================================================
+// =====================================================
 (async () => {
   try {
     console.log("🔗 Connecting to database...");
@@ -455,11 +443,10 @@ app.use((err, req, res, next) => {
       console.log("=".repeat(50));
       console.log(`🚀 Server running on port ${PORT}`);
       console.log(`🌍 http://localhost:${PORT}`);
-      console.log(`⚡ Environment: ${NODE_ENV}`);
       console.log("=".repeat(50));
     });
   } catch (err) {
-    console.error("❌ Failed to start server:", err.message);
+    console.error("❌ Startup failed:", err);
     process.exit(1);
   }
 })();
