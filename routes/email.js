@@ -43,20 +43,18 @@
 // module.exports = router;
 
 
+
+
+
 // routes/email.js
 import express from "express";
 import sendEmail from "../utils/sendEmail.js";
 
 const router = express.Router();
 
-/**
- * POST /api/v1/email/contact
- * Public contact form endpoint
- */
 router.post("/contact", async (req, res) => {
   const { name, email, message } = req.body;
 
-  // Validate input
   if (!name || !email || !message) {
     return res.status(400).json({
       success: false,
@@ -64,39 +62,30 @@ router.post("/contact", async (req, res) => {
     });
   }
 
-  try {
-    // Protect against SMTP hangs (Yahoo / Render)
-    await Promise.race([
-      sendEmail({
+  // ✅ RESPOND IMMEDIATELY
+  res.status(200).json({
+    success: true,
+    message: "Message received successfully!",
+  });
+
+  // 🔥 SEND EMAIL IN BACKGROUND (NO BLOCKING)
+  (async () => {
+    try {
+      await sendEmail({
         to: process.env.MAIL_USER,
         subject: `📩 New Contact Message from ${name}`,
         html: `
-          <h3>New Contact Form Message</h3>
           <p><strong>Name:</strong> ${name}</p>
           <p><strong>Email:</strong> ${email}</p>
           <p><strong>Message:</strong></p>
           <p>${message}</p>
         `,
-      }),
-      new Promise((_, reject) =>
-        setTimeout(() => reject(new Error("Email timeout exceeded")), 8000)
-      ),
-    ]);
-
-    return res.status(200).json({
-      success: true,
-      message: "Message sent successfully!",
-    });
-
-  } catch (error) {
-    console.error("❌ Contact email failed:", error.message);
-
-    // IMPORTANT: never hang the request
-    return res.status(500).json({
-      success: false,
-      error: "Failed to send message. Please try again later.",
-    });
-  }
+      });
+      console.log("✅ Contact email sent");
+    } catch (err) {
+      console.error("❌ Background email failed:", err.message);
+    }
+  })();
 });
 
 export default router;
