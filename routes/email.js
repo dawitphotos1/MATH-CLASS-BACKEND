@@ -43,48 +43,60 @@
 // module.exports = router;
 
 
-
-
 // routes/email.js
-const express = require("express");
-const nodemailer = require("nodemailer");
+import express from "express";
+import sendEmail from "../utils/sendEmail.js";
 
 const router = express.Router();
 
-// POST /api/v1/email/contact
+/**
+ * POST /api/v1/email/contact
+ * Public contact form endpoint
+ */
 router.post("/contact", async (req, res) => {
   const { name, email, message } = req.body;
 
+  // Validate input
   if (!name || !email || !message) {
     return res.status(400).json({
+      success: false,
       error: "Name, email, and message are required.",
     });
   }
 
   try {
-    const transporter = nodemailer.createTransport({
-      host: process.env.MAIL_HOST,
-      port: Number(process.env.MAIL_PORT),
-      secure: true, // Yahoo requires SSL
-      auth: {
-        user: process.env.MAIL_USER,
-        pass: process.env.MAIL_PASS,
-      },
+    // Protect against SMTP hangs (Yahoo / Render)
+    await Promise.race([
+      sendEmail({
+        to: process.env.MAIL_USER,
+        subject: `📩 New Contact Message from ${name}`,
+        html: `
+          <h3>New Contact Form Message</h3>
+          <p><strong>Name:</strong> ${name}</p>
+          <p><strong>Email:</strong> ${email}</p>
+          <p><strong>Message:</strong></p>
+          <p>${message}</p>
+        `,
+      }),
+      new Promise((_, reject) =>
+        setTimeout(() => reject(new Error("Email timeout exceeded")), 8000)
+      ),
+    ]);
+
+    return res.status(200).json({
+      success: true,
+      message: "Message sent successfully!",
     });
 
-    await transporter.sendMail({
-      from: `"${name}" <${process.env.EMAIL_FROM}>`,
-      to: process.env.MAIL_USER,
-      subject: `New Contact Form Message from ${name}`,
-      text: `From: ${name} <${email}>\n\nMessage:\n${message}`,
-    });
-
-    console.log("✅ Email sent successfully");
-    res.json({ message: "Message sent successfully!" });
   } catch (error) {
-    console.error("❌ Email error:", error);
-    res.status(500).json({ error: "Failed to send message" });
+    console.error("❌ Contact email failed:", error.message);
+
+    // IMPORTANT: never hang the request
+    return res.status(500).json({
+      success: false,
+      error: "Failed to send message. Please try again later.",
+    });
   }
 });
 
-module.exports = router;
+export default router;
