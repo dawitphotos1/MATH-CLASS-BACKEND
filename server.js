@@ -256,36 +256,34 @@
 
 
 
+// server.js
+require("dotenv").config();
 
-// server.js – FINAL CLEAN VERSION (LOCAL + PROD SAFE)
+const express = require("express");
+const cors = require("cors");
+const helmet = require("helmet");
+const cookieParser = require("cookie-parser");
+const path = require("path");
+const fs = require("fs");
 
-import dotenv from "dotenv";
-dotenv.config();
-
-import express from "express";
-import cors from "cors";
-import helmet from "helmet";
-import cookieParser from "cookie-parser";
-import path from "path";
-import fs from "fs";
-import sequelize from "./config/db.js";
+const sequelize = require("./config/db");
 
 // Load models
-import "./models/index.js";
+require("./models");
 
 // Routes
-import authRoutes from "./routes/authRoutes.js";
-import adminRoutes from "./routes/admin.js";
-import courseRoutes from "./routes/courses.js";
-import lessonRoutes from "./routes/lessonRoutes.js";
-import enrollmentRoutes from "./routes/enrollmentRoutes.js";
-import paymentRoutes from "./routes/paymentRoutes.js";
-import filesRoutes from "./routes/files.js";
-import unitRoutes from "./routes/unitRoutes.js";
-import teacherRoutes from "./routes/teacher.js";
-import emailRoutes from "./routes/email.js";
+const authRoutes = require("./routes/authRoutes");
+const adminRoutes = require("./routes/admin");
+const courseRoutes = require("./routes/courses");
+const lessonRoutes = require("./routes/lessonRoutes");
+const enrollmentRoutes = require("./routes/enrollmentRoutes");
+const paymentRoutes = require("./routes/paymentRoutes");
+const filesRoutes = require("./routes/files");
+const unitRoutes = require("./routes/unitRoutes");
+const teacherRoutes = require("./routes/teacher");
+const emailRoutes = require("./routes/email");
 
-import { handleStripeWebhook } from "./controllers/paymentController.js";
+const { handleStripeWebhook } = require("./controllers/paymentController");
 
 // =========================================================
 // APP INIT
@@ -308,39 +306,11 @@ if (!fs.existsSync(UPLOAD_DIR)) {
 }
 
 // =========================================================
-// HELMET (SAFE CSP)
+// SECURITY (HELMET)
 // =========================================================
 app.use(
   helmet({
     crossOriginResourcePolicy: false,
-    contentSecurityPolicy: {
-      directives: {
-        defaultSrc: ["'self'"],
-        styleSrc: ["'self'", "'unsafe-inline'"],
-        scriptSrc: ["'self'", "https://js.stripe.com"],
-        imgSrc: [
-          "'self'",
-          "data:",
-          "blob:",
-          "https:",
-          "http:",
-          "https://res.cloudinary.com",
-        ],
-        connectSrc: isProd
-          ? [
-              "'self'",
-              "https://*.stripe.com",
-              "https://mathe-class-website-backend-1.onrender.com",
-            ]
-          : [
-              "'self'",
-              "http://localhost:3000",
-              "http://localhost:5000",
-              "http://127.0.0.1:5000",
-            ],
-        frameSrc: ["'self'", "https://*.stripe.com"],
-      },
-    },
   })
 );
 
@@ -427,7 +397,7 @@ app.get("/api/v1/health", async (req, res) => {
       env: NODE_ENV,
       timestamp: new Date().toISOString(),
     });
-  } catch {
+  } catch (err) {
     res.status(500).json({
       success: false,
       status: "unhealthy",
@@ -444,12 +414,11 @@ app.get("/", (req, res) => {
     name: "Math Class Platform API",
     version: "1.0.0",
     env: NODE_ENV,
-    endpoints: "/api/v1/*",
   });
 });
 
 // =========================================================
-// 404
+// 404 HANDLER
 // =========================================================
 app.use((req, res) => {
   res.status(404).json({
