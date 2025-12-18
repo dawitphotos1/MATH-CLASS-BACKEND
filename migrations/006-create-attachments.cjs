@@ -1,4 +1,4 @@
-
+//migrations/006-creat-attachments.js
 "use strict";
 
 module.exports = {

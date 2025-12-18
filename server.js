@@ -22,6 +22,8 @@ import unitRoutes from "./routes/unitRoutes.js";
 import teacherRoutes from "./routes/teacher.js";
 import emailRoutes from "./routes/email.js";
 import { handleStripeWebhook } from "./controllers/paymentController.js";
+// In your main server.js or routes/index.js
+import sublessonRoutes from "./routes/sublessonRoutes.js";
 
 const app = express();
 app.set("trust proxy", 1);
@@ -84,7 +86,7 @@ app.use("/api/v1/files", filesRoutes);
 app.use("/api/v1/units", unitRoutes);
 app.use("/api/v1/teacher", teacherRoutes);
 app.use("/api/v1/email", emailRoutes);
-
+app.use("/api/v1/sublessons", sublessonRoutes);
 // =========================================================
 // HEALTH
 // =========================================================
