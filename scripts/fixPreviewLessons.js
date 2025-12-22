@@ -1,0 +1,332 @@
+// // scripts/fixPreviewLesson.js
+
+// import db from "../models/index.js";
+// import { fileURLToPath } from "url";
+// import { dirname } from "path";
+
+// const __filename = fileURLToPath(import.meta.url);
+// const __dirname = dirname(__filename);
+
+// const { Course, Lesson } = db;
+
+// const fixPreviewLesson = async () => {
+//   try {
+//     console.log("🔧 Fixing preview lesson for course 84...");
+
+//     // Test database connection first
+//     await db.sequelize.authenticate();
+//     console.log("✅ Database connected");
+
+//     // First, check course 84
+//     const course = await Course.findByPk(84);
+//     if (!course) {
+//       console.log("❌ Course 84 not found!");
+//       return;
+//     }
+
+//     console.log("✅ Found course:", course.title);
+
+//     // Check all lessons for this course
+//     const lessons = await Lesson.findAll({
+//       where: { course_id: 84 },
+//       order: [["order_index", "ASC"]],
+//     });
+
+//     console.log(`📚 Total lessons for course 84: ${lessons.length}`);
+
+//     // List all lessons
+//     console.log("\n📋 All lessons for course 84:");
+//     lessons.forEach((lesson, index) => {
+//       console.log(`${index + 1}. ${lesson.title}`);
+//       console.log(`   ID: ${lesson.id}`);
+//       console.log(`   Preview: ${lesson.is_preview}`);
+//       console.log(`   File URL: ${lesson.file_url}`);
+//       console.log(`   Video URL: ${lesson.video_url}`);
+//       console.log(`   Order: ${lesson.order_index}`);
+//       console.log(`   Content Type: ${lesson.content_type}`);
+//       console.log("---");
+//     });
+
+//     // Check if any lesson is marked as preview
+//     const previewLessons = lessons.filter((l) => l.is_preview);
+//     console.log(`\n🔍 Lessons marked as preview: ${previewLessons.length}`);
+
+//     if (previewLessons.length === 0 && lessons.length > 0) {
+//       const firstLesson = lessons[0];
+//       console.log(
+//         `\n🎯 No preview lesson found. Setting first lesson as preview: ${firstLesson.title}`
+//       );
+
+//       // Update the lesson to be a preview
+//       await firstLesson.update({
+//         is_preview: true,
+//       });
+
+//       console.log("✅ Updated lesson to be preview!");
+//       console.log("Lesson ID:", firstLesson.id);
+//       console.log("is_preview:", firstLesson.is_preview);
+
+//       // Check if file_url is empty and set a default
+//       if (!firstLesson.file_url || firstLesson.file_url.trim() === "") {
+//         console.log("⚠️ File URL is empty, setting default...");
+//         await firstLesson.update({
+//           file_url: "/Uploads/sample-lesson.pdf",
+//           content_type: "pdf",
+//         });
+//         console.log("✅ Set default file URL: /Uploads/sample-lesson.pdf");
+//       }
+//     } else if (previewLessons.length > 0) {
+//       console.log("\n✅ Preview lesson(s) already exist:");
+//       previewLessons.forEach((lesson, index) => {
+//         console.log(`${index + 1}. ${lesson.title} (ID: ${lesson.id})`);
+
+//         // Fix empty file URLs
+//         if (!lesson.file_url || lesson.file_url.trim() === "") {
+//           console.log(`   ⚠️ Empty file URL, fixing...`);
+//           lesson.update({
+//             file_url: "/Uploads/sample-lesson.pdf",
+//             content_type: "pdf",
+//           });
+//           console.log(`   ✅ Set file URL: /Uploads/sample-lesson.pdf`);
+//         }
+//       });
+//     }
+
+//     // Verify the fix
+//     const updatedPreviewLesson = await Lesson.findOne({
+//       where: {
+//         course_id: 84,
+//         is_preview: true,
+//       },
+//     });
+
+//     if (updatedPreviewLesson) {
+//       console.log("\n✅ Preview lesson is now set:");
+//       console.log("- ID:", updatedPreviewLesson.id);
+//       console.log("- Title:", updatedPreviewLesson.title);
+//       console.log("- File URL:", updatedPreviewLesson.file_url);
+//       console.log("- Is Preview:", updatedPreviewLesson.is_preview);
+//     } else {
+//       console.log("\n❌ Still no preview lesson found!");
+//     }
+
+//     process.exit(0);
+//   } catch (error) {
+//     console.error("❌ Error fixing preview lesson:", error);
+//     console.error("Error details:", error.message);
+//     if (error.stack) {
+//       console.error("Stack trace:", error.stack);
+//     }
+//     process.exit(1);
+//   }
+// };
+
+// // Run the script
+// fixPreviewLesson();
+
+
+
+
+
+// scripts/fixPreviewLessons.js - FIXES ALL COURSES
+import db from "../models/index.js";
+import { fileURLToPath } from "url";
+import { dirname } from "path";
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = dirname(__filename);
+
+const { Course, Lesson } = db;
+
+const fixPreviewLessons = async () => {
+  try {
+    console.log("🔧 Fixing preview lessons for ALL courses...\n");
+    
+    // Get all courses
+    const courses = await Course.findAll({
+      attributes: ['id', 'title', 'slug'],
+      order: [['id', 'ASC']]
+    });
+    
+    console.log(`📊 Found ${courses.length} courses\n`);
+    
+    let fixedCount = 0;
+    let alreadyFixed = 0;
+    let noLessons = 0;
+    let errors = 0;
+    
+    const results = [];
+    
+    for (const course of courses) {
+      console.log(`📚 Course ${course.id}: "${course.title}"`);
+      
+      try {
+        // Get all lessons for this course
+        const lessons = await Lesson.findAll({
+          where: { course_id: course.id },
+          order: [['order_index', 'ASC'], ['id', 'ASC']]
+        });
+        
+        if (lessons.length === 0) {
+          console.log(`   ⚠️ No lessons found`);
+          results.push({
+            courseId: course.id,
+            courseTitle: course.title,
+            status: 'NO_LESSONS',
+            message: 'No lessons found for this course'
+          });
+          noLessons++;
+          continue;
+        }
+        
+        // Check if any lesson is already marked as preview
+        const existingPreview = lessons.find(l => l.is_preview);
+        
+        if (existingPreview) {
+          console.log(`   ✅ Already has preview: "${existingPreview.title}" (ID: ${existingPreview.id})`);
+          results.push({
+            courseId: course.id,
+            courseTitle: course.title,
+            status: 'ALREADY_HAS_PREVIEW',
+            previewLessonId: existingPreview.id,
+            previewLessonTitle: existingPreview.title,
+            hasFile: !!existingPreview.file_url,
+            hasVideo: !!existingPreview.video_url
+          });
+          alreadyFixed++;
+        } else {
+          // Mark the first lesson as preview
+          const firstLesson = lessons[0];
+          await firstLesson.update({ is_preview: true });
+          
+          console.log(`   🔧 Marked as preview: "${firstLesson.title}" (ID: ${firstLesson.id})`);
+          
+          results.push({
+            courseId: course.id,
+            courseTitle: course.title,
+            status: 'FIXED',
+            previewLessonId: firstLesson.id,
+            previewLessonTitle: firstLesson.title,
+            hasFile: !!firstLesson.file_url,
+            hasVideo: !!firstLesson.video_url,
+            action: 'Marked first lesson as preview'
+          });
+          fixedCount++;
+          
+          // Check if this lesson has a file
+          if (!firstLesson.file_url) {
+            console.log(`   ⚠️ Warning: Preview lesson has no file`);
+          }
+        }
+        
+      } catch (error) {
+        console.log(`   ❌ Error: ${error.message}`);
+        results.push({
+          courseId: course.id,
+          courseTitle: course.title,
+          status: 'ERROR',
+          error: error.message
+        });
+        errors++;
+      }
+      
+      console.log('---');
+    }
+    
+    // SUMMARY
+    console.log("\n📈 SUMMARY:");
+    console.log("=".repeat(50));
+    console.log(`✅ Total courses: ${courses.length}`);
+    console.log(`🔧 Fixed (added preview): ${fixedCount}`);
+    console.log(`✅ Already had preview: ${alreadyFixed}`);
+    console.log(`⚠️ No lessons: ${noLessons}`);
+    console.log(`❌ Errors: ${errors}`);
+    
+    // VERIFICATION
+    console.log("\n🔍 VERIFICATION:");
+    console.log("=".repeat(50));
+    
+    const verifyCourses = await Course.findAll({
+      include: [{
+        model: Lesson,
+        as: 'lessons',
+        where: { is_preview: true },
+        required: false,
+        attributes: ['id', 'title', 'file_url']
+      }]
+    });
+    
+    const coursesWithPreview = verifyCourses.filter(c => c.lessons && c.lessons.length > 0);
+    const coursesWithoutPreview = verifyCourses.filter(c => !c.lessons || c.lessons.length === 0);
+    
+    console.log(`✅ Courses with preview: ${coursesWithPreview.length}`);
+    console.log(`⚠️ Courses without preview: ${coursesWithoutPreview.length}`);
+    
+    if (coursesWithoutPreview.length > 0) {
+      console.log("\n📋 Courses WITHOUT preview (need attention):");
+      coursesWithoutPreview.forEach(c => {
+        console.log(`   - ${c.title} (ID: ${c.id})`);
+      });
+    }
+    
+    // Show some examples
+    console.log("\n📋 SAMPLE RESULTS:");
+    console.log("=".repeat(50));
+    
+    const sampleResults = results.slice(0, 10);
+    sampleResults.forEach(result => {
+      const statusIcon = 
+        result.status === 'FIXED' ? '🔧' :
+        result.status === 'ALREADY_HAS_PREVIEW' ? '✅' :
+        result.status === 'NO_LESSONS' ? '⚠️' : '❌';
+      
+      console.log(`${statusIcon} Course ${result.courseId}: "${result.courseTitle}"`);
+      if (result.previewLessonId) {
+        console.log(`   Preview: "${result.previewLessonTitle}" (ID: ${result.previewLessonId})`);
+        console.log(`   Has file: ${result.hasFile ? '✅' : '❌'}`);
+      }
+    });
+    
+    console.log("\n🌐 TEST ENDPOINTS:");
+    console.log("=".repeat(50));
+    console.log("After fixing, test these URLs:");
+    console.log("1. For each course: GET /api/v1/courses/{courseId}/preview-lesson");
+    console.log("2. Frontend: /courses/{slug}/preview");
+    console.log("3. Teacher dashboard: Check preview functionality");
+    
+    console.log("\n🎉 Fix completed!");
+    
+    // Save results to file for reference
+    const fs = await import('fs');
+    const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+    const resultsFile = `preview-fix-results-${timestamp}.json`;
+    
+    fs.writeFileSync(
+      resultsFile,
+      JSON.stringify({
+        timestamp: new Date().toISOString(),
+        summary: {
+          totalCourses: courses.length,
+          fixed: fixedCount,
+          alreadyFixed: alreadyFixed,
+          noLessons: noLessons,
+          errors: errors
+        },
+        results: results
+      }, null, 2)
+    );
+    
+    console.log(`\n📄 Results saved to: ${resultsFile}`);
+    
+  } catch (error) {
+    console.error("❌ Error fixing preview lessons:", error);
+    console.error("Stack:", error.stack);
+  } finally {
+    await db.sequelize.close();
+    console.log("\n🔌 Database connection closed");
+    process.exit(0);
+  }
+};
+
+// Run the fix
+fixPreviewLessons();
