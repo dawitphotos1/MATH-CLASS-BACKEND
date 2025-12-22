@@ -1,4 +1,4 @@
-// routes/courses.js - FIXED VERSION
+// routes/courses.js - CORRECTED VERSION
 import express from "express";
 import {
   createCourse,
@@ -9,62 +9,30 @@ import {
   getCourseById,
   createCourseWithUnits,
   getTeacherCourses,
-  getTeacherCourseFull  // Added this import
+  getTeacherCourseFull,
+  updateCourse  // Make sure this is imported
 } from "../controllers/courseController.js";
 
 import { authenticateToken } from "../middleware/authMiddleware.js";
 import checkTeacherOrAdmin from "../middleware/checkTeacherOrAdmin.js";
 import { isTeacher } from "../middleware/authMiddleware.js";
 import { uploadCourseFiles } from "../middleware/cloudinaryUpload.js";
-import db from "../models/index.js";
 import { getPreviewLessonForCourse } from "../controllers/lessonController.js";
 
-const { Course, User, Lesson, Unit } = db;
 const router = express.Router();
 
 /* ========================================================
    🟢 PUBLIC ROUTES — accessible without login
 ======================================================== */
 
-// Get all courses
+// Get all courses (public)
 router.get("/", getCourses);
 
-// Get course by ID (public)
+// Get course by ID (public) - MUST come BEFORE slug route
 router.get("/id/:id", getCourseById);
 
 // Get all lessons for a course (public)
 router.get("/:courseId/lessons", getLessonsByCourse);
-
-// Simple debug/test endpoint
-router.get("/test/preview", async (req, res) => {
-  try {
-    await db.sequelize.authenticate();
-    const lessonCount = await Lesson.count();
-    const course84 = await Course.findByPk(84);
-    const previewLessons = await Lesson.findAll({
-      where: { course_id: 84, is_preview: true },
-      attributes: ["id", "title", "file_url", "video_url", "is_preview", "content_type"],
-    });
-    const allLessons = await Lesson.findAll({
-      where: { course_id: 84 },
-      order: [["order_index", "ASC"]],
-      attributes: ["id", "title", "is_preview", "order_index", "file_url"],
-    });
-    return res.json({
-      success: true,
-      message: "Test endpoint working",
-      totalLessons: lessonCount,
-      course84Exists: !!course84,
-      previewLessonsCount: previewLessons.length,
-      allLessonsCount: allLessons.length,
-      previewLessons: previewLessons,
-      allLessons: allLessons,
-    });
-  } catch (error) {
-    console.error("Test endpoint error:", error);
-    return res.status(500).json({ success: false, error: error?.message || "Server error" });
-  }
-});
 
 // PUBLIC: Get first preview lesson for a course
 router.get("/:courseId/preview-lesson", getPreviewLessonForCourse);
@@ -73,6 +41,7 @@ router.get("/:courseId/preview-lesson", getPreviewLessonForCourse);
    🔐 PROTECTED ROUTES — teachers / admins only
 ======================================================== */
 
+// Create new course
 router.post(
   "/",
   authenticateToken,
@@ -97,7 +66,49 @@ router.post(
   createCourseWithUnits
 );
 
+// Delete course
 router.delete("/:id", authenticateToken, deleteCourse);
+
+// Update course (ADD THIS ROUTE)
+router.patch("/:id", authenticateToken, updateCourse);
+
+// Get course by ID for editing (PROTECTED version)
+router.get("/edit/:id", authenticateToken, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const userId = req.user.id;
+    const userRole = req.user.role;
+
+    // Call the existing getCourseById function
+    const courseResponse = await getCourseById({ params: { id } }, res, true);
+    
+    if (!courseResponse) {
+      return res.status(404).json({
+        success: false,
+        error: "Course not found",
+      });
+    }
+
+    // Check authorization
+    if (userRole !== "admin" && courseResponse.teacher_id !== userId) {
+      return res.status(403).json({
+        success: false,
+        error: "Not authorized to edit this course",
+      });
+    }
+
+    res.json({
+      success: true,
+      course: courseResponse,
+    });
+  } catch (error) {
+    console.error("Error fetching course for editing:", error);
+    res.status(500).json({
+      success: false,
+      error: "Failed to fetch course for editing",
+    });
+  }
+});
 
 /* ============================================================
    👨🏫 TEACHER DASHBOARD ROUTES
@@ -158,15 +169,15 @@ router.get(
 
 router.get("/teacher/my-courses", authenticateToken, isTeacher, getTeacherCourses);
 
-// ✅ FIXED: Now using the controller function instead of inline handler
+// Teacher course full details
 router.get(
   "/teacher/:courseId/full",
   authenticateToken,
   isTeacher,
-  getTeacherCourseFull  // Using the controller function
+  getTeacherCourseFull
 );
 
 // ⚠ Slug route MUST be last because it catches all dynamic paths
-router.get("/:slug", getPublicCourseBySlug);
+router.get("/slug/:slug", getPublicCourseBySlug); // Changed from "/:slug" to "/slug/:slug"
 
 export default router;
