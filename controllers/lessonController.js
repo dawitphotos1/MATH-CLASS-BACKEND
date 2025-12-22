@@ -906,12 +906,11 @@
 
 
 
-
 // controllers/lessonController.js - COMPLETE FIXED VERSION
 import db from "../models/index.js";
 import { fixCloudinaryUrl } from "../middleware/cloudinaryUpload.js";
 
-const { Lesson, Course, Attachment } = db;
+const { Lesson, Course, Attachment, Sequelize } = db;
 
 /*
   Helpers
@@ -1559,6 +1558,176 @@ export const getPublicPreviewByLessonId = async (req, res) => {
     }
 };
 
+/* ================================================================
+    Check Course Preview Status
+=============================================================== */
+export const checkCoursePreviewStatus = async (req, res) => {
+    try {
+        const { courseId } = req.params;
+        
+        // Get course with preview lesson
+        const course = await Course.findByPk(courseId, {
+            attributes: ['id', 'title', 'slug'],
+            include: [
+                {
+                    model: Lesson,
+                    as: 'lessons',
+                    where: { is_preview: true },
+                    required: false,
+                    attributes: ['id', 'title', 'file_url', 'video_url', 'content_type', 'is_preview'],
+                },
+            ],
+        });
+        
+        if (!course) {
+            return res.status(404).json({
+                success: false,
+                error: "Course not found",
+            });
+        }
+        
+        const hasPreview = course.lessons && course.lessons.length > 0;
+        const previewLesson = hasPreview ? course.lessons[0] : null;
+        
+        // Get all lessons for this course
+        const allLessons = await Lesson.findAll({
+            where: { course_id: courseId },
+            attributes: ['id', 'title', 'is_preview', 'file_url', 'order_index'],
+            order: [['order_index', 'ASC']],
+        });
+        
+        res.json({
+            success: true,
+            course: {
+                id: course.id,
+                title: course.title,
+                slug: course.slug,
+            },
+            previewStatus: {
+                hasPreview,
+                previewLesson: previewLesson ? {
+                    id: previewLesson.id,
+                    title: previewLesson.title,
+                    hasFile: !!previewLesson.file_url,
+                    fileUrl: previewLesson.file_url,
+                    contentType: previewLesson.content_type,
+                    isPreview: previewLesson.is_preview,
+                } : null,
+            },
+            lessons: allLessons.map(lesson => ({
+                id: lesson.id,
+                title: lesson.title,
+                isPreview: lesson.is_preview,
+                hasFile: !!lesson.file_url,
+                order: lesson.order_index,
+            })),
+            totalLessons: allLessons.length,
+            recommendations: !hasPreview && allLessons.length > 0 ? [
+                `Mark a lesson as preview: PUT /api/v1/lessons/${allLessons[0].id}/mark-preview`,
+                `Ensure lesson has a file uploaded`
+            ] : hasPreview && !previewLesson.file_url ? [
+                `Upload a file to preview lesson: ${previewLesson.id}`
+            ] : [],
+        });
+    } catch (error) {
+        console.error("❌ Error checking course preview status:", error);
+        res.status(500).json({
+            success: false,
+            error: "Failed to check preview status",
+            details: process.env.NODE_ENV === "development" ? error.message : undefined,
+        });
+    }
+};
+
+/* ================================================================
+    Mark/Unmark Lesson as Preview
+=============================================================== */
+export const markLessonAsPreview = async (req, res) => {
+    try {
+        const { lessonId } = req.params;
+        const { action = 'mark' } = req.body; // 'mark' or 'unmark'
+        
+        // Find the lesson
+        const lesson = await Lesson.findByPk(lessonId, {
+            include: [
+                {
+                    model: Course,
+                    as: 'course',
+                    attributes: ['id', 'title', 'teacher_id'],
+                },
+            ],
+        });
+        
+        if (!lesson) {
+            return res.status(404).json({
+                success: false,
+                error: "Lesson not found",
+            });
+        }
+        
+        // Check authorization
+        const user = req.user;
+        if (user.role !== 'admin' && lesson.course.teacher_id !== user.id) {
+            return res.status(403).json({
+                success: false,
+                error: "Not authorized to modify preview status",
+            });
+        }
+        
+        if (action === 'mark') {
+            // First, unmark all other lessons in this course as preview
+            await Lesson.update(
+                { is_preview: false },
+                {
+                    where: {
+                        course_id: lesson.course_id,
+                        id: { [Sequelize.Op.ne]: lessonId },
+                    },
+                }
+            );
+            
+            // Mark this lesson as preview
+            await lesson.update({ is_preview: true });
+            
+            res.json({
+                success: true,
+                message: `Lesson "${lesson.title}" marked as preview`,
+                lesson: {
+                    id: lesson.id,
+                    title: lesson.title,
+                    isPreview: true,
+                    courseId: lesson.course_id,
+                    courseTitle: lesson.course.title,
+                },
+            });
+        } else if (action === 'unmark') {
+            await lesson.update({ is_preview: false });
+            
+            res.json({
+                success: true,
+                message: `Lesson "${lesson.title}" unmarked as preview`,
+                lesson: {
+                    id: lesson.id,
+                    title: lesson.title,
+                    isPreview: false,
+                },
+            });
+        } else {
+            return res.status(400).json({
+                success: false,
+                error: "Invalid action. Use 'mark' or 'unmark'",
+            });
+        }
+    } catch (error) {
+        console.error("❌ Error marking lesson as preview:", error);
+        res.status(500).json({
+            success: false,
+            error: "Failed to update preview status",
+            details: process.env.NODE_ENV === "development" ? error.message : undefined,
+        });
+    }
+};
+
 /*
   ---
     DEBUG HELPERS
@@ -1645,7 +1814,7 @@ export const fixAllCloudinaryUrls = async (req, res) => {
         const lessons = await Lesson.findAll({
             where: {
                 file_url: {
-                    [db.Sequelize.Op.like]: "%cloudinary.com%",
+                    [Sequelize.Op.like]: "%cloudinary.com%",
                 },
             },
         });
@@ -1802,6 +1971,8 @@ export default {
     getPublicPreviewByLessonId,
     debugLessonFile,
     fixLessonFileUrl,
-    testFileAccess,  // ✅ This was missing before
+    testFileAccess,
     fixAllCloudinaryUrls,
+    checkCoursePreviewStatus,  // ✅ Added
+    markLessonAsPreview,       // ✅ Added
 };
