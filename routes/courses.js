@@ -185,8 +185,6 @@
 
 
 
-
-// routes/courses.js - UPDATED WITH PREVIEW FIXES
 import express from "express";
 import {
   createCourse,
@@ -199,17 +197,21 @@ import {
   getTeacherCourses,
   getTeacherCourseFull,
   updateCourse,
-  checkCourseExists
+  checkCourseExists,
 } from "../controllers/courseController.js";
 
-import { authenticateToken } from "../middleware/authMiddleware.js";
-import checkTeacherOrAdmin from "../middleware/checkTeacherOrAdmin.js";
-import { isTeacher } from "../middleware/authMiddleware.js";
+import {
+  authenticateToken,
+  requireTeacherOrAdmin,
+  requireTeacher,
+  requireOwnership,
+} from "../middleware/authMiddleware.js";
+
 import { uploadCourseFiles } from "../middleware/cloudinaryUpload.js";
-import { 
+import {
   getPreviewLessonForCourse,
   checkCoursePreviewStatus,
-  markLessonAsPreview 
+  markLessonAsPreview,
 } from "../controllers/lessonController.js";
 
 import db from "../models/index.js";
@@ -217,9 +219,9 @@ const { Course, User, Unit, Lesson } = db;
 
 const router = express.Router();
 
-/*
-   PUBLIC ROUTES -- accessible without login
-============================== */
+// =========================================================
+// PUBLIC ROUTES (No Authentication)
+// =========================================================
 
 // Get all courses (public)
 router.get("/", getCourses);
@@ -230,120 +232,121 @@ router.get("/id/:id", getCourseById);
 // Get all lessons for a course (public)
 router.get("/:courseId/lessons", getLessonsByCourse);
 
-// PUBLIC: Get first preview lesson for a course
+// Get preview lesson for a course (public)
 router.get("/:courseId/preview-lesson", getPreviewLessonForCourse);
 
 // Check if course exists by slug
 router.get("/check/:slug", checkCourseExists);
 
-/* ================================================================
-    PROTECTED ROUTES -- teachers / admins only
-============================ */
+// Get course by slug (public) - MUST be last
+router.get("/slug/:slug", getPublicCourseBySlug);
 
-// Create new course
+// =========================================================
+// PROTECTED ROUTES (Require Authentication)
+// =========================================================
+
+// Create new course (teacher/admin only)
 router.post(
   "/",
   authenticateToken,
-  checkTeacherOrAdmin,
+  requireTeacherOrAdmin,
   uploadCourseFiles,
   createCourse
 );
 
-router.post(
-  "/create",
-  authenticateToken,
-  checkTeacherOrAdmin,
-  uploadCourseFiles,
-  createCourse
-);
-
+// Create course with units (teacher/admin only)
 router.post(
   "/create-with-units",
   authenticateToken,
-  checkTeacherOrAdmin,
+  requireTeacherOrAdmin,
   uploadCourseFiles,
   createCourseWithUnits
 );
 
-// Delete course
-router.delete("/:id", authenticateToken, deleteCourse);
+// Delete course (teacher/admin only, and must own it)
+router.delete(
+  "/:id",
+  authenticateToken,
+  requireTeacherOrAdmin,
+  requireOwnership("Course", "teacher_id"),
+  deleteCourse
+);
 
-// Update course
-router.patch("/:id", authenticateToken, updateCourse);
+// Update course (teacher/admin only, and must own it)
+router.patch(
+  "/:id",
+  authenticateToken,
+  requireTeacherOrAdmin,
+  requireOwnership("Course", "teacher_id"),
+  updateCourse
+);
 
-// Get course by ID for editing (PROTECTED version)
-router.get("/edit/:id", authenticateToken, async (req, res) => {
-  try {
-    const { id } = req.params;
-    const userId = req.user.id;
-    const userRole = req.user.role;
+// Get course for editing (teacher/admin only, and must own it)
+router.get(
+  "/edit/:id",
+  authenticateToken,
+  requireTeacherOrAdmin,
+  requireOwnership("Course", "teacher_id"),
+  async (req, res) => {
+    try {
+      const course = req.resource; // From requireOwnership middleware
 
-    // Call the existing getCourseById function
-    const course = await Course.findByPk(id, {
-      include: [
-        {
-          model: User,
-          as: "teacher",
-          attributes: ["id", "name", "email"],
+      res.json({
+        success: true,
+        course: {
+          id: course.id,
+          title: course.title,
+          description: course.description,
+          price: parseFloat(course.price) || 0,
+          thumbnail: course.thumbnail,
+          teacher_id: course.teacher_id,
+          slug: course.slug,
+          created_at: course.created_at,
+          updated_at: course.updated_at,
         },
-      ],
-    });
-
-    if (!course) {
-      return res.status(404).json({
+      });
+    } catch (error) {
+      console.error("Error fetching course for editing:", error);
+      res.status(500).json({
         success: false,
-        error: "Course not found",
+        error: "Failed to fetch course for editing",
       });
     }
-
-    // Check authorization
-    if (userRole !== "admin" && course.teacher_id !== userId) {
-      return res.status(403).json({
-        success: false,
-        error: "Not authorized to edit this course",
-      });
-    }
-
-    res.json({
-      success: true,
-      course: {
-        id: course.id,
-        title: course.title,
-        description: course.description,
-        price: parseFloat(course.price) || 0,
-        thumbnail: course.thumbnail,
-        teacher_id: course.teacher_id,
-        slug: course.slug,
-        created_at: course.created_at,
-        updated_at: course.updated_at,
-        teacher: course.teacher,
-      },
-    });
-  } catch (error) {
-    console.error("Error fetching course for editing:", error);
-    res.status(500).json({
-      success: false,
-      error: "Failed to fetch course for editing",
-    });
   }
-});
+);
 
-/* ---
- TEACHER DASHBOARD ROUTES
---- */
+// =========================================================
+// TEACHER DASHBOARD ROUTES
+// =========================================================
 
-// Get teacher's courses with detailed structure
+// Get teacher's courses (simple list)
+router.get(
+  "/teacher/my-courses",
+  authenticateToken,
+  requireTeacher,
+  getTeacherCourses
+);
+
+// Get teacher's courses with full structure
 router.get(
   "/teacher/my-courses-detailed",
   authenticateToken,
-  isTeacher,
+  requireTeacher,
   async (req, res) => {
     try {
       const teacherId = req.user.id;
 
       const courses = await Course.findAll({
         where: { teacher_id: teacherId },
-        attributes: ["id", "title", "description", "slug", "price", "thumbnail", "created_at"],
+        attributes: [
+          "id",
+          "title",
+          "description",
+          "slug",
+          "price",
+          "thumbnail",
+          "created_at",
+        ],
         include: [
           {
             model: Unit,
@@ -381,31 +384,31 @@ router.get(
       res.json({ success: true, courses });
     } catch (error) {
       console.error("Error fetching teacher courses:", error);
-      res.status(500).json({ success: false, error: "Failed to fetch courses" });
+      res.status(500).json({
+        success: false,
+        error: "Failed to fetch courses",
+      });
     }
   }
 );
 
-// Get teacher's courses (simple)
-router.get("/teacher/my-courses", authenticateToken, isTeacher, getTeacherCourses);
-
-// Teacher course full details
+// Get teacher course full details
 router.get(
   "/teacher/:courseId/full",
   authenticateToken,
-  isTeacher,
+  requireTeacher,
   getTeacherCourseFull
 );
 
-/* ---
- PREVIEW MANAGEMENT ROUTES
---- */
+// =========================================================
+// PREVIEW MANAGEMENT ROUTES
+// =========================================================
 
 // Check preview status for a course
 router.get(
   "/preview/status/:courseId",
   authenticateToken,
-  checkTeacherOrAdmin,
+  requireTeacherOrAdmin,
   checkCoursePreviewStatus
 );
 
@@ -413,152 +416,164 @@ router.get(
 router.put(
   "/lessons/:lessonId/mark-preview",
   authenticateToken,
-  checkTeacherOrAdmin,
+  requireTeacherOrAdmin,
   markLessonAsPreview
 );
 
-/* ---
- DEBUG & UTILITY ROUTES
---- */
+// =========================================================
+// DEBUG & UTILITY ROUTES
+// =========================================================
 
 // Debug: Get course with all lessons and preview status
-router.get("/debug/:courseId", async (req, res) => {
-  try {
-    const { courseId } = req.params;
-    
-    const course = await Course.findByPk(courseId, {
-      attributes: ["id", "title", "slug", "description"],
-      include: [
-        {
-          model: Lesson,
-          as: "lessons",
-          attributes: ["id", "title", "is_preview", "file_url", "content_type", "order_index"],
-          order: [["order_index", "ASC"]],
-        },
-        {
-          model: User,
-          as: "teacher",
-          attributes: ["id", "name", "email"],
-        },
-      ],
-    });
+router.get(
+  "/debug/:courseId",
+  authenticateToken,
+  requireTeacherOrAdmin,
+  async (req, res) => {
+    try {
+      const { courseId } = req.params;
 
-    if (!course) {
-      return res.status(404).json({ success: false, error: "Course not found" });
+      const course = await Course.findByPk(courseId, {
+        attributes: ["id", "title", "slug", "description"],
+        include: [
+          {
+            model: Lesson,
+            as: "lessons",
+            attributes: [
+              "id",
+              "title",
+              "is_preview",
+              "file_url",
+              "content_type",
+              "order_index",
+            ],
+            order: [["order_index", "ASC"]],
+          },
+          {
+            model: User,
+            as: "teacher",
+            attributes: ["id", "name", "email"],
+          },
+        ],
+      });
+
+      if (!course) {
+        return res.status(404).json({
+          success: false,
+          error: "Course not found",
+        });
+      }
+
+      const previewLesson = course.lessons.find((l) => l.is_preview);
+      const hasPreviewFile = previewLesson && previewLesson.file_url;
+
+      res.json({
+        success: true,
+        course: {
+          id: course.id,
+          title: course.title,
+          slug: course.slug,
+          teacher: course.teacher,
+          totalLessons: course.lessons.length,
+        },
+        previewStatus: {
+          hasPreviewLesson: !!previewLesson,
+          previewLesson: previewLesson
+            ? {
+                id: previewLesson.id,
+                title: previewLesson.title,
+                hasFile: !!previewLesson.file_url,
+                fileUrl: previewLesson.file_url,
+                contentType: previewLesson.content_type,
+              }
+            : null,
+          hasPreviewFile,
+          allLessons: course.lessons.map((l) => ({
+            id: l.id,
+            title: l.title,
+            is_preview: l.is_preview,
+            hasFile: !!l.file_url,
+            order: l.order_index,
+          })),
+        },
+      });
+    } catch (error) {
+      console.error("Debug course error:", error);
+      res.status(500).json({
+        success: false,
+        error: error.message,
+      });
     }
+  }
+);
 
-    const previewLesson = course.lessons.find(l => l.is_preview);
-    const hasPreviewFile = previewLesson && previewLesson.file_url;
+// Fix preview for a course
+router.post(
+  "/fix-preview/:courseId",
+  authenticateToken,
+  requireTeacherOrAdmin,
+  async (req, res) => {
+    try {
+      const { courseId } = req.params;
+      const teacherId = req.user.id;
 
-    res.json({
-      success: true,
-      course: {
-        id: course.id,
-        title: course.title,
-        slug: course.slug,
-        teacher: course.teacher,
-        totalLessons: course.lessons.length,
-      },
-      previewStatus: {
-        hasPreviewLesson: !!previewLesson,
-        previewLesson: previewLesson ? {
+      // Verify course belongs to teacher
+      const course = await Course.findOne({
+        where: { id: courseId, teacher_id: teacherId },
+      });
+
+      if (!course) {
+        return res.status(403).json({
+          success: false,
+          error: "Course not found or access denied",
+        });
+      }
+
+      // Get all lessons for this course
+      const lessons = await Lesson.findAll({
+        where: { course_id: courseId },
+        order: [["order_index", "ASC"]],
+      });
+
+      if (lessons.length === 0) {
+        return res.json({
+          success: false,
+          error: "No lessons found for this course",
+        });
+      }
+
+      // Unmark all lessons as preview
+      await Lesson.update(
+        { is_preview: false },
+        { where: { course_id: courseId } }
+      );
+
+      // Mark first lesson with a file as preview
+      let previewLesson = lessons.find((l) => l.file_url);
+      if (!previewLesson) {
+        previewLesson = lessons[0];
+      }
+
+      await previewLesson.update({ is_preview: true });
+
+      res.json({
+        success: true,
+        message: `Preview fixed for course "${course.title}"`,
+        previewLesson: {
           id: previewLesson.id,
           title: previewLesson.title,
           hasFile: !!previewLesson.file_url,
           fileUrl: previewLesson.file_url,
-          contentType: previewLesson.content_type,
-        } : null,
-        hasPreviewFile,
-        previewFileUrl: hasPreviewFile ? previewLesson.file_url : null,
-        allLessons: course.lessons.map(l => ({
-          id: l.id,
-          title: l.title,
-          is_preview: l.is_preview,
-          hasFile: !!l.file_url,
-          order: l.order_index,
-        })),
-      },
-      recommendations: !previewLesson ? [
-        `Mark a lesson as preview: PUT /api/v1/lessons/${course.lessons[0]?.id}/mark-preview`,
-        `Ensure lesson has a file uploaded`
-      ] : !hasPreviewFile ? [
-        `Upload a file for preview lesson: ${previewLesson.id}`
-      ] : ["Preview is properly configured"],
-    });
-  } catch (error) {
-    console.error("Debug course error:", error);
-    res.status(500).json({ success: false, error: error.message });
-  }
-});
-
-// Fix preview for a course
-router.post("/fix-preview/:courseId", authenticateToken, checkTeacherOrAdmin, async (req, res) => {
-  try {
-    const { courseId } = req.params;
-    const teacherId = req.user.id;
-
-    // Verify course belongs to teacher
-    const course = await Course.findOne({
-      where: { id: courseId, teacher_id: teacherId },
-    });
-
-    if (!course) {
-      return res.status(403).json({
+        },
+      });
+    } catch (error) {
+      console.error("Fix preview error:", error);
+      res.status(500).json({
         success: false,
-        error: "Course not found or access denied",
+        error: error.message,
       });
     }
-
-    // Get all lessons for this course
-    const lessons = await Lesson.findAll({
-      where: { course_id: courseId },
-      order: [["order_index", "ASC"]],
-    });
-
-    if (lessons.length === 0) {
-      return res.json({
-        success: false,
-        error: "No lessons found for this course",
-      });
-    }
-
-    // Unmark all lessons as preview
-    await Lesson.update(
-      { is_preview: false },
-      { where: { course_id: courseId } }
-    );
-
-    // Mark first lesson with a file as preview
-    let previewLesson = lessons.find(l => l.file_url);
-    if (!previewLesson) {
-      previewLesson = lessons[0];
-    }
-
-    await previewLesson.update({ is_preview: true });
-
-    res.json({
-      success: true,
-      message: `Preview fixed for course "${course.title}"`,
-      previewLesson: {
-        id: previewLesson.id,
-        title: previewLesson.title,
-        hasFile: !!previewLesson.file_url,
-        fileUrl: previewLesson.file_url,
-      },
-      action: previewLesson.file_url 
-        ? "First lesson with file marked as preview"
-        : "First lesson marked as preview (no file)",
-      nextStep: !previewLesson.file_url 
-        ? "Upload a file to this lesson for better preview"
-        : "Preview is ready",
-    });
-  } catch (error) {
-    console.error("Fix preview error:", error);
-    res.status(500).json({ success: false, error: error.message });
   }
-});
-
-// slug route MUST be last because it catches all dynamic paths
-router.get("/slug/:slug", getPublicCourseBySlug);
+);
 
 export default router;
