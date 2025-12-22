@@ -347,7 +347,7 @@ export const requireOwnership = (modelName, foreignKey = "user_id") => {
   };
 };
 
-export default {
+export {
   authenticateToken,
   requireRole,
   requireRoles,
