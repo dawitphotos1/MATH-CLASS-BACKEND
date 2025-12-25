@@ -511,7 +511,6 @@
 // };
 
 
-
 // controllers/lessonController.js - UPDATED FOR MULTIPLE FILES
 import db from "../models/index.js";
 import { fixCloudinaryUrl } from "../middleware/cloudinaryUpload.js";
@@ -1016,6 +1015,45 @@ const getPreviewLessonForCourse = async (req, res) => {
 
 /*
   ================================
+  PUBLIC PREVIEW BY LESSON ID
+  ================================
+*/
+
+const getPublicPreviewByLessonId = async (req, res) => {
+  try {
+    const { lessonId } = req.params;
+
+    const lesson = await Lesson.findByPk(lessonId, {
+      include: [
+        {
+          model: Attachment,
+          as: "attachments",
+        },
+        {
+          model: Course,
+          as: "course",
+          attributes: ["id", "title", "slug", "thumbnail"],
+        },
+      ],
+    });
+
+    if (!lesson) {
+      return res.status(404).json({ success: false, error: "Lesson not found" });
+    }
+
+    res.json({
+      success: true,
+      lesson: buildLessonUrls(lesson),
+      isPreview: lesson.is_preview,
+    });
+  } catch (err) {
+    console.error("❌ Public preview error:", err);
+    res.status(500).json({ success: false, error: "Failed to load lesson preview" });
+  }
+};
+
+/*
+  ================================
   PREVIEW MANAGEMENT FUNCTIONS
   ================================
 */
@@ -1100,6 +1138,7 @@ export {
   getLessonById,
   deleteLessonFile,
   getPreviewLessonForCourse,
+  getPublicPreviewByLessonId,
   checkCoursePreviewStatus,
   markLessonAsPreview,
 };
@@ -1112,6 +1151,7 @@ export default {
   getLessonById,
   deleteLessonFile,
   getPreviewLessonForCourse,
+  getPublicPreviewByLessonId,
   checkCoursePreviewStatus,
   markLessonAsPreview,
 };
