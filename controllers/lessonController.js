@@ -647,8 +647,7 @@
 
 
 
-
-// controllers/lessonController.js - FIXED FOR ATTACHMENTS PREVIEW
+// controllers/lessonController.js - FINAL FIXED VERSION (MULTIPLE FILES + PREVIEW)
 import db from "../models/index.js";
 import { fixCloudinaryUrl } from "../middleware/cloudinaryUpload.js";
 
@@ -675,70 +674,43 @@ const normalizeUrl = (url) => {
   )}`;
 };
 
-// Fix PDF URLs for Cloudinary
+// Ensure PDFs use raw upload on Cloudinary
 const ensureRawUploadForPdf = (url) => {
   if (!url || typeof url !== "string") return url;
-
-  if (url.includes("cloudinary.com") && 
-      (url.includes(".pdf") || url.includes("/pdfs/"))) {
-    if (url.includes("/image/upload/")) {
-      return url.replace("/image/upload/", "/raw/upload/");
-    }
+  if (url.includes("cloudinary.com") && url.includes("/image/upload/")) {
+    return url.replace("/image/upload/", "/raw/upload/");
   }
   return url;
 };
 
-// Build URLs for lesson with multiple files
+// Normalize lesson response (arrays + attachments)
 const buildLessonUrls = (lesson) => {
   if (!lesson) return null;
   const raw = lesson.toJSON ? lesson.toJSON() : { ...lesson };
 
-  // Process file_url as array if it contains multiple URLs
-  let fileUrls = [];
-  if (raw.file_url) {
-    if (Array.isArray(raw.file_url)) {
-      fileUrls = raw.file_url.map(url => normalizeUrl(url));
-    } else if (typeof raw.file_url === "string") {
-      // Try to parse as JSON array, or use as single URL
+  const parseArrayField = (field) => {
+    if (!field) return [];
+    if (Array.isArray(field)) return field.map(normalizeUrl);
+    if (typeof field === "string") {
       try {
-        const parsed = JSON.parse(raw.file_url);
-        if (Array.isArray(parsed)) {
-          fileUrls = parsed.map(url => normalizeUrl(url));
-        } else {
-          fileUrls = [normalizeUrl(raw.file_url)];
-        }
+        const parsed = JSON.parse(field);
+        return Array.isArray(parsed)
+          ? parsed.map(normalizeUrl)
+          : [normalizeUrl(field)];
       } catch {
-        fileUrls = [normalizeUrl(raw.file_url)];
+        return [normalizeUrl(field)];
       }
     }
-  }
-
-  // Process video_url as array
-  let videoUrls = [];
-  if (raw.video_url) {
-    if (Array.isArray(raw.video_url)) {
-      videoUrls = raw.video_url.map(url => normalizeUrl(url));
-    } else if (typeof raw.video_url === "string") {
-      try {
-        const parsed = JSON.parse(raw.video_url);
-        if (Array.isArray(parsed)) {
-          videoUrls = parsed.map(url => normalizeUrl(url));
-        } else {
-          videoUrls = [normalizeUrl(raw.video_url)];
-        }
-      } catch {
-        videoUrls = [normalizeUrl(raw.video_url)];
-      }
-    }
-  }
+    return [];
+  };
 
   return {
     id: raw.id,
     title: raw.title,
     content: raw.content,
     contentType: raw.content_type,
-    fileUrls,  // Now an array
-    videoUrls, // Now an array
+    fileUrls: parseArrayField(raw.file_url),
+    videoUrls: parseArrayField(raw.video_url),
     isPreview: !!raw.is_preview,
     orderIndex: raw.order_index,
     unitId: raw.unit_id,
@@ -759,223 +731,247 @@ const buildLessonUrls = (lesson) => {
 
 /*
   ================================
-  PREVIEW ENDPOINTS - FIXED VERSION
+  CREATE LESSON
   ================================
 */
 
-const getPreviewLessonForCourse = async (req, res) => {
+const createLesson = async (req, res) => {
   try {
-    // FIRST: Check for preview lesson
-    let lesson = await Lesson.findOne({
-      where: { 
-        course_id: req.params.courseId, 
-        is_preview: true 
-      },
-      include: [
-        {
-          model: Attachment,
-          as: "attachments",
-          attributes: ["id", "file_path", "file_type", "file_name", "file_size", "created_at"],
-        },
-        {
-          model: Course,
-          as: "course",
-          attributes: ["id", "title", "slug", "thumbnail"],
-        },
-      ],
-      order: [["order_index", "ASC"]],
+    const uploads = req.processedUploads || {};
+
+    const fileUrls = (uploads.files || []).map((f) =>
+      fixCloudinaryUrl(ensureRawUploadForPdf(f.url))
+    );
+    const videoUrls = (uploads.videos || []).map((v) => v.url);
+
+    const lesson = await Lesson.create({
+      ...req.body,
+      course_id: req.params.courseId,
+      file_url: fileUrls.length ? JSON.stringify(fileUrls) : null,
+      video_url: videoUrls.length ? JSON.stringify(videoUrls) : null,
     });
 
-    // If no preview lesson OR preview has no files/attachments, get first lesson with files
-    if (!lesson || 
-        (!lesson.file_url && 
-         (!lesson.attachments || lesson.attachments.length === 0))) {
-      
-      // Get ALL lessons for this course with attachments
-      const lessonsWithFiles = await Lesson.findAll({
-        where: { 
-          course_id: req.params.courseId 
-        },
-        include: [
-          {
-            model: Attachment,
-            as: "attachments",
-            attributes: ["id", "file_path", "file_type", "file_name", "file_size", "created_at"],
-          },
-          {
-            model: Course,
-            as: "course",
-            attributes: ["id", "title", "slug", "thumbnail"],
-          },
-        ],
-        order: [["order_index", "ASC"]],
-      });
-
-      // Find first lesson that has either file_url or attachments
-      lesson = lessonsWithFiles.find(l => 
-        l.file_url || 
-        (l.attachments && l.attachments.length > 0)
+    if (uploads.attachments?.length) {
+      await Promise.all(
+        uploads.attachments.map((att) =>
+          Attachment.create({
+            lesson_id: lesson.id,
+            file_path: att.url,
+            file_type: att.mimetype,
+            file_name: att.originalname,
+            file_size: att.size,
+          })
+        )
       );
-
-      // If still no lesson with files, just take the first lesson
-      if (!lesson && lessonsWithFiles.length > 0) {
-        lesson = lessonsWithFiles[0];
-      }
     }
 
-    if (!lesson) {
-      return res.status(404).json({ 
-        success: false, 
-        error: "No lessons found for this course" 
-      });
-    }
-
-    // Check if lesson has any preview content
-    const hasPreviewContent = 
-      lesson.file_url || 
-      (lesson.attachments && lesson.attachments.length > 0) ||
-      lesson.video_url;
-
-    if (!hasPreviewContent) {
-      return res.json({
-        success: true,
-        hasPreview: false,
-        message: "No preview content available for this lesson",
-        lesson: buildLessonUrls(lesson),
-      });
-    }
-
-    res.json({
-      success: true,
-      hasPreview: true,
-      lesson: buildLessonUrls(lesson),
-      previewType: lesson.file_url ? "file_url" : 
-                  (lesson.attachments && lesson.attachments.length > 0) ? "attachments" : 
-                  lesson.video_url ? "video" : "none",
+    const fullLesson = await Lesson.findByPk(lesson.id, {
+      include: [{ model: Attachment, as: "attachments" }],
     });
+
+    res.status(201).json({ success: true, lesson: buildLessonUrls(fullLesson) });
   } catch (err) {
-    console.error("❌ Preview error:", err);
-    res.status(500).json({ 
-      success: false, 
-      error: "Failed to load preview" 
-    });
+    console.error("❌ Create lesson error:", err);
+    res.status(500).json({ success: false, error: "Failed to create lesson" });
   }
 };
 
 /*
   ================================
-  PUBLIC PREVIEW BY LESSON ID - FIXED
+  UPDATE LESSON
   ================================
 */
 
-const getPublicPreviewByLessonId = async (req, res) => {
+const updateLesson = async (req, res) => {
   try {
-    const { lessonId } = req.params;
-
-    const lesson = await Lesson.findByPk(lessonId, {
-      include: [
-        {
-          model: Attachment,
-          as: "attachments",
-          attributes: ["id", "file_path", "file_type", "file_name", "file_size", "created_at"],
-        },
-        {
-          model: Course,
-          as: "course",
-          attributes: ["id", "title", "slug", "thumbnail"],
-        },
-      ],
+    const lesson = await Lesson.findByPk(req.params.lessonId, {
+      include: [{ model: Attachment, as: "attachments" }],
     });
 
     if (!lesson) {
-      return res.status(404).json({ 
-        success: false, 
-        error: "Lesson not found" 
-      });
+      return res.status(404).json({ success: false, error: "Lesson not found" });
     }
 
-    // Check if lesson has preview content
-    const hasPreviewContent = 
-      lesson.file_url || 
-      (lesson.attachments && lesson.attachments.length > 0) ||
-      lesson.video_url;
+    const uploads = req.processedUploads || {};
 
-    res.json({
-      success: true,
-      hasPreview: hasPreviewContent,
-      lesson: buildLessonUrls(lesson),
-      previewType: lesson.file_url ? "file_url" : 
-                  (lesson.attachments && lesson.attachments.length > 0) ? "attachments" : 
-                  lesson.video_url ? "video" : "none",
+    const parseExisting = (field) => {
+      if (!field) return [];
+      try {
+        const parsed = JSON.parse(field);
+        return Array.isArray(parsed) ? parsed : [field];
+      } catch {
+        return [field];
+      }
+    };
+
+    const fileUrls = [
+      ...parseExisting(lesson.file_url),
+      ...(uploads.files || []).map((f) =>
+        fixCloudinaryUrl(ensureRawUploadForPdf(f.url))
+      ),
+    ];
+
+    const videoUrls = [
+      ...parseExisting(lesson.video_url),
+      ...(uploads.videos || []).map((v) => v.url),
+    ];
+
+    await lesson.update({
+      ...req.body,
+      file_url: fileUrls.length ? JSON.stringify(fileUrls) : null,
+      video_url: videoUrls.length ? JSON.stringify(videoUrls) : null,
     });
+
+    if (uploads.attachments?.length) {
+      await Promise.all(
+        uploads.attachments.map((att) =>
+          Attachment.create({
+            lesson_id: lesson.id,
+            file_path: att.url,
+            file_type: att.mimetype,
+            file_name: att.originalname,
+            file_size: att.size,
+          })
+        )
+      );
+    }
+
+    const updated = await Lesson.findByPk(lesson.id, {
+      include: [{ model: Attachment, as: "attachments" }],
+    });
+
+    res.json({ success: true, lesson: buildLessonUrls(updated) });
   } catch (err) {
-    console.error("❌ Public preview error:", err);
-    res.status(500).json({ 
-      success: false, 
-      error: "Failed to load lesson preview" 
-    });
+    console.error("❌ Update lesson error:", err);
+    res.status(500).json({ success: false, error: "Failed to update lesson" });
   }
 };
 
 /*
   ================================
-  GET LESSON WITH FILES - FIXED
+  GET / DELETE FILES
   ================================
 */
 
 const getLessonById = async (req, res) => {
+  const lesson = await Lesson.findByPk(req.params.id, {
+    include: [
+      { model: Attachment, as: "attachments" },
+      { model: Course, as: "course", attributes: ["id", "title", "slug", "thumbnail"] },
+    ],
+  });
+
+  if (!lesson) {
+    return res.status(404).json({ success: false, error: "Lesson not found" });
+  }
+
+  res.json({ success: true, lesson: buildLessonUrls(lesson) });
+};
+
+const deleteLessonFile = async (req, res) => {
   try {
-    const lesson = await Lesson.findByPk(req.params.id, {
-      include: [
-        {
-          model: Attachment,
-          as: "attachments",
-          attributes: ["id", "file_path", "file_type", "file_name", "file_size", "created_at", "updated_at"],
-        },
-        {
-          model: Course,
-          as: "course",
-          attributes: ["id", "title", "slug", "thumbnail"],
-        },
-      ],
+    const { lessonId, fileIndex, fileType } = req.params;
+    const lesson = await Lesson.findByPk(lessonId);
+    if (!lesson) return res.status(404).json({ success: false, error: "Lesson not found" });
+
+    const parse = (f) => {
+      if (!f) return [];
+      try {
+        const p = JSON.parse(f);
+        return Array.isArray(p) ? p : [f];
+      } catch {
+        return [f];
+      }
+    };
+
+    let files = parse(lesson.file_url);
+    let videos = parse(lesson.video_url);
+
+    if (fileType === "file") files.splice(fileIndex, 1);
+    if (fileType === "video") videos.splice(fileIndex, 1);
+
+    await lesson.update({
+      file_url: files.length ? JSON.stringify(files) : null,
+      video_url: videos.length ? JSON.stringify(videos) : null,
     });
 
-    if (!lesson) {
-      return res.status(404).json({ 
-        success: false, 
-        error: "Lesson not found" 
-      });
-    }
-
-    // Count total files
-    const totalFiles = 
-      (lesson.file_url ? 1 : 0) + 
-      (lesson.attachments ? lesson.attachments.length : 0);
-
-    res.json({
-      success: true,
-      lesson: buildLessonUrls(lesson),
-      stats: {
-        totalFiles,
-        hasFileUrl: !!lesson.file_url,
-        attachmentCount: lesson.attachments ? lesson.attachments.length : 0,
-      },
-    });
+    res.json({ success: true, lesson: buildLessonUrls(lesson) });
   } catch (err) {
-    console.error("❌ Get lesson error:", err);
-    res.status(500).json({ 
-      success: false, 
-      error: "Failed to load lesson" 
-    });
+    res.status(500).json({ success: false, error: "Failed to delete file" });
   }
 };
 
-// Keep all other functions as they are (createLesson, updateLesson, etc.)
-// ... [rest of your existing code remains unchanged]
+/*
+  ================================
+  PREVIEW ENDPOINTS
+  ================================
+*/
+
+const getPreviewLessonForCourse = async (req, res) => {
+  let lesson = await Lesson.findOne({
+    where: { course_id: req.params.courseId, is_preview: true },
+    include: [{ model: Attachment, as: "attachments" }],
+    order: [["order_index", "ASC"]],
+  });
+
+  if (!lesson) {
+    lesson = await Lesson.findOne({
+      where: { course_id: req.params.courseId },
+      include: [{ model: Attachment, as: "attachments" }],
+      order: [["order_index", "ASC"]],
+    });
+  }
+
+  if (!lesson) {
+    return res.status(404).json({ success: false, error: "No lessons found" });
+  }
+
+  res.json({ success: true, lesson: buildLessonUrls(lesson) });
+};
+
+const getPublicPreviewByLessonId = async (req, res) => {
+  const lesson = await Lesson.findByPk(req.params.lessonId, {
+    include: [{ model: Attachment, as: "attachments" }],
+  });
+
+  if (!lesson) {
+    return res.status(404).json({ success: false, error: "Lesson not found" });
+  }
+
+  res.json({ success: true, lesson: buildLessonUrls(lesson) });
+};
 
 /*
   ================================
-  EXPORT ALL FUNCTIONS
+  PREVIEW MANAGEMENT
+  ================================
+*/
+
+const checkCoursePreviewStatus = async (req, res) => {
+  const previewLesson = await Lesson.findOne({
+    where: { course_id: req.params.courseId, is_preview: true },
+  });
+
+  res.json({ success: true, hasPreview: !!previewLesson, previewLesson });
+};
+
+const markLessonAsPreview = async (req, res) => {
+  const lesson = await Lesson.findByPk(req.params.lessonId);
+  if (!lesson) return res.status(404).json({ success: false, error: "Lesson not found" });
+
+  await Lesson.update(
+    { is_preview: false },
+    { where: { course_id: lesson.course_id } }
+  );
+
+  await lesson.update({ is_preview: true });
+
+  res.json({ success: true, lessonId: lesson.id });
+};
+
+/*
+  ================================
+  EXPORTS
   ================================
 */
 
