@@ -266,7 +266,6 @@
 
 
 
-
 // middleware/cloudinaryUpload.js - UPDATED FOR MULTIPLE FILES
 import multer from "multer";
 import path from "path";
@@ -353,7 +352,7 @@ const upload = multer({
 // URL FIXING FUNCTION
 // ================================
 
-export const fixCloudinaryUrl = (url) => {
+const fixCloudinaryUrl = (url) => {
   if (!url || typeof url !== "string") return url;
   
   // Fix Cloudinary URL if it's incorrectly using /image/upload/ for PDFs
@@ -370,7 +369,7 @@ export const fixCloudinaryUrl = (url) => {
 // UPLOAD FUNCTIONS
 // ================================
 
-export const uploadToCloudinary = (
+const uploadToCloudinary = (
   buffer,
   folder = "mathe-class",
   resourceType = "auto",
@@ -445,7 +444,7 @@ export const uploadToCloudinary = (
 // PROCESS UPLOADED FILES - UPDATED FOR ARRAYS
 // ================================
 
-export const processUploadedFiles = async (req) => {
+const processUploadedFiles = async (req) => {
   const result = {
     files: [],        // Array of main lesson files
     videos: [],       // Array of video files
@@ -532,20 +531,20 @@ export const processUploadedFiles = async (req) => {
 // ================================
 
 // For lesson uploads (multiple files, videos, and attachments)
-export const uploadLessonFiles = upload.fields([
+const uploadLessonFiles = upload.fields([
   { name: "files", maxCount: 10 },        // Main lesson files (PDFs, docs)
   { name: "videos", maxCount: 5 },        // Video files
   { name: "attachments", maxCount: 20 },  // Additional attachments
 ]);
 
 // For course thumbnails
-export const uploadCourseFiles = upload.fields([
+const uploadCourseFiles = upload.fields([
   { name: "thumbnail", maxCount: 1 },
   { name: "attachments", maxCount: 10 },
 ]);
 
 // Single file upload
-export const singleUpload = upload.single("file");
+const singleUpload = upload.single("file");
 
 // ================================
 // EXPORTS
@@ -554,7 +553,7 @@ export const singleUpload = upload.single("file");
 // Default export
 export default upload;
 
-// Named exports
+// Named exports - ONLY ONCE HERE
 export {
   uploadToCloudinary,
   processUploadedFiles,
