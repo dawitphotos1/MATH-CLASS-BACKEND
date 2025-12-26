@@ -788,7 +788,8 @@
 // };
 
 
-// controllers/lessonController.js - COMPLETE FIXED VERSION
+
+// controllers/lessonController.js - CLEAN FIXED VERSION (WITH SINGLE EXPORT)
 import db from "../models/index.js";
 import { fixCloudinaryUrl } from "../middleware/cloudinaryUpload.js";
 
@@ -1571,25 +1572,25 @@ export const getLessonsByCourse = async (req, res) => {
 
 /*
   ================================
-  EXPORT ALL FUNCTIONS
+  SINGLE EXPORT BLOCK - NO DUPLICATES
   ================================
 */
 
-// Named exports
-export {
-  buildLessonUrls,
-  createLesson,
-  updateLesson,
-  getLessonById,
-  deleteLessonFile,
-  getPreviewLessonForCourse,
-  getPublicPreviewByLessonId,
-  checkCoursePreviewStatus,
-  markLessonAsPreview,
-  getLessonsByCourse,
-};
+// REMOVE THIS BLOCK COMPLETELY:
+// export {
+//   buildLessonUrls,
+//   createLesson,
+//   updateLesson,
+//   getLessonById,
+//   deleteLessonFile,
+//   getPreviewLessonForCourse,
+//   getPublicPreviewByLessonId,
+//   checkCoursePreviewStatus,
+//   markLessonAsPreview,
+//   getLessonsByCourse,
+// };
 
-// Default export
+// KEEP ONLY THE DEFAULT EXPORT:
 export default {
   buildLessonUrls,
   createLesson,
