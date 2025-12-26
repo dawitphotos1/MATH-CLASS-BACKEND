@@ -94,6 +94,7 @@
 
 // routes/pdfProxy.js
 import express from "express";
+import { Readable } from "stream";
 import fetch from "node-fetch";
 
 const router = express.Router();
