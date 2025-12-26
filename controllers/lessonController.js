@@ -788,8 +788,6 @@
 // };
 
 
-
-
 // controllers/lessonController.js - COMPLETE FIXED VERSION
 import db from "../models/index.js";
 import { fixCloudinaryUrl } from "../middleware/cloudinaryUpload.js";
@@ -830,8 +828,8 @@ const ensureRawUploadForPdf = (url) => {
   return url;
 };
 
-// Build URLs for lesson with multiple files
-const buildLessonUrls = (lesson) => {
+// Build URLs for lesson with multiple files - EXPORTED
+export const buildLessonUrls = (lesson) => {
   if (!lesson) return null;
   const raw = lesson.toJSON ? lesson.toJSON() : { ...lesson };
 
@@ -874,6 +872,19 @@ const buildLessonUrls = (lesson) => {
     }
   }
 
+  // Process attachments
+  const attachments = raw.attachments
+    ? raw.attachments.map((att) => ({
+        id: att.id,
+        filePath: normalizeUrl(att.file_path),
+        fileType: att.file_type,
+        fileName: att.file_name || att.file_path.split("/").pop(),
+        fileSize: att.file_size,
+        createdAt: att.created_at,
+        updatedAt: att.updated_at,
+      }))
+    : [];
+
   return {
     id: raw.id,
     title: raw.title,
@@ -885,17 +896,7 @@ const buildLessonUrls = (lesson) => {
     orderIndex: raw.order_index,
     unitId: raw.unit_id,
     courseId: raw.course_id,
-    attachments: raw.attachments
-      ? raw.attachments.map((att) => ({
-          id: att.id,
-          filePath: normalizeUrl(att.file_path),
-          fileType: att.file_type,
-          fileName: att.file_name || att.file_path.split("/").pop(),
-          fileSize: att.file_size,
-          createdAt: att.created_at,
-          updatedAt: att.updated_at,
-        }))
-      : [],
+    attachments,
   };
 };
 
@@ -905,7 +906,7 @@ const buildLessonUrls = (lesson) => {
   ================================
 */
 
-const createLesson = async (req, res) => {
+export const createLesson = async (req, res) => {
   try {
     console.log("📝 Creating lesson for course:", req.params.courseId);
     console.log("📁 Files received:", req.files ? Object.keys(req.files) : "No files");
@@ -999,7 +1000,7 @@ const createLesson = async (req, res) => {
   ================================
 */
 
-const updateLesson = async (req, res) => {
+export const updateLesson = async (req, res) => {
   try {
     const lessonId = req.params.lessonId;
     console.log(`🔄 Updating lesson ${lessonId}`);
@@ -1130,7 +1131,7 @@ const updateLesson = async (req, res) => {
   ================================
 */
 
-const getLessonById = async (req, res) => {
+export const getLessonById = async (req, res) => {
   try {
     const lesson = await Lesson.findByPk(req.params.id, {
       include: [
@@ -1173,7 +1174,7 @@ const getLessonById = async (req, res) => {
   ================================
 */
 
-const deleteLessonFile = async (req, res) => {
+export const deleteLessonFile = async (req, res) => {
   try {
     const { lessonId, fileIndex, fileType } = req.params;
     
@@ -1237,11 +1238,11 @@ const deleteLessonFile = async (req, res) => {
 
 /*
   ================================
-  PREVIEW ENDPOINTS - FIXED VERSION
+  GET PREVIEW LESSON FOR COURSE - FIXED
   ================================
 */
 
-const getPreviewLessonForCourse = async (req, res) => {
+export const getPreviewLessonForCourse = async (req, res) => {
   try {
     const { courseId } = req.params;
     console.log(`🔍 Looking for preview lesson for course: ${courseId}`);
@@ -1302,7 +1303,7 @@ const getPreviewLessonForCourse = async (req, res) => {
         });
       }
 
-      // Find first lesson that has ANY content (file_url, attachments, video_url, or text content)
+      // Find first lesson that has ANY content
       lesson = allLessons.find(l => 
         l.file_url || 
         (l.attachments && l.attachments.length > 0) ||
@@ -1319,20 +1320,20 @@ const getPreviewLessonForCourse = async (req, res) => {
       }
     }
 
-    // Check if lesson has any preview content
-    const hasPreviewContent = 
-      lesson.file_url || 
-      (lesson.attachments && lesson.attachments.length > 0) ||
-      lesson.video_url ||
-      (lesson.content && lesson.content.trim().length > 0);
-
-    console.log(`📄 Lesson "${lesson.title}" has preview content: ${hasPreviewContent}`);
-    if (lesson.file_url) console.log(`📎 File URL: ${lesson.file_url.substring(0, 100)}...`);
-    if (lesson.attachments && lesson.attachments.length > 0) console.log(`📎 Attachments: ${lesson.attachments.length}`);
-    if (lesson.video_url) console.log(`🎬 Video URL: ${lesson.video_url}`);
-    
     // Build the lesson URLs
     const lessonWithUrls = buildLessonUrls(lesson);
+    
+    // Check if lesson has any preview content
+    const hasPreviewContent = 
+      lessonWithUrls.fileUrls.length > 0 || 
+      lessonWithUrls.videoUrls.length > 0 ||
+      lessonWithUrls.attachments.length > 0 ||
+      (lessonWithUrls.content && lessonWithUrls.content.trim().length > 0);
+
+    console.log(`📄 Lesson "${lesson.title}" has preview content: ${hasPreviewContent}`);
+    console.log(`📎 File URLs: ${lessonWithUrls.fileUrls.length}`);
+    console.log(`🎬 Video URLs: ${lessonWithUrls.videoUrls.length}`);
+    console.log(`📎 Attachments: ${lessonWithUrls.attachments.length}`);
     
     if (!hasPreviewContent) {
       return res.json({
@@ -1347,9 +1348,9 @@ const getPreviewLessonForCourse = async (req, res) => {
       success: true,
       hasPreview: true,
       lesson: lessonWithUrls,
-      previewType: lesson.file_url ? "file_url" : 
-                  (lesson.attachments && lesson.attachments.length > 0) ? "attachments" : 
-                  lesson.video_url ? "video" : 
+      previewType: lessonWithUrls.fileUrls.length > 0 ? "file" : 
+                  lessonWithUrls.videoUrls.length > 0 ? "video" : 
+                  lessonWithUrls.attachments.length > 0 ? "attachments" : 
                   "text",
     });
   } catch (err) {
@@ -1367,7 +1368,7 @@ const getPreviewLessonForCourse = async (req, res) => {
   ================================
 */
 
-const getPublicPreviewByLessonId = async (req, res) => {
+export const getPublicPreviewByLessonId = async (req, res) => {
   try {
     const { lessonId } = req.params;
 
@@ -1393,20 +1394,23 @@ const getPublicPreviewByLessonId = async (req, res) => {
       });
     }
 
+    // Build URLs
+    const lessonWithUrls = buildLessonUrls(lesson);
+
     // Check if lesson has preview content
     const hasPreviewContent = 
-      lesson.file_url || 
-      (lesson.attachments && lesson.attachments.length > 0) ||
-      lesson.video_url ||
-      (lesson.content && lesson.content.trim().length > 0);
+      lessonWithUrls.fileUrls.length > 0 || 
+      lessonWithUrls.videoUrls.length > 0 ||
+      lessonWithUrls.attachments.length > 0 ||
+      (lessonWithUrls.content && lessonWithUrls.content.trim().length > 0);
 
     res.json({
       success: true,
       hasPreview: hasPreviewContent,
-      lesson: buildLessonUrls(lesson),
-      previewType: lesson.file_url ? "file_url" : 
-                  (lesson.attachments && lesson.attachments.length > 0) ? "attachments" : 
-                  lesson.video_url ? "video" : 
+      lesson: lessonWithUrls,
+      previewType: lessonWithUrls.fileUrls.length > 0 ? "file" : 
+                  lessonWithUrls.videoUrls.length > 0 ? "video" : 
+                  lessonWithUrls.attachments.length > 0 ? "attachments" : 
                   "text",
     });
   } catch (err) {
@@ -1424,7 +1428,7 @@ const getPublicPreviewByLessonId = async (req, res) => {
   ================================
 */
 
-const checkCoursePreviewStatus = async (req, res) => {
+export const checkCoursePreviewStatus = async (req, res) => {
   try {
     const { courseId } = req.params;
 
@@ -1484,7 +1488,7 @@ const checkCoursePreviewStatus = async (req, res) => {
   }
 };
 
-const markLessonAsPreview = async (req, res) => {
+export const markLessonAsPreview = async (req, res) => {
   try {
     const { lessonId } = req.params;
 
@@ -1531,7 +1535,7 @@ const markLessonAsPreview = async (req, res) => {
   ================================
 */
 
-const getLessonsByCourse = async (req, res) => {
+export const getLessonsByCourse = async (req, res) => {
   try {
     const { courseId } = req.params;
     const lessons = await Lesson.findAll({
