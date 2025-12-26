@@ -1075,7 +1075,6 @@
 
 
 
-
 // controllers/courseController.js - COMPLETE FIXED VERSION
 import db from "../models/index.js";
 import path from "path";
@@ -2150,7 +2149,9 @@ export const checkCourseExists = async (req, res) => {
   }
 };
 
-// Debug function to test URL building
+/* ============================================================
+   Debug function to test URL building
+============================================================ */
 export const debugLessonUrls = async (req, res) => {
   try {
     const { lessonId } = req.params;
@@ -2202,6 +2203,82 @@ export const debugLessonUrls = async (req, res) => {
   }
 };
 
+/* ============================================================
+   Debug course preview - NEW FUNCTION
+============================================================ */
+export const debugCoursePreview = async (req, res) => {
+  try {
+    const { slug } = req.params;
+    
+    console.log(`🔍 Debugging preview for course: ${slug}`);
+    
+    const course = await Course.findOne({
+      where: { slug },
+      include: [
+        {
+          model: Lesson,
+          as: "lessons",
+          include: [
+            {
+              model: Attachment,
+              as: "attachments",
+            },
+          ],
+        },
+      ],
+    });
+
+    if (!course) {
+      return res.status(404).json({ error: "Course not found" });
+    }
+
+    const { buildLessonUrls } = await import("./lessonController.js");
+    
+    const debugResults = course.lessons.map(lesson => {
+      const builtUrls = buildLessonUrls(lesson);
+      return {
+        lessonId: lesson.id,
+        title: lesson.title,
+        originalFileUrl: lesson.file_url,
+        builtFileUrls: builtUrls.fileUrls,
+        isPreview: lesson.is_preview,
+        urlComparison: {
+          original: lesson.file_url,
+          built: builtUrls.fileUrls[0],
+          same: lesson.file_url === builtUrls.fileUrls[0],
+          isCloudinary: builtUrls.fileUrls[0]?.includes('cloudinary.com'),
+          usesRawUpload: builtUrls.fileUrls[0]?.includes('/raw/upload/'),
+        },
+      };
+    });
+
+    const previewLesson = course.lessons.find(l => l.is_preview) || course.lessons[0];
+    const previewBuilt = buildLessonUrls(previewLesson);
+
+    res.json({
+      success: true,
+      course: { id: course.id, title: course.title, slug: course.slug },
+      totalLessons: course.lessons.length,
+      previewLesson: {
+        id: previewLesson?.id,
+        title: previewLesson?.title,
+        originalUrl: previewLesson?.file_url,
+        builtUrl: previewBuilt?.fileUrls?.[0],
+        isCloudinary: previewBuilt?.fileUrls?.[0]?.includes('cloudinary.com'),
+        usesRawUpload: previewBuilt?.fileUrls?.[0]?.includes('/raw/upload/'),
+      },
+      allLessons: debugResults,
+      recommendations: previewBuilt?.fileUrls?.[0]?.includes('/image/upload/') && 
+                     previewBuilt?.fileUrls?.[0]?.includes('.pdf') 
+        ? "⚠️ PDF uses /image/upload/ instead of /raw/upload/. Need to fix Cloudinary URL."
+        : "✅ URL appears to be correctly formatted.",
+    });
+  } catch (error) {
+    console.error("❌ Debug error:", error);
+    res.status(500).json({ error: error.message });
+  }
+};
+
 export default {
   createCourse,
   createCourseWithUnits,
@@ -2216,4 +2293,5 @@ export default {
   getTeacherCourseFull,
   checkCourseExists,
   debugLessonUrls,
+  debugCoursePreview,
 };
