@@ -184,8 +184,7 @@
 
 
 
-
-// server.js - VERIFIED CORRECT
+// server.js - UPDATED WITH PDF PROXY
 import dotenv from "dotenv";
 dotenv.config();
 
@@ -199,7 +198,7 @@ import sequelize from "./config/db.js";
 import authRoutes from "./routes/authRoutes.js";
 import adminRoutes from "./routes/admin.js";
 import courseRoutes from "./routes/courses.js";
-import lessonRoutes from "./routes/lessonRoutes.js"; // ✅ This is your lessonRoutes.js
+import lessonRoutes from "./routes/lessonRoutes.js";
 import enrollmentRoutes from "./routes/enrollmentRoutes.js";
 import paymentRoutes from "./routes/paymentRoutes.js";
 import filesRoutes from "./routes/files.js";
@@ -207,6 +206,7 @@ import unitRoutes from "./routes/unitRoutes.js";
 import teacherRoutes from "./routes/teacher.js";
 import emailRoutes from "./routes/email.js";
 import sublessonRoutes from "./routes/sublessonRoutes.js";
+import pdfProxyRouter from "./routes/pdfProxy.js"; // ✅ ADD THIS IMPORT
 
 import { handleStripeWebhook } from "./controllers/paymentController.js";
 
@@ -283,7 +283,7 @@ app.use(cookieParser());
 app.use("/api/v1/auth", authRoutes);
 app.use("/api/v1/admin", adminRoutes);
 app.use("/api/v1/courses", courseRoutes);
-app.use("/api/v1/lessons", lessonRoutes); // ✅ This imports lessonRoutes.js
+app.use("/api/v1/lessons", lessonRoutes);
 app.use("/api/v1/enrollments", enrollmentRoutes);
 app.use("/api/v1/payments", paymentRoutes);
 app.use("/api/v1/files", filesRoutes);
@@ -291,6 +291,7 @@ app.use("/api/v1/units", unitRoutes);
 app.use("/api/v1/teacher", teacherRoutes);
 app.use("/api/v1/email", emailRoutes);
 app.use("/api/v1/sublessons", sublessonRoutes);
+app.use("/api/v1/pdf-proxy", pdfProxyRouter); // ✅ ADD THIS ROUTE
 
 // =========================================================
 // HEALTH CHECK
@@ -362,8 +363,7 @@ const PORT = process.env.PORT || 5000;
       console.log(`📚 Available routes:`);
       console.log(`   - /api/v1/courses`);
       console.log(`   - /api/v1/lessons`);
-      console.log(`   - /api/v1/lessons/public-preview/:id (✅ Fixed)`);
-      console.log(`   - /api/v1/courses/:id/units (✅ Fixed)`);
+      console.log(`   - /api/v1/pdf-proxy (✅ NEW: PDF proxy route)`);
     });
   } catch (err) {
     console.error("❌ Startup failed:", err.message);
