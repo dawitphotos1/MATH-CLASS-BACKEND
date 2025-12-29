@@ -9,7 +9,11 @@
     "dev": "nodemon server.js",
     "migrate": "node scripts/finalMigrateToCloudinary.js",
     "final-migrate": "node scripts/finalMigrateToCloudinary.js",
-    "quick-fix": "node scripts/quickFixCloudinary.js"
+    "quick-fix": "node scripts/quickFixCloudinary.js",
+    "test-email": "node scripts/test-email.js",
+    "test-email:dev": "NODE_ENV=development node scripts/test-email.js",
+    "test:backend": "node --experimental-vm-modules node_modules/jest/bin/jest.js",
+    "test:frontend": "react-scripts test"
   },
   "keywords": [],
   "author": "",
